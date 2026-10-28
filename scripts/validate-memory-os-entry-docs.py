@@ -409,6 +409,27 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     head_test = '          test "$(git rev-parse HEAD)" = "$expected"'
     clean_test = '          test -z "$(git status --porcelain)"'
     head_positions = [i for i, row in enumerate(source_lines) if row == head_test]
+    # The reviewed source-verification shell must run first. A later
+    # verification step cannot establish the source already used by Python.
+    run_positions = [
+        i for i, row in enumerate(source_lines) if row == "        run: |"
+    ]
+    python_positions = [
+        i for i, row in enumerate(source_lines)
+        if re.fullmatch(
+            r" {10,}python(?:3)?(?: -B)? scripts/[A-Za-z0-9_./-]+\.py\s*", row
+        )
+    ]
+    if len(run_positions) >= 2 and len(head_positions) == 1:
+        if not (run_positions[0] < head_positions[0] < run_positions[1]):
+            issues.append("exact-source verification must precede validator execution")
+        second_run_end = (
+            run_positions[2] if len(run_positions) > 2 else len(source_lines)
+        )
+        if not python_positions or any(
+            not (run_positions[1] < i < second_run_end) for i in python_positions
+        ):
+            issues.append("direct Python validators must execute in reviewed second run step")
     if len(head_positions) != 1:
         issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
     else:
@@ -661,7 +682,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 153
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 155
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -783,7 +804,26 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if source_negative_reachability_issues(relative, nested, exists):
         failures.append("source-negative nested subshell validator positive control failed")
         return
+    # Swapping the two reviewed shell steps must not preserve CI admission.
+    def reversed_shell_steps(text: str) -> str:
+        before, tail = text.split("      - name: Verify source\n", 1)
+        verification, validator = tail.split(
+            "      - name: Execute negative validator\n", 1
+        )
+        post = ""
+        marker = "      - name: Prove reviewed Go checks\n"
+        if marker in validator:
+            validator, post = validator.split(marker, 1)
+            post = marker + post
+        return (before + "      - name: Execute negative validator\n"
+                + validator + "      - name: Verify source\n"
+                + verification + post)
+
+    reversed_fixture = reversed_shell_steps(fixture)
+    reversed_go_fixture = reversed_shell_steps(go_fixture)
     cases = {
+        "validator precedes source verification": reversed_fixture,
+        "setup-go validator precedes source verification": reversed_go_fixture,
         "extra shell run step after validator": fixture + (
             "      - name: Unreviewed extra shell\n"
             "        run: |\n"
