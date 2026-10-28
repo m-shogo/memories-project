@@ -115,6 +115,48 @@ def validate_yaml_authority(content: str, kind: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit(prefix + "permission leaf shadow drift")
+    jobs = {
+        "publisher": (
+            "atomic-write-negative",
+            "    if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')",
+            5,
+        ),
+        "independent": (
+            "source-admission",
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            5,
+        ),
+        "replacement": (
+            "atomic-replacement",
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            10,
+        ),
+    }
+    job, condition, timeout = jobs[kind]
+    body = content.split("\njobs:\n", 1)[1]
+    job_rows = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  " + job + ":"]:
+        raise SystemExit(prefix + "job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != [
+        condition, "    permissions:", "    runs-on: ubuntu-latest",
+        "    timeout-minutes: " + str(timeout), "    steps:",
+    ]:
+        raise SystemExit(prefix + "job key/permission shadow drift")
+    block = body.split("  " + job + ":\n", 1)[1]
+    marker = "    permissions:\n"
+    if (block.count(marker) != 1
+            or block.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+            != "      contents: read\n"):
+        raise SystemExit(prefix + "job permission scope drift")
 
 
 def prove_yaml_authority_negatives(main: str, guard: str, replacement: str) -> None:
@@ -146,7 +188,52 @@ def prove_yaml_authority_negatives(main: str, guard: str, replacement: str) -> N
         ):
             cases.append((label, content.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
-        if len(cases) != 9:
+        jobs = {
+            "publisher": (
+                "atomic-write-negative",
+                "    if: github.event_name == 'pull_request' || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so')",
+            ),
+            "independent": (
+                "source-admission",
+                "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            ),
+            "replacement": (
+                "atomic-replacement",
+                "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            ),
+        }
+        job, condition = jobs[kind]
+        for label, suffix in (
+            ("duplicate job", "  " + job + ": {}\n"),
+            ("spaced job", "  " + job + " : {}\n"),
+            ("quoted job", "  '" + job + "': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "job mapping shadow drift"))
+        runs_on = "    runs-on: ubuntu-latest\n"
+        permission = "    permissions:\n      contents: read\n"
+        if (content.count(runs_on) != 1 or content.count(permission) != 1
+                or content.count(condition + "\n") != 1):
+            raise SystemExit("atomic " + kind + " job fixture anchor drift")
+        for label, leaf in (
+            ("job permission", "    permissions:\n      contents: write\n"),
+            ("spaced job permission", "    permissions :\n      contents: write\n"),
+            ("quoted job permission", "    'permissions':\n      contents: write\n"),
+            ("job timeout shadow", "    timeout-minutes : 0\n"),
+            ("job continuation shadow", "    continue-on-error: true\n"),
+        ):
+            cases.append((label, content.replace(runs_on, runs_on + leaf, 1),
+                          "job key/permission shadow drift"))
+        cases.append(("job event bypass", content.replace(condition + "\n", "    if: true\n", 1),
+                      "job key/permission shadow drift"))
+        for label, replacement in (
+            ("direct write scope", "    permissions:\n      contents: write\n"),
+            ("spaced contents", permission + "      contents : write\n"),
+            ("quoted contents", permission + "      'contents': write\n"),
+        ):
+            cases.append((label, content.replace(permission, replacement, 1),
+                          "job permission scope drift"))
+        if len(cases) != 21:
             raise SystemExit("atomic " + kind + " YAML fixture count drift")
         for label, mutated, diagnostic in cases:
             if mutated == content:
@@ -161,9 +248,9 @@ def prove_yaml_authority_negatives(main: str, guard: str, replacement: str) -> N
             else:
                 raise SystemExit("atomic " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 27:
+    if count != 63:
         raise SystemExit("atomic YAML negative population drift")
-    print("PASS: atomic publisher/independent/replacement YAML event/root/permission authority (27 exact-diagnostic negatives)")
+    print("PASS: atomic publisher/independent/replacement YAML event/root/permission authority (63 exact-diagnostic negatives)")
 
 
 def runtime(main: str, guard: str) -> None:
