@@ -201,9 +201,98 @@ INDEPENDENT_REQUIRED = (
 )
 
 
+
+def validate_yaml_authority(content: str, *, publisher: bool) -> None:
+    """Bind effective event, root and read-only permission YAML authority."""
+    label = "publisher" if publisher else "independent"
+    name = ("Local Migration Recovery Artifact Rehearsal" if publisher
+            else "Local Migration Recovery Source Negative")
+    paths = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+
+    def event(key: str) -> str:
+        return ("  " + key + ":\n    branches:\n      - so\n    paths:\n"
+                + "".join('      - "' + item + '"\n' for item in paths))
+
+    expected_events = (
+        event("push") + event("pull_request") + "  workflow_dispatch:\n"
+        if publisher else event("pull_request") + event("push")
+    )
+    expected_header = "name: " + name + "\n\non:\n" + expected_events
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("local recovery " + label + " exact event header drift")
+    roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    expected_roots = ["name: " + name, "on:", "permissions:"]
+    if publisher:
+        expected_roots.append("concurrency:")
+    expected_roots.append("jobs:")
+    if roots != expected_roots:
+        raise SystemExit("local recovery " + label + " root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("local recovery " + label + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content, is_publisher in (
+        ("publisher", publisher, True), ("independent", independent, False),
+    ):
+        validate_yaml_authority(content, publisher=is_publisher)
+        cases = [
+            ("extra event", content.replace("on:\n", "on:\n  issues:\n", 1),
+             "exact event header drift"),
+        ]
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("local recovery " + label + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("local recovery YAML fixture unchanged: " + name)
+            try:
+                validate_yaml_authority(altered, publisher=is_publisher)
+            except SystemExit as exc:
+                expected = "local recovery " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "local recovery YAML wrong diagnostic: " + label + "/"
+                        + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("local recovery accepted YAML shadow: " + label + "/" + name)
+            total += 1
+    if total != 14:
+        raise SystemExit("local recovery YAML fixture count drift")
+    print("PASS: local recovery publisher/independent YAML event/root/permission (14 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
+    validate_yaml_authority(publisher, publisher=True)
+    validate_yaml_authority(independent, publisher=False)
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
     check_source("local reconcile negative", read(LOCAL_NEGATIVE), LOCAL_NEGATIVE_SHA, ())
@@ -465,6 +554,7 @@ def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
