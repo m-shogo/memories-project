@@ -396,6 +396,9 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 53
+
+
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     """Positive control plus independent mutations; no digest-only success."""
     relative = ".github/workflows/example-source-negative.yml"
@@ -594,8 +597,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             '      - "scripts/check.py"\n  push:',
             '      - "scripts/check.py"\n      - "scripts/check.py"\n  push:'),
     }
-    if len(cases) != 54:
-        failures.append(f"source-negative fixture inventory drift: expected 54, got {len(cases)}")
+    if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
+        failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
     for name, mutation in cases.items():
         if mutation == fixture or not source_negative_reachability_issues(relative, mutation, exists):
             failures.append(f"source-negative reachability negative escaped: {name}")
@@ -635,7 +638,8 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 53 negative fixtures")
+              f"{invocation_count} direct Python commands, "
+              f"{EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT} negative fixtures")
 
 
 def main() -> int:
