@@ -99,6 +99,125 @@ def validate_yaml_authority(source: str) -> None:
         raise SystemExit("environment schema CI permission leaf shadow drift")
 
 
+
+def validate_job_authority(source: str) -> None:
+    """Pin schema CI validation and checkpoint jobs without weakening distinct scopes."""
+    if source.count("\njobs:\n") != 1:
+        raise SystemExit("environment schema CI job mapping shadow drift")
+    body = source.split("\njobs:\n", 1)[1]
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    actual = []
+    for line in body.splitlines():
+        if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                and not line.lstrip().startswith("#")):
+            current = line
+            actual.append(line)
+            sections[current] = []
+        elif current is not None:
+            sections[current].append(line)
+    if actual != ["  validate:", "  publish-checkpoint:"]:
+        raise SystemExit("environment schema CI job mapping shadow drift")
+    expected = (
+        ("validate", [
+            "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 5",
+            "    steps:",
+        ], None),
+        ("publish-checkpoint", [
+            "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+            "    needs: validate",
+            "    permissions:",
+            "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 5",
+            "    steps:",
+        ], "write"),
+    )
+    for name, keys, scope in expected:
+        lines = sections["  " + name + ":"]
+        actual_keys = [
+            line for line in lines
+            if line.startswith("    ") and len(line) > 4 and line[4] != " "
+            and not line.lstrip().startswith("#")
+        ]
+        if actual_keys != keys:
+            raise SystemExit("environment schema CI " + name + " job key shadow drift")
+        if scope is not None:
+            start = lines.index("    permissions:")
+            leaves = []
+            for line in lines[start + 1:]:
+                if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                    break
+                if line.strip() and not line.lstrip().startswith("#"):
+                    leaves.append(line)
+            if leaves != ["      contents: " + scope]:
+                raise SystemExit("environment schema CI " + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(source: str) -> None:
+    """Require exact semantic diagnostics for 25 nested job/permission mutations."""
+    validate_job_authority(source)
+    count = 0
+    for name in ("validate", "publish-checkpoint"):
+        header = "  " + name + ":\n"
+        if source.count(header) != 1:
+            raise SystemExit("environment schema CI job fixture header drift: " + name)
+
+        def in_job(old: str, new: str) -> str:
+            prefix, suffix = source.split(header, 1)
+            if old not in suffix:
+                raise SystemExit("environment schema CI job fixture anchor missing: " + name)
+            return prefix + header + suffix.replace(old, new, 1)
+
+        runner = "    runs-on: ubuntu-latest\n"
+        timeout = "    timeout-minutes: 5\n"
+        steps = "    steps:\n"
+        cases = [
+            ("duplicate mapping", source + "\n" + header + "    runs-on: ubuntu-latest\n", "job mapping shadow drift"),
+            ("quoted mapping", source.replace(header, "  '" + name + "':\n", 1), "job mapping shadow drift"),
+            ("spaced mapping", source.replace(header, "  " + name + " :\n", 1), "job mapping shadow drift"),
+            ("runs-on shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"), name + " job key shadow drift"),
+            ("timeout shadow", in_job(timeout, timeout + "    timeout-minutes : 1\n"), name + " job key shadow drift"),
+            ("steps shadow", in_job(steps, "    steps : []\n" + steps), name + " job key shadow drift"),
+            ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps), name + " job key shadow drift"),
+        ]
+        if name == "validate":
+            cases.extend([
+                ("condition override", in_job(runner, "    if: always()\n" + runner), name + " job key shadow drift"),
+                ("write permission", in_job(runner, "    permissions:\n      contents: write\n" + runner), name + " job key shadow drift"),
+                ("dependency override", in_job(runner, "    needs: publish-checkpoint\n" + runner), name + " job key shadow drift"),
+                ("quoted permission", in_job(runner, "    'permissions':\n      contents: write\n" + runner), name + " job key shadow drift"),
+            ])
+        else:
+            condition = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n"
+            needs = "    needs: validate\n"
+            permission = "    permissions:\n      contents: write\n"
+            cases.extend([
+                ("condition shadow", in_job(condition, condition + "    if : true\n"), name + " job key shadow drift"),
+                ("dependency shadow", in_job(needs, needs + "    needs : []\n"), name + " job key shadow drift"),
+                ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"), name + " job key shadow drift"),
+                ("quoted permission", in_job(permission, permission + "    'permissions':\n      contents: write\n"), name + " job key shadow drift"),
+                ("direct permission change", in_job(permission, permission.replace("contents: write", "contents: read")), name + " job permission leaf shadow drift"),
+                ("spaced permission leaf", in_job(permission, permission + "      contents : read\n"), name + " job permission leaf shadow drift"),
+                ("quoted permission leaf", in_job(permission, permission + "      'contents': read\n"), name + " job permission leaf shadow drift"),
+            ])
+        for label, changed, diagnostic in cases:
+            if changed == source:
+                raise SystemExit("environment schema CI unchanged job fixture: " + name + " " + label)
+            try:
+                validate_job_authority(changed)
+            except SystemExit as exc:
+                expected = "environment schema CI " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("environment schema CI wrong job diagnostic: " + name + " " + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("environment schema CI accepted job shadow: " + name + " " + label)
+            count += 1
+    if count != 25:
+        raise SystemExit("environment schema CI job negative inventory drift")
+    print("PASS: environment schema CI nested job authority (25 exact-diagnostic negatives)")
+
+
 def prove_yaml_authority_negatives(source: str) -> None:
     """Require exact semantic rejection for extra event, root and permission shadows."""
     validate_yaml_authority(source)
@@ -189,6 +308,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     validate_yaml_authority(source)
+    validate_job_authority(source)
     for label, token, count in REQUIRED:
         if source.count(token) != count:
             raise SystemExit("environment schema workflow source drift: " + label)
@@ -223,6 +343,7 @@ def main() -> int:
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
+    prove_job_authority_negatives(source)
     prove_runtime_branch_guards()
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
