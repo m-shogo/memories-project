@@ -214,6 +214,84 @@ def prefence_upload_trigger_negatives(publisher, independent):
           + str(len(topology)) + " event topology negatives")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin distinct reviewed publisher-write and independent-read YAML authority."""
+    for label, value, roots, leaf in (
+        ("publisher", publisher, ["name: Deletion Pre-Fence Upload Completion",
+                                  "on:", "permissions:", "concurrency:", "jobs:"], "  contents: write"),
+        ("independent", independent, ["name: Deletion Pre-Fence Upload Diagnostic Source Negative",
+                                      "on:", "permissions:", "jobs:"], "  contents: read"),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise AssertionError("prefence-upload " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise AssertionError("prefence-upload " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != [leaf]:
+            raise AssertionError("prefence-upload " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove fourteen exact-diagnostic YAML root and permission mutations."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        reviewed = "write" if is_publisher else "read"
+        opposite = "read" if is_publisher else "write"
+        marker = "\npermissions:\n  contents: " + reviewed + "\n"
+        if value.count(marker) != 1:
+            raise AssertionError("prefence-upload " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : " + opposite + "\n"),
+            ("quoted contents", "  'contents': " + opposite + "\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        cases.append(("changed contents",
+                      value.replace(marker, "\npermissions:\n  contents: " + opposite + "\n", 1),
+                      "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise AssertionError("prefence-upload unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except AssertionError as exc:
+                expected = "prefence-upload " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError("prefence-upload wrong YAML diagnostic: "
+                                         + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("prefence-upload accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 14:
+        raise AssertionError("prefence-upload YAML negative inventory drift")
+    print("PASS: prefence-upload root/permission YAML authority (14 exact-diagnostic negatives)")
+
+
 def policy(value):
     for marker in REQUIRED:
         if marker not in value:
@@ -998,6 +1076,8 @@ def main():
     policy(publisher)
     prefence_upload_trigger_matrix(publisher, independent)
     prefence_upload_trigger_negatives(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     result_commit_runtime(publisher)
