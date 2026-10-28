@@ -297,6 +297,111 @@ else:
                 raise AssertionError("gofmt CAS pushed after concurrent source advance")
     print(f"PASS: gofmt actual publisher CAS/no-op/rollback-safe shell ({len(cases)} cases)")
 
+
+def gofmt_validate_yaml_authority(content: str, kind: str) -> None:
+    """Independently bind effective YAML roots, job identities and permissions."""
+    prefix = "live-load-gofmt " + kind + " "
+    names = {
+        "publisher": ("name: Reconcile Live Load Formatting",
+                      ("  validate-pr:", "  format:"),
+                      ("read", "write")),
+        "independent": ("name: Live Load Formatting Source Negative",
+                        ("  source-negative:",), ("read",)),
+    }
+    if kind not in names:
+        raise SystemExit(prefix + "unknown workflow kind")
+    name, jobs, accesses = names[kind]
+    roots = [row for row in content.splitlines()
+             if row.strip() and not row[0].isspace()
+             and not row.lstrip().startswith("#")]
+    expected_roots = [name, "on:", "permissions:"]
+    if kind == "publisher":
+        expected_roots.append("concurrency:")
+    expected_roots.append("jobs:")
+    if roots != expected_roots or content.count("\njobs:\n") != 1:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    root_permission = content.split("\npermissions:\n", 1)[1].splitlines()
+    rows = []
+    for row in root_permission:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            rows.append(row)
+    if rows != ["  contents: read"]:
+        raise SystemExit(prefix + "root permission leaf shadow drift")
+    jobs_body = content.split("\njobs:\n", 1)[1]
+    actual_jobs = [row for row in jobs_body.splitlines()
+                   if row.startswith("  ") and not row.startswith("   ")
+                   and row.strip() and not row.lstrip().startswith("#")]
+    if actual_jobs != list(jobs):
+        raise SystemExit(prefix + "job mapping shadow drift")
+    for index, (job, access) in enumerate(zip(jobs, accesses)):
+        block = jobs_body.split(job + "\n", 1)[1]
+        if index + 1 < len(jobs):
+            block = block.split(jobs[index + 1] + "\n", 1)[0]
+        if block.count("    permissions:\n") != 1 or block.count("    runs-on:") != 1:
+            raise SystemExit(prefix + "job permission leaf shadow drift")
+        permission = block.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+        leaves = [row for row in permission.splitlines()
+                  if row.strip() and not row.lstrip().startswith("#")]
+        if leaves != ["      contents: " + access]:
+            raise SystemExit(prefix + "job permission leaf shadow drift")
+
+
+def gofmt_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Mutation-specific diagnostics, not generic complete-blob rejection."""
+    count = 0
+    for kind, source in (("publisher", publisher), ("independent", independent)):
+        gofmt_validate_yaml_authority(source, kind)
+        cases = []
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("quoted permissions", "'permissions':\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        root_anchor = "\npermissions:\n  contents: read\n"
+        if source.count(root_anchor) != 1:
+            raise SystemExit("live-load-gofmt root permission fixture anchor drift")
+        for label, leaf in (("spaced root contents", "  contents : write\n"),
+                            ("quoted root contents", "  'contents': write\n")):
+            cases.append((label, source.replace(root_anchor, root_anchor + leaf, 1),
+                          "root permission leaf shadow drift"))
+        job_accesses = (("validate-pr", "read"), ("format", "write")) if kind == "publisher" else (("source-negative", "read"),)
+        for job, access in job_accesses:
+            for label, key in (("spaced job", job + " "), ("quoted job", "'" + job + "'")):
+                cases.append((label + " " + job, source.rstrip("\n") + "\n  " + key + ": {}\n",
+                              "job mapping shadow drift"))
+            job_anchor = "    permissions:\n      contents: " + access + "\n"
+            if source.count(job_anchor) != 1:
+                raise SystemExit("live-load-gofmt job permission fixture anchor drift: " + job)
+            for label, leaf in (("spaced", "      contents : write\n"),
+                                ("quoted", "      'contents': write\n")):
+                cases.append((label + " " + job,
+                              source.replace(job_anchor, job_anchor + leaf, 1),
+                              "job permission leaf shadow drift"))
+        for label, mutated, diagnostic in cases:
+            if mutated == source:
+                raise SystemExit("live-load-gofmt unchanged YAML negative: " + label)
+            try:
+                gofmt_validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "live-load-gofmt " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("live-load-gofmt wrong YAML diagnostic: " + label
+                                     + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("live-load-gofmt accepted YAML mutation: " + label)
+            count += 1
+    if count != 26:
+        raise SystemExit("live-load-gofmt YAML negative population drift: " + str(count))
+    print("PASS: live-load-gofmt effective YAML authority (26 exact-diagnostic negatives)")
+
+
 def main() -> None:
     source = read(PUBLISHER)
     independent = read(INDEPENDENT)
@@ -314,6 +419,7 @@ def main() -> None:
         raise AssertionError("gofmt whole-source mutation accepted")
     policy(source)
     gofmt_validate_trigger_matrix(source, independent)
+    gofmt_yaml_authority_negatives(source, independent)
     gofmt_trigger_matrix_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
