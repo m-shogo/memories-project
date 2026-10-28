@@ -215,3 +215,20 @@
 - **Why safe / reusable mechanism:** This reuses the existing read-only CI scanner to protect checkout source and credential boundaries without altering reviewed workflows, production evidence, generation/objective/drill/recovery registries, credentials, traffic, readiness or promotion authority.
 - **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged; `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records or final candidates. Learning remains supplemental append-only history and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
 - **Next safe target:** Confirm exact-source 94-case CI and inspect setup-python/setup-go input shadowing, action-step `if`/failure suppression, and exact job checkout source binding.
+
+## 2026-10-28 — setup-python interpreter inputs are exact and unshadowed
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom / observed evidence:** A read-only inventory of all 52 source-negative workflows confirmed `actions/setup-python` uses the reviewed pinned Action and `python-version: "3.12"`. The shared guard did not reject changed/duplicate Python version inputs, injected cache/version-file inputs or missing `with` authority. This is a static CI execution-path gap, not a production failure.
+- **Verified root cause:** The existing Action inventory guard constrained `uses:` refs but did not inspect the setup-python `with` mapping.
+- **Failed approach:** A pinned setup-python Action does not prove the reviewed interpreter version when its inputs can be changed or shadowed.
+- **Correction / executable recurrence guard:** [b0fe55af](https://github.com/m-shogo/memories-project/commit/b0fe55afcf244f46bdc9f0b4d642df2a1efae6d6) requires exactly one setup-python step and its exact two-line `with` mapping. Six semantic negatives cover changed, missing or duplicated Python versions, cache and version-file overrides, and a missing `with` block. The negative inventory advances from 94 to 100.
+- **Retry condition:** Revisit only if an independently reviewed interpreter version/input policy changes; require exact-source CI and negative proof. Do not retry unchanged canonical large-file transport, Quay MinIO HTTP 401 or human-promotion blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** [Autonomous Learning Guard #40672968530](https://github.com/m-shogo/memories-project/actions/runs/40672968530) completed SUCCESS on exact `339d16d8` source; job logs prove 52 workflows, 63 Python commands, 94 semantic reachability negatives, 128 canonical learning negatives and 1,186 helper-ancestor negatives. The new `b0fe55af` commit changed only the read-only entrypoint script (42 additions, 1 deletion); 100 unique fixture names were statically enumerated before write. Exact-source CI for this commit is not yet confirmed here.
+- **Why safe / reusable mechanism:** Interpreter input authority is now checked within the same existing read-only CI guard. No workflow, production evidence, generation/objective/drill/recovery registry, credential, traffic, readiness or human promotion authority changed.
+- **Protected-authority check:** All nine protected contract/registry blob SHAs remain unchanged; `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED` with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, complete typed eight-domain records or final candidates. Supplemental append-only learning is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+- **Next safe target:** Verify exact-source 100-case CI and harden the single reviewed setup-go Action input mapping without weakening any production gate.
