@@ -402,6 +402,26 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             '          python-version: "3.12"',
         ]:
             issues.append("setup-python interpreter version/input authority drift")
+    if relative == ".github/workflows/live-object-stage-source-negative.yml":
+        go_indices = [
+            index for index, row in enumerate(source_lines)
+            if row.startswith("      - uses: actions/setup-go@")
+        ]
+        if len(go_indices) != 1:
+            issues.append("missing or duplicate setup-go settings authority")
+        else:
+            go_settings = []
+            for row in source_lines[go_indices[0] + 1:]:
+                if row.startswith("      - "):
+                    break
+                if row.strip():
+                    go_settings.append(row)
+            if go_settings != [
+                "        with:",
+                '          go-version: "1.23.x"',
+                "          cache: false",
+            ]:
+                issues.append("setup-go version/cache input authority drift")
 
     commands: list[str] = []
     lines = source.splitlines()
@@ -508,7 +528,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 100
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 106
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -587,6 +607,18 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     exists = lambda script: script == "scripts/check.py"
     if source_negative_reachability_issues(relative, fixture, exists):
         failures.append("source-negative reachability positive control failed")
+        return
+    go_relative = ".github/workflows/live-object-stage-source-negative.yml"
+    go_fixture = fixture.replace(relative, go_relative).replace(
+        "      - name: Verify source\n",
+        "      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5\n"
+        "        with:\n"
+        '          go-version: "1.23.x"\n'
+        "          cache: false\n"
+        "      - name: Verify source\n",
+    )
+    if source_negative_reachability_issues(go_relative, go_fixture, exists):
+        failures.append("source-negative setup-go positive control failed")
         return
     nested = fixture.replace(
         "          python scripts/check.py",
@@ -797,6 +829,24 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
             "        with:\n",
             "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
+        "setup-go version changed": go_fixture.replace(
+            '          go-version: "1.23.x"\n',
+            '          go-version: "1.22.x"\n', 1),
+        "setup-go duplicate version": go_fixture.replace(
+            '          go-version: "1.23.x"\n',
+            '          go-version: "1.23.x"\n'
+            '          go-version: "1.22.x"\n', 1),
+        "setup-go missing version": go_fixture.replace(
+            '          go-version: "1.23.x"\n', "", 1),
+        "setup-go cache enabled": go_fixture.replace(
+            "          cache: false\n",
+            "          cache: true\n", 1),
+        "setup-go missing cache authority": go_fixture.replace(
+            "          cache: false\n", "", 1),
+        "setup-go extra input": go_fixture.replace(
+            "          cache: false\n",
+            "          cache: false\n"
+            "          token: unreviewed\n", 1),
         "validator inside shell loop": fixture.replace(
             "          python scripts/check.py\n",
             "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
@@ -934,7 +984,10 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     if len(cases) != EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT:
         failures.append(f"source-negative fixture inventory drift: expected {EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT}, got {len(cases)}")
     for name, mutation in cases.items():
-        if mutation == fixture or not source_negative_reachability_issues(relative, mutation, exists):
+        case_relative = go_relative if name.startswith("setup-go ") else relative
+        baseline = go_fixture if case_relative == go_relative else fixture
+        if mutation == baseline or not source_negative_reachability_issues(
+                case_relative, mutation, exists):
             failures.append(f"source-negative reachability negative escaped: {name}")
 
 
