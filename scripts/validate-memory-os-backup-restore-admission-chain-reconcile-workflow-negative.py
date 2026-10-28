@@ -11,6 +11,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-admission-chain-reconcile-negative.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "c8d7cf9ed1bd9a41416cb6b43b11379c2dc766d5"
+
+TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-admission-chain-reconcile-negative.yml",
+    "scripts/reconcile-memory-os-backup-restore-admission-chain.py",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py",
+    "scripts/validate-memory-os-backup-restore-admission-chain-reconcile-workflow-negative.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/backup-restore-admission-chain-contract.v1.json",
+    "contracts/operations/backup-restore-drill-preflight-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/backup-restore/**",
+)
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
@@ -32,7 +59,60 @@ REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
+) -> None:
+    """Pin every reviewed admission-chain reconcile CI path under PR and push."""
+    if len(trigger_paths) != 24 or len(set(trigger_paths)) != 24:
+        raise SystemExit("admission-chain reconcile CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    dispatch_marker = "  workflow_dispatch:\n"
+    for marker in (pr_marker, push_marker, dispatch_marker):
+        if source.count(marker) != 1:
+            raise SystemExit("admission-chain reconcile CI trigger marker drift")
+    pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+            raise SystemExit("admission-chain reconcile CI " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("admission-chain reconcile CI " + event + " trigger path drift: " + item)
+
+
+def prove_trigger_reachability_negatives(source: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for event in ("pull_request", "push"):
+        for item in TRIGGER_PATHS:
+            token = '      - "' + item + '"' + chr(10)
+            if source.count(token) != 2:
+                raise SystemExit("admission-chain reconcile CI trigger mutation anchor drift: " + item)
+            if event == "pull_request":
+                mutated = source.replace(token, "", 1)
+            else:
+                prefix, suffix = source.split(push_marker, 1)
+                mutated = prefix + push_marker + suffix.replace(token, "", 1)
+            try:
+                validate_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("admission-chain reconcile CI accepted missing " + event + " trigger: " + item)
+    try:
+        validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
+    except SystemExit:
+        pass
+    else:
+        raise SystemExit("admission-chain reconcile CI shortened trigger inventory accepted")
+    print("PASS: admission-chain reconcile CI event-specific triggers (48 removals; 1 shortened inventory negative)")
+
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
+    validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"reconcile workflow source boundary drift: {label}")
@@ -63,6 +143,7 @@ def prove_branch_guards_runtime() -> None:
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
+    prove_trigger_reachability_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
