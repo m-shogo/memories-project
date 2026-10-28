@@ -289,6 +289,20 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     for event in ("pull_request", "push"):
         if relative not in paths[event]:
             issues.append(f"{event}: source-negative workflow not self-triggered")
+    if len(re.findall(r"(?m)^    if:", source)) != 1:
+        issues.append("duplicate or missing job-level event condition")
+    if len(re.findall(r"(?m)^permissions:$", source)) != 1:
+        issues.append("duplicate or missing workflow permissions key")
+    if len(re.findall(r"(?m)^  contents:", source)) != 1:
+        issues.append("duplicate or missing workflow contents permission")
+    if (len(re.findall(r"(?m)^    permissions:$", source)) != 1
+            or len(re.findall(r"(?m)^      contents:", source)) != 1
+            or not re.search(r"(?m)^    permissions:\n      contents: read$", source)):
+        issues.append("duplicate, missing or elevated job permissions")
+    jobs = source.split("\njobs:\n")
+    if (len(jobs) != 2 or
+            len(re.findall(r"(?m)^  [A-Za-z0-9_-]+:\s*$", jobs[1])) != 1):
+        issues.append("missing or duplicate source-negative CI job")
     if f"    {SOURCE_NEGATIVE_JOB_CONDITION}" not in source.splitlines():
         issues.append("missing reviewed live PR/push job condition")
     if not re.search(r"(?m)^permissions:\n  contents: read$", source):
@@ -376,6 +390,8 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "jobs:\n"
         "  source-admission:\n"
         f"    {SOURCE_NEGATIVE_JOB_CONDITION}\n"
+        "    permissions:\n"
+        "      contents: read\n"
         "    steps:\n"
         "      - uses: actions/checkout@reviewed\n"
         "        with:\n"
@@ -404,6 +420,20 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "duplicate job-level condition": fixture.replace(
+            f"    {SOURCE_NEGATIVE_JOB_CONDITION}\n",
+            f"    {SOURCE_NEGATIVE_JOB_CONDITION}\n    if: false\n"),
+        "duplicate workflow permissions": fixture + "\npermissions:\n  contents: write\n",
+        "duplicate workflow contents permission": fixture.replace(
+            "permissions:\n  contents: read\n",
+            "permissions:\n  contents: read\n  contents: write\n"),
+        "elevated job permissions": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    permissions:\n      contents: write\n"),
+        "duplicate job permissions": fixture.replace(
+            "    permissions:\n      contents: read\n",
+            "    permissions:\n      contents: read\n    permissions:\n      contents: write\n"),
+        "shadow source-negative CI job": fixture + "  unreviewed-job:\n    if: false\n",
         "missing post-validator tracked check": fixture.replace(
             "          git diff --exit-code\n", ""),
         "missing post-validator untracked check": fixture.replace(
@@ -510,7 +540,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 25 negative fixtures")
+              f"{invocation_count} direct Python commands, 31 negative fixtures")
 
 
 def main() -> int:
