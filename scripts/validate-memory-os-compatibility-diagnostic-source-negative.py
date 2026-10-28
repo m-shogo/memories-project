@@ -125,6 +125,80 @@ def compat_validate_trigger_matrix(
         if compat_trigger_header(content) != expected:
             raise SystemExit("compatibility " + label
                              + " exact event trigger inventory drift")
+    compat_validate_yaml_root_permissions(publisher, independent)
+
+
+
+def compat_validate_yaml_root_permissions(publisher: str, independent: str) -> None:
+    """Pin effective CI root and read-only permission mapping independently of blob."""
+    for label, content, expected_roots in (
+        ("publisher", publisher, [
+            "name: Reconcile Compatibility Authority Diagnostic", "on:",
+            "permissions:", "concurrency:", "jobs:",
+        ]),
+        ("independent", independent, [
+            "name: Compatibility Diagnostic Source Negative", "on:",
+            "permissions:", "jobs:",
+        ]),
+    ):
+        roots = [
+            line for line in content.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if roots != expected_roots:
+            raise SystemExit("compatibility " + label + " root YAML key shadow drift")
+        if content.count("\npermissions:\n") != 1:
+            raise SystemExit("compatibility " + label + " permission leaf shadow drift")
+        permission_rows = []
+        for line in content.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                permission_rows.append(line)
+        if permission_rows != ["  contents: read"]:
+            raise SystemExit("compatibility " + label + " permission leaf shadow drift")
+
+
+def compat_yaml_shadow_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content in (("publisher", publisher), ("independent", independent)):
+        cases = []
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("compatibility " + label + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("compatibility YAML fixture unchanged: " + name)
+            try:
+                if label == "publisher":
+                    compat_validate_trigger_matrix(altered, independent)
+                else:
+                    compat_validate_trigger_matrix(publisher, altered)
+            except SystemExit as exc:
+                expected = "compatibility " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("compatibility YAML wrong diagnostic: "
+                                     + label + "/" + name + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("compatibility accepted YAML shadow: " + label + "/" + name)
+            total += 1
+    if total != 12:
+        raise SystemExit("compatibility YAML fixture count drift")
+    print("PASS: compatibility publisher/independent YAML root/permission (12 exact-diagnostic negatives)")
 
 
 def replace_compat_trigger_header(content: str, original: str, replacement: str) -> str:
@@ -374,6 +448,7 @@ def main():
     policy(text)
     compat_validate_trigger_matrix(text, ci)
     compat_trigger_matrix_negatives(text, ci)
+    compat_yaml_shadow_negatives(text, ci)
     mutations(text)
     writer_runtime(text)
     log_runtime(text)
