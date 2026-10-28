@@ -115,9 +115,9 @@ def validate_trigger_reachability(
     paths = expected if trigger_paths is None else trigger_paths
     if len(paths) != len(expected) or len(set(paths)) != len(expected):
         raise SystemExit("production-shaped drill CI trigger inventory shortened or duplicated")
-    pr = "  pull_request:\\n    branches:\\n      - so\\n    paths:\\n"
-    push = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
-    end = "  workflow_dispatch:\\n" if publisher else "\\npermissions:\\n"
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
     first, second = (push, pr) if publisher else (pr, push)
     if any(source.count(marker) != 1 for marker in (first, second, end)):
         raise SystemExit("production-shaped drill CI event marker drift")
@@ -136,20 +136,20 @@ def validate_trigger_reachability(
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
     """Prove every single-event omission, extra/duplicate and inventory truncation."""
-    pr = "  pull_request:\\n    branches:\\n      - so\\n    paths:\\n"
-    push = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
     for label, source, paths, is_publisher in (
         ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
         ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
     ):
         first, second = (push, pr) if is_publisher else (pr, push)
-        end = "  workflow_dispatch:\\n" if is_publisher else "\\npermissions:\\n"
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
         for event, start, stop in (("first", first, second), ("second", second, end)):
             start_index = source.index(start) + len(start)
             end_index = source.index(stop, start_index)
             block = source[start_index:end_index]
             for path in paths:
-                token = '      - "' + path + '"\\n'
+                token = '      - "' + path + '"\n'
                 if block.count(token) != 1:
                     raise SystemExit("production-shaped drill trigger fixture anchor drift: " + path)
                 mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
@@ -160,10 +160,10 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 else:
                     raise SystemExit("production-shaped drill accepted missing " + label + " " + event + " trigger: " + path)
             for name, injection in (
-                ("quoted extra", '      - "unreviewed/**"\\n'),
-                ("quoted duplicate", '      - "' + paths[0] + '"\\n'),
-                ("unquoted extra", "      - unreviewed/**\\n"),
-                ("unquoted duplicate", "      - " + paths[0] + "\\n"),
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
             ):
                 mutated = source[:start_index] + injection + source[start_index:]
                 try:
