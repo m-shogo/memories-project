@@ -378,3 +378,21 @@
 - **Protected-authority check:** Nine protected contract/registry blob SHAs remain unchanged. `productionDecision=NO_GO`; OPS-P0-007 remains prerequisite-blocked with zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, request-bound recovery evidence, complete typed eight-domain non-resurrection records or final candidates. No human promotion.
 - **Learning boundary:** This append-only addendum is not canonical learning authority and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
 - **Next safe target:** Audit the independently reviewed third-step clone's source binding and ensure no other source-negative workflows can acquire unreviewed post-validator execution authority. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
+
+## 2026-10-28 — Reviewed migration disposable clone source binding
+
+### Material failure prevented: third-step clone source could drift
+
+- **Symptom / observed evidence:** The reviewed migration-evidence-registry source-negative workflow runs a third-step independent authority negative validator in a disposable clone. Before this change, the shared guard allowed the third-step Python command without checking the clone origin, checkout SHA, clean-source assertions, trap or script identity. A different source could theoretically be validated; no actual bypass was observed.
+- **Verified root cause:** The prior step-order exception constrained the Python command's location but not the source identity of the subprocess's working tree.
+- **Failed approach:** Treating a reviewed third-step Python exception as sufficient execution proof without binding the exact clone shell.
+- **Correction / executable recurrence guard:** [`cf986150`](https://github.com/m-shogo/memories-project/commit/cf9861503032d1046961bdf32cb3d4965e134459) binds the complete reviewed third-step clone command sequence and creates a synthetic positive migration fixture with a distinct validator script. Eight independent negatives reject remote source substitution, wrong checkout, missing `--no-hardlinks`, missing checkout or sandbox `cd`, short-circuiting, malicious trap and omitted nested clean-source check.
+- **Retry condition:** Revisit only after independent review of a changed clone workflow, preserving exact-source positive/negative CI evidence.
+
+### Material success: 163-case exact-source CI
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40680578166](https://github.com/m-shogo/memories-project/actions/runs/40680578166) completed SUCCESS on exact `cf9861503032d1046961bdf32cb3d4965e134459`. The job log proves 52 source-negative workflows, 63 direct Python commands, 163 executed reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and canonical append-only PASS.
+- **Why safe / reusable mechanism:** The common read-only CI guard and synthetic fixtures changed; reviewed workflows, production source/evidence, credentials, traffic, readiness and human promotion did not.
+- **Protected-authority check:** Nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007 prerequisite-blocked with zero registered/semantically eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records or final candidates. Human promotion remains separate.
+- **Learning boundary:** Supplemental append-only history cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- **Next safe target:** Bind the two other reviewed third-step Go/local-migration shells to their exact execution and clone-source authority. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
