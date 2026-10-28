@@ -390,6 +390,65 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
         issues.append("unreviewed step environment or PR-head SHA binding")
     if sum(bool(re.match(r"^\s*env:", row)) for row in source_lines) != 1:
         issues.append("shadowed workflow, job or step environment")
+    # A textual git rev-parse substring is not proof that the checked-out
+    # PR-head/push SHA is actually compared before the validator runs.
+    head_test = '          test "$(git rev-parse HEAD)" = "$expected"'
+    clean_test = '          test -z "$(git status --porcelain)"'
+    head_positions = [i for i, row in enumerate(source_lines) if row == head_test]
+    if len(head_positions) != 1:
+        issues.append("missing, shadowed or duplicated exact-source HEAD comparison")
+    else:
+        head_position = head_positions[0]
+        guard_start = max(
+            (i for i, row in enumerate(source_lines[:head_position])
+             if row == "        run: |"), default=-1
+        )
+        if guard_start < 0:
+            issues.append("exact-source verification has no executable shell block")
+        else:
+            guard_end = next(
+                (i for i in range(guard_start + 1, len(source_lines))
+                 if source_lines[i].startswith("      - ")),
+                len(source_lines),
+            )
+            guard_lines = [
+                row for row in source_lines[guard_start + 1:guard_end] if row.strip()
+            ]
+            no_echo = relative in {
+                ".github/workflows/operability-admission-inventory-atomic-write-source-negative.yml",
+                ".github/workflows/operability-admission-inventory-transactional-source-negative.yml",
+            }
+            expected_pr = ('            expected="${PR_HEAD_SHA:-}"'
+                           if relative.endswith("atomic-write-source-negative.yml")
+                           else '            expected="$PR_HEAD_SHA"')
+            expected_guard = [
+                "          set -euo pipefail",
+                '          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then',
+                '            test "${GITHUB_BASE_REF:-}" = "so"',
+                expected_pr,
+                '          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then',
+                '            test "${GITHUB_REF:-}" = "refs/heads/so"',
+                '            expected="${GITHUB_SHA:-}"',
+                "          else",
+            ]
+            if not no_echo:
+                expected_guard.append('            echo "Unreviewed EVENT" >&2')
+            expected_guard.extend([
+                "            exit 1",
+                "          fi",
+                '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]',
+                head_test,
+                clean_test,
+            ])
+            normalized = [
+                ('            echo "Unreviewed EVENT" >&2'
+                 if re.fullmatch(
+                     r'            echo "Unreviewed [A-Za-z0-9 _-]+" >&2', row
+                 ) else row)
+                for row in guard_lines
+            ]
+            if normalized != expected_guard:
+                issues.append("unreviewed or bypassed PR-head/push exact-source shell")
     checkout_indices = [
         index for index, row in enumerate(source_lines)
         if row.startswith("      - uses: actions/checkout@")
@@ -557,7 +616,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 121
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 135
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -628,6 +687,17 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}\n"
         "        run: |\n"
         "          set -euo pipefail\n"
+        '          if [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" ]]; then\n'
+        '            test "${GITHUB_BASE_REF:-}" = "so"\n'
+        '            expected="$PR_HEAD_SHA"\n'
+        '          elif [[ "${GITHUB_EVENT_NAME:-}" == "push" ]]; then\n'
+        '            test "${GITHUB_REF:-}" = "refs/heads/so"\n'
+        '            expected="${GITHUB_SHA:-}"\n'
+        "          else\n"
+        '            echo "Unreviewed example source event" >&2\n'
+        "            exit 1\n"
+        "          fi\n"
+        '          [[ "$expected" =~ ^[0-9a-f]{40}$ ]]\n'
         '          test "$(git rev-parse HEAD)" = "$expected"\n'
         '          test -z "$(git status --porcelain)"\n'
         "      - name: Execute negative validator\n"
@@ -661,6 +731,54 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         failures.append("source-negative nested subshell validator positive control failed")
         return
     cases = {
+        "comment-only source HEAD comparison": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          # test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "echo-only source HEAD comparison": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          echo test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "inverted source HEAD comparison": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          test "$(git rev-parse HEAD)" != "$expected"\n'),
+        "source HEAD comparison short-circuited": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          true ||\n          test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "source HEAD comparison under false branch": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          if false; then\n'
+            '          test "$(git rev-parse HEAD)" = "$expected"\n'
+            '          fi\n'),
+        "source verification early exit": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          exit 0\n          test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "source verification disabled errexit": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          set +e\n          test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "source verification wrong PR expected": fixture.replace(
+            '            expected="$PR_HEAD_SHA"\n',
+            '            expected="${GITHUB_SHA:-}"\n'),
+        "source verification wrong push expected": fixture.replace(
+            '            expected="${GITHUB_SHA:-}"\n',
+            '            expected="$PR_HEAD_SHA"\n'),
+        "source verification disabled event rejection": fixture.replace(
+            '            echo "Unreviewed example source event" >&2\n'
+            '            exit 1\n',
+            '            echo "Unreviewed example source event" >&2\n'
+            '            exit 0\n'),
+        "source verification extra shell command": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          eval "true"\n          test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "source verification missing clean check": fixture.replace(
+            '          test -z "$(git status --porcelain)"\n'
+            '      - name: Execute negative validator\n',
+            '      - name: Execute negative validator\n'),
+        "source verification duplicate HEAD comparison": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n',
+            '          test "$(git rev-parse HEAD)" = "$expected"\n'
+            '          test "$(git rev-parse HEAD)" = "$expected"\n'),
+        "source verification unreviewed echo substitution": fixture.replace(
+            '            echo "Unreviewed example source event" >&2\n',
+            '            echo "Unreviewed $(true) source event" >&2\n'),
         "workflow concurrency cancellation": fixture.replace(
             "permissions:\n", "concurrency:\n  group: unreviewed\npermissions:\n", 1),
         "workflow environment override": fixture.replace(
