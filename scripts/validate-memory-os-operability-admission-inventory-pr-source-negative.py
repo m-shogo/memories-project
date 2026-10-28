@@ -83,6 +83,110 @@ def validate_trigger_reachability(
             raise SystemExit("inventory PR " + label + " permission leaf shadow drift")
 
 
+
+def validate_job_authority(pr: str, guard: str) -> None:
+    """Require reviewed PR-only and independent job identities and read-only scopes."""
+    reviewed = (
+        ("publisher", pr, "validate",
+         "github.event_name == 'pull_request' && github.base_ref == 'so'", 10),
+        ("independent", guard, "source-admission",
+         "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", 5),
+    )
+    for label, value, name, condition, timeout in reviewed:
+        if value.count("\njobs:\n") != 1:
+            raise SystemExit("inventory PR " + label + " job mapping shadow drift")
+        body = value.split("\njobs:\n", 1)[1]
+        headers = [
+            line for line in body.splitlines()
+            if line.startswith("  ") and len(line) > 2 and line[2] != " "
+            and not line.lstrip().startswith("#")
+        ]
+        if headers != ["  " + name + ":"]:
+            raise SystemExit("inventory PR " + label + " job mapping shadow drift")
+        lines = body.splitlines()[1:]
+        keys = [
+            line for line in lines
+            if line.startswith("    ") and len(line) > 4 and line[4] != " "
+            and not line.lstrip().startswith("#")
+        ]
+        if keys != [
+            "    if: " + condition,
+            "    permissions:",
+            "    runs-on: ubuntu-latest",
+            "    timeout-minutes: " + str(timeout),
+            "    steps:",
+        ]:
+            raise SystemExit("inventory PR " + label + " job key shadow drift")
+        start = lines.index("    permissions:")
+        leaves = []
+        for line in lines[start + 1:]:
+            if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["      contents: read"]:
+            raise SystemExit("inventory PR " + label + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(pr: str, guard: str) -> None:
+    """Prove 24 exact-diagnostic nested job and permission shadow cases."""
+    validate_job_authority(pr, guard)
+    count = 0
+    for label, value, other, name, condition, timeout, is_publisher in (
+        ("publisher", pr, guard, "validate",
+         "github.event_name == 'pull_request' && github.base_ref == 'so'", 10, True),
+        ("independent", guard, pr, "source-admission",
+         "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", 5, False),
+    ):
+        header = "  " + name + ":\n"
+        if value.count(header) != 1:
+            raise SystemExit("inventory PR job fixture header drift: " + label)
+
+        def in_job(old: str, new: str) -> str:
+            prefix, suffix = value.split(header, 1)
+            if old not in suffix:
+                raise SystemExit("inventory PR job fixture anchor missing: " + label)
+            return prefix + header + suffix.replace(old, new, 1)
+
+        condition_anchor = "    if: " + condition + "\n"
+        permission = "    permissions:\n      contents: read\n"
+        runner = "    runs-on: ubuntu-latest\n"
+        timeout_anchor = "    timeout-minutes: " + str(timeout) + "\n"
+        steps = "    steps:\n"
+        cases = [
+            ("duplicate mapping", value + "\n" + header + "    runs-on: ubuntu-latest\n", "job mapping shadow drift"),
+            ("quoted mapping", value.replace(header, "  '" + name + "':\n", 1), "job mapping shadow drift"),
+            ("spaced mapping", value.replace(header, "  " + name + " :\n", 1), "job mapping shadow drift"),
+            ("condition shadow", in_job(condition_anchor, condition_anchor + "    if : true\n"), "job key shadow drift"),
+            ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"), "job key shadow drift"),
+            ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"), "job key shadow drift"),
+            ("timeout shadow", in_job(timeout_anchor, timeout_anchor + "    timeout-minutes : 1\n"), "job key shadow drift"),
+            ("steps shadow", in_job(steps, "    steps : []\n" + steps), "job key shadow drift"),
+            ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps), "job key shadow drift"),
+            ("direct permission change", in_job(permission, permission.replace("contents: read", "contents: write")), "job permission leaf shadow drift"),
+            ("spaced permission leaf", in_job(permission, permission + "      contents : write\n"), "job permission leaf shadow drift"),
+            ("quoted permission leaf", in_job(permission, permission + "      'contents': write\n"), "job permission leaf shadow drift"),
+        ]
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise SystemExit("inventory PR unchanged job fixture: " + label + " " + mutation)
+            try:
+                if is_publisher:
+                    validate_job_authority(changed, other)
+                else:
+                    validate_job_authority(other, changed)
+            except SystemExit as exc:
+                expected = "inventory PR " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("inventory PR wrong job diagnostic: " + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("inventory PR accepted job shadow: " + label + " " + mutation)
+            count += 1
+    if count != 24:
+        raise SystemExit("inventory PR job negative inventory drift")
+    print("PASS: inventory PR publisher/independent job authority (24 exact-diagnostic negatives)")
+
+
 def trigger_negatives(pr: str, guard: str) -> None:
     """Prove all reviewed event paths, unquoted extras, truncation and event topology."""
     cases = (
@@ -241,6 +345,7 @@ def source(relative: str) -> str:
 
 def validate(pr: str, guard: str) -> None:
     validate_trigger_reachability(pr, guard)
+    validate_job_authority(pr, guard)
     checks = (
         ("PR", pr, PR_BLOB, (
             (CHECKOUT, 1), (SETUP, 1), ("  pull_request:\n    branches:\n      - so\n", 1),
@@ -341,6 +446,7 @@ def main() -> int:
     pr, guard = source(PR), source(GUARD)
     validate(pr, guard)
     trigger_negatives(pr, guard)
+    prove_job_authority_negatives(pr, guard)
     runtime()
     negatives(pr, guard)
     return 0
