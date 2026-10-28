@@ -606,20 +606,20 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 # A syntactically present git clean-source check can be inert
                 # when a preceding shell list skips it or it is only heredoc
                 # data, an uninvoked function body, or a trap-masked failure.
-                if any(
-                    (prior := [
+                for position in (tracked_positions[0], status_positions[0]):
+                    prior = [
                         row.strip() for row in after[:position]
                         if row.strip() and not row.lstrip().startswith("#")
-                    ]) and prior[-1].rstrip("\\\\").rstrip().endswith(("&&", "||"))
-                    for position in (tracked_positions[0], status_positions[0])
-                ):
-                    issues.append("post-validator clean check short-circuited")
-                if any(re.search(r"<<-?\\s*['\\\"]?[A-Za-z_][A-Za-z0-9_]*", row)
+                    ]
+                    if prior and prior[-1].rstrip("\\").rstrip().endswith(("&&", "||")):
+                        issues.append("post-validator clean check short-circuited")
+                        break
+                if any(re.search(r"""<<-?\s*['"]?[A-Za-z_][A-Za-z0-9_]*""", row)
                        for row in before_clean):
                     issues.append("post-validator clean check may be inert heredoc data")
                 if any(re.match(
-                    r" {10,}(?:function\\s+)?[A-Za-z_][A-Za-z0-9_]*"
-                    r"(?:\\s*\\(\\s*\\))?\\s*\\{", row,
+                    r" {10,}(?:function\s+)?[A-Za-z_][A-Za-z0-9_]*"
+                    r"(?:\s*\(\s*\))?\s*\{", row,
                 ) for row in before_clean):
                     issues.append("post-validator clean check may be trapped in shell function")
                 if any(row.strip().startswith("trap ") and row.strip() not in (
@@ -628,9 +628,9 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
                 ) for row in before_clean):
                     issues.append("post-validator clean check failure may be trap-masked")
                 if any(re.match(
-                    r" {10,}(?:alias|unalias|hash|source|eval|exec|command|builtin)\\b|"
-                    r" {10,}\\.\\s|"
-                    r" {10,}(?:export\\s+)?(?:PATH|PYTHONPATH|BASH_ENV|ENV)=",
+                    r" {10,}(?:alias|unalias|hash|source|eval|exec|command|builtin)\b|"
+                    r" {10,}\.\s|"
+                    r" {10,}(?:export\s+)?(?:PATH|PYTHONPATH|BASH_ENV|ENV)=",
                     row,
                 ) for row in before_clean):
                     issues.append("post-validator clean check shell may be overridden")
