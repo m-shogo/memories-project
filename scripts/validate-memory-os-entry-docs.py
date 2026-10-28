@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -169,6 +170,287 @@ def validate_learning_guards(failures: list[str]) -> None:
             print(f"autonomous-learning guard verified: {completed.stdout.strip()}")
 
 
+
+# Reviewed inventory: a removed or renamed independent source-negative workflow
+# must not silently disappear from the CI execution-path audit.
+SOURCE_NEGATIVE_WORKFLOW_NAMES = (
+    ".github/workflows/backup-restore-drill-preflight-reconcile-source-negative.yml",
+    ".github/workflows/backup-restore-drill-preflight-source-negative.yml",
+    ".github/workflows/backup-restore-generation-binding-source-negative.yml",
+    ".github/workflows/backup-restore-non-resurrection-admission-source-negative.yml",
+    ".github/workflows/backup-restore-promotion-review-source-negative.yml",
+    ".github/workflows/compatibility-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-advanced-evidence-source-negative.yml",
+    ".github/workflows/deletion-container-kill-authority-source-negative.yml",
+    ".github/workflows/deletion-lease-recovery-authority-source-negative.yml",
+    ".github/workflows/deletion-lease-recovery-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-mutation-evidence-source-negative.yml",
+    ".github/workflows/deletion-prefence-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-prefence-mutation-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-prefence-upload-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-sigkill-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-worker-container-kill-recovery-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-worker-host-failure-source-negative.yml",
+    ".github/workflows/deletion-worker-saturation-diagnostic-source-negative.yml",
+    ".github/workflows/deletion-worker-sigkill-recovery-diagnostic-source-negative.yml",
+    ".github/workflows/incident-contact-routing-source-negative.yml",
+    ".github/workflows/incident-control-authority-source-negative.yml",
+    ".github/workflows/incident-control-exercise-diagnostic-source-negative.yml",
+    ".github/workflows/incident-human-tabletop-workflow-source-negative.yml",
+    ".github/workflows/live-dependency-bootstrap-source-negative.yml",
+    ".github/workflows/live-load-authority-diagnostic-source-negative.yml",
+    ".github/workflows/live-load-gofmt-source-negative.yml",
+    ".github/workflows/live-object-stage-source-negative.yml",
+    ".github/workflows/load-foundation-diagnostic-source-negative.yml",
+    ".github/workflows/load-missing-evidence-source-negative.yml",
+    ".github/workflows/load-readiness-note-source-negative.yml",
+    ".github/workflows/local-migration-recovery-source-negative.yml",
+    ".github/workflows/metrics-authority-source-negative.yml",
+    ".github/workflows/migration-evidence-registry-source-negative.yml",
+    ".github/workflows/migration-operation-evidence-source-negative.yml",
+    ".github/workflows/migration-production-shaped-admission-source-negative.yml",
+    ".github/workflows/observability-access-source-negative.yml",
+    ".github/workflows/operability-admission-inventory-atomic-write-source-negative.yml",
+    ".github/workflows/operability-admission-inventory-pr-source-negative.yml",
+    ".github/workflows/operability-admission-inventory-source-negative.yml",
+    ".github/workflows/operability-admission-inventory-transactional-source-negative.yml",
+    ".github/workflows/operability-evidence-ownership-source-negative.yml",
+    ".github/workflows/production-equivalent-dependency-source-negative.yml",
+    ".github/workflows/production-equivalent-environment-generation-source-negative.yml",
+    ".github/workflows/production-shaped-failure-drills-source-negative.yml",
+    ".github/workflows/rate-limit-distributed-runtime-source-negative.yml",
+    ".github/workflows/rate-limit-operations-source-negative.yml",
+    ".github/workflows/reconcile-backup-authority-source-negative.yml",
+    ".github/workflows/reconcile-backup-restore-source-negative.yml",
+    ".github/workflows/recovery-objectives-admission-source-negative.yml",
+    ".github/workflows/release-baseline-registry-source-negative.yml",
+    ".github/workflows/release-compatibility-pair-source-negative.yml",
+    ".github/workflows/upload-completion-load-source-negative.yml",
+)
+SOURCE_NEGATIVE_JOB_CONDITION = (
+    "if: github.event_name == 'pull_request' || "
+    "(github.event_name == 'push' && github.ref == 'refs/heads/so')"
+)
+
+
+def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | None:
+    """Parse the reviewed, simple GitHub Actions PR/push path-filter shape.
+
+    Unknown event syntax is rejected rather than silently skipped. Individual
+    workflow validators remain authoritative for full YAML semantics.
+    """
+    lines = source.splitlines()
+    try:
+        start = lines.index("on:")
+    except ValueError:
+        return None
+    event_lines: list[str] = []
+    for line in lines[start + 1:]:
+        if line.strip() and not line.startswith((" ", "\t", "#")):
+            break
+        event_lines.append(line)
+    markers = [(index, line[2:-1]) for index, line in enumerate(event_lines)
+               if re.fullmatch(r"  [a-z_]+:", line)]
+    if len(markers) != 2 or {name for _, name in markers} != {"pull_request", "push"}:
+        return None
+    result: dict[str, tuple[str, ...]] = {}
+    for position, (index, name) in enumerate(markers):
+        end = markers[position + 1][0] if position + 1 < len(markers) else len(event_lines)
+        block = event_lines[index + 1:end]
+        branches = ("    branches: [so]" in block or
+                    ("    branches:" in block and "      - so" in block))
+        if not branches or block.count("    paths:") != 1:
+            return None
+        path_start = block.index("    paths:") + 1
+        paths: list[str] = []
+        for line in block[path_start:]:
+            if not line.startswith("      "):
+                break
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            match = re.fullmatch(
+                r"""      - (?:"([^"]+)"|'([^']+)'|([^\s#]+))""", line
+            )
+            if match is None:
+                return None
+            paths.append(next(value for value in match.groups() if value is not None))
+        if not paths or len(paths) != len(set(paths)):
+            return None
+        result[name] = tuple(paths)
+    return result
+
+
+def source_negative_reachability_issues(relative: str, source: str, script_exists) -> list[str]:
+    """Check that each independent CI path actually invokes its bound scripts."""
+    issues: list[str] = []
+    paths = source_negative_event_paths(source)
+    if paths is None:
+        return ["missing/ambiguous PR and push path-filter authority"]
+    for event in ("pull_request", "push"):
+        if relative not in paths[event]:
+            issues.append(f"{event}: source-negative workflow not self-triggered")
+    if f"    {SOURCE_NEGATIVE_JOB_CONDITION}" not in source.splitlines():
+        issues.append("missing reviewed live PR/push job condition")
+    if not re.search(r"(?m)^permissions:\n  contents: read$", source):
+        issues.append("missing read-only workflow permissions")
+    if "persist-credentials: false" not in source:
+        issues.append("checkout may retain credentials")
+    if "git rev-parse HEAD" not in source or "git status --porcelain" not in source:
+        issues.append("missing exact clean source verification")
+
+    commands: list[str] = []
+    lines = source.splitlines()
+    for index, line in enumerate(lines):
+        if line != "        run: |":
+            continue
+        block: list[str] = []
+        for child in lines[index + 1:]:
+            if child.strip() and not child.startswith("          "):
+                break
+            block.append(child)
+        for offset, command in enumerate(block):
+            stripped = command.strip()
+            if not stripped.startswith(("python ", "python3 ")):
+                continue
+            match = re.fullmatch(
+                r"          python(?:3)?(?: -B)? (scripts/[A-Za-z0-9_./-]+\.py)(.*)",
+                command,
+            )
+            if match is None or any(token in match.group(2) for token in ("||", ";", "&", "|")):
+                issues.append("unreviewed/bypassed direct Python command")
+                continue
+            if "          set -euo pipefail" not in block[:offset]:
+                issues.append("Python command lacks preceding fail-closed shell")
+            commands.append(match.group(1))
+    if not commands:
+        issues.append("no directly executed Python validator")
+    if len(commands) != len(set(commands)):
+        issues.append("duplicate direct Python validator invocation")
+    for script in commands:
+        if not script_exists(script):
+            issues.append(f"missing invoked validator: {script}")
+        for event in ("pull_request", "push"):
+            if script not in paths[event]:
+                issues.append(f"{event}: invoked validator not in trigger paths: {script}")
+    return issues
+
+
+def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
+    """Positive control plus independent mutations; no digest-only success."""
+    relative = ".github/workflows/example-source-negative.yml"
+    fixture = (
+        "name: Example\n"
+        "on:\n"
+        "  pull_request:\n"
+        "    branches: [so]\n"
+        "    paths:\n"
+        f'      - "{relative}"\n'
+        '      - "scripts/check.py"\n'
+        "  push:\n"
+        "    branches: [so]\n"
+        "    paths:\n"
+        f'      - "{relative}"\n'
+        '      - "scripts/check.py"\n'
+        "permissions:\n"
+        "  contents: read\n"
+        "jobs:\n"
+        "  source-admission:\n"
+        f"    {SOURCE_NEGATIVE_JOB_CONDITION}\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@reviewed\n"
+        "        with:\n"
+        "          persist-credentials: false\n"
+        "      - name: Verify source\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        '          test "$(git rev-parse HEAD)" = "$expected"\n'
+        '          test -z "$(git status --porcelain)"\n'
+        "      - name: Execute negative validator\n"
+        "        run: |\n"
+        "          set -euo pipefail\n"
+        "          python scripts/check.py\n"
+    )
+    exists = lambda script: script == "scripts/check.py"
+    if source_negative_reachability_issues(relative, fixture, exists):
+        failures.append("source-negative reachability positive control failed")
+        return
+    cases = {
+        "PR missing validator trigger": fixture.replace(
+            '      - "scripts/check.py"', '      - "scripts/other.py"', 1),
+        "push missing workflow self-trigger": fixture.replace(
+            '  push:\n    branches: [so]\n    paths:\n'
+            f'      - "{relative}"',
+            '  push:\n    branches: [so]\n    paths:\n'
+            '      - "unreviewed/workflow.yml"'),
+        "commented validator": fixture.replace(
+            "          python scripts/check.py", "          # python scripts/check.py"),
+        "echo-only validator": fixture.replace(
+            "          python scripts/check.py", "          echo python scripts/check.py"),
+        "missing validator": fixture.replace(
+            "          python scripts/check.py", "          python scripts/missing.py"),
+        "disabled job": fixture.replace(
+            f"    {SOURCE_NEGATIVE_JOB_CONDITION}", "    if: false"),
+        "write permission": fixture.replace(
+            "permissions:\n  contents: read", "permissions:\n  contents: write"),
+        "retained checkout credentials": fixture.replace(
+            "          persist-credentials: false", "          persist-credentials: true"),
+        "missing exact HEAD check": fixture.replace(
+            '          test "$(git rev-parse HEAD)" = "$expected"\n', ""),
+        "missing shell fail closed": fixture.replace(
+            "          set -euo pipefail\n          python scripts/check.py",
+            "          python scripts/check.py"),
+        "unreviewed extra script": fixture.replace(
+            "          python scripts/check.py",
+            "          python scripts/check.py\n          python scripts/unreviewed.py"),
+        "masked validator failure": fixture.replace(
+            "          python scripts/check.py", "          python scripts/check.py || true"),
+        "missing push event": fixture.replace("  push:\n", "  workflow_dispatch:\n"),
+        "duplicate trigger path": fixture.replace(
+            '      - "scripts/check.py"\n  push:',
+            '      - "scripts/check.py"\n      - "scripts/check.py"\n  push:'),
+    }
+    for name, mutation in cases.items():
+        if mutation == fixture or not source_negative_reachability_issues(relative, mutation, exists):
+            failures.append(f"source-negative reachability negative escaped: {name}")
+
+
+def validate_source_negative_ci_reachability(failures: list[str]) -> None:
+    """Independent inventory and live CI command checks, not production evidence."""
+    workflows = REPO_ROOT / ".github/workflows"
+    observed = tuple(sorted(
+        path.relative_to(REPO_ROOT).as_posix()
+        for path in workflows.glob("*-source-negative.yml")
+    ))
+    if observed != SOURCE_NEGATIVE_WORKFLOW_NAMES:
+        missing = sorted(set(SOURCE_NEGATIVE_WORKFLOW_NAMES) - set(observed))
+        extra = sorted(set(observed) - set(SOURCE_NEGATIVE_WORKFLOW_NAMES))
+        failures.append(f"source-negative CI workflow inventory drift: missing={missing} extra={extra}")
+        return
+    prove_source_negative_reachability_negatives(failures)
+    if failures:
+        return
+    invocation_count = 0
+    for relative in observed:
+        path = REPO_ROOT / relative
+        if path.is_symlink() or not path.is_file():
+            failures.append(f"source-negative workflow is missing/symlink: {relative}")
+            continue
+        source = path.read_text(encoding="utf-8")
+        issues = source_negative_reachability_issues(
+            relative, source,
+            lambda script: (REPO_ROOT / script).is_file()
+            and not (REPO_ROOT / script).is_symlink(),
+        )
+        failures.extend(f"{relative}: {issue}" for issue in issues)
+        invocation_count += len(re.findall(
+            r"(?m)^          python(?:3)?(?: -B)? scripts/[A-Za-z0-9_./-]+\.py",
+            source,
+        ))
+    if not failures:
+        print(f"source-negative CI reachability verified: {len(observed)} workflows, "
+              f"{invocation_count} direct Python commands, 14 negative fixtures")
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -191,6 +473,7 @@ def main() -> int:
             failures.append(f"{relative}: unqualified production-ready wording")
 
     validate_learning_guards(failures)
+    validate_source_negative_ci_reachability(failures)
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
