@@ -215,6 +215,79 @@ def load_readiness_trigger_matrix_negatives(publisher: str, independent: str) ->
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin reviewed YAML root mapping and read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Reconcile Load Readiness Note",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Load Readiness Note Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise AssertionError("load-readiness " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise AssertionError("load-readiness " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise AssertionError("load-readiness " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow mutations."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise AssertionError("load-readiness " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise AssertionError("load-readiness unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except AssertionError as exc:
+                expected = "load-readiness " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError("load-readiness wrong YAML diagnostic: "
+                                         + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("load-readiness accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise AssertionError("load-readiness YAML negative inventory drift")
+    print("PASS: load-readiness root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -289,6 +362,8 @@ def main() -> None:
     policy(publisher)
     load_readiness_validate_trigger_matrix(publisher, independent)
     load_readiness_trigger_matrix_negatives(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     mutations(publisher)
     identity(publisher, "Reconcile read-only PR authority", False)
     identity(publisher, "Capture exact clean source", True)
