@@ -90,6 +90,21 @@ def validate_trigger_reachability(
             permission_rows.append(row)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("environment eligibility negative CI permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    job_rows = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_rows != ["  validate:"]:
+        raise SystemExit("environment eligibility negative CI job mapping shadow drift")
+    job_keys = [
+        row for row in body.splitlines()
+        if row.startswith("    ") and not row.startswith("     ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 5", "    steps:"]:
+        raise SystemExit("environment eligibility negative CI job key/permission shadow drift")
 
 
 def validate(
@@ -204,6 +219,43 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     print("PASS: environment eligibility negative CI event triggers (8 removals; 8 additions; 1 shortened inventory)")
 
 
+def prove_job_authority_negatives(source: str) -> None:
+    """Reject job ID shadows and read-only permission escalation with exact diagnostics."""
+    cases = []
+    for label, suffix in (
+        ("duplicate job", "  validate: {}\n"),
+        ("spaced job", "  validate : {}\n"),
+        ("quoted job", "  'validate': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("environment eligibility negative CI job permission fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 6:
+        raise SystemExit("environment eligibility negative CI job YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("environment eligibility negative CI unchanged job negative: " + label)
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            expected = "environment eligibility negative CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("environment eligibility negative CI wrong job diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("environment eligibility negative CI accepted job mutation: " + label)
+    print("PASS: environment eligibility negative CI job mapping/permission authority (6 exact-diagnostic negatives)")
+
+
 def prove_branch_guards_runtime() -> None:
     cases = (
         ("PR so", REQUIRED[6][1].strip(), "PR_BASE_REF", "so", True),
@@ -225,6 +277,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_job_authority_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
