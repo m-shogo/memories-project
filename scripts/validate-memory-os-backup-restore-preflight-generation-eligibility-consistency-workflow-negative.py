@@ -82,6 +82,36 @@ def validate_trigger_reachability(
         )
         if actual != approved:
             raise SystemExit("preflight eligibility consistency CI " + event + " exact trigger inventory drift")
+    # Strict preflight requires an exclusive reviewed event header and
+    # effective read-only YAML root/permission authority, not only paths.
+    expected_header = (
+        "name: Backup Restore Preflight Generation Eligibility Consistency\n\non:\n"
+        + pr_marker + "".join('      - "' + item + '"\n' for item in trigger_paths)
+        + push_marker + "".join('      - "' + item + '"\n' for item in trigger_paths)
+        + dispatch_marker
+    )
+    if (source.count("\npermissions:\n") != 1
+            or source.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("preflight eligibility consistency CI exact event header drift")
+    observed_roots = [
+        row for row in source.splitlines()
+        if row.strip() and not row[0].isspace()
+        and not row.lstrip().startswith("#")
+    ]
+    if observed_roots != [
+        "name: Backup Restore Preflight Generation Eligibility Consistency",
+        "on:", "permissions:", "concurrency:", "jobs:",
+    ]:
+        raise SystemExit("preflight eligibility consistency CI root YAML key shadow drift")
+    permission_lines = source.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("preflight eligibility consistency CI permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -125,6 +155,56 @@ def prove_trigger_reachability_negatives(source: str) -> None:
         pass
     else:
         raise SystemExit("preflight eligibility consistency CI shortened trigger inventory accepted")
+    # The reviewed workflow has no trailing newline. Prefix an explicit
+    # newline so root shadows are valid separate YAML mapping keys.
+    extra_event = source.replace("on:\n", "on:\n  issues:\n", 1)
+    if extra_event == source:
+        raise SystemExit("preflight eligibility extra-event negative anchor drift")
+    try:
+        validate_trigger_reachability(extra_event)
+    except SystemExit as exc:
+        if str(exc) != "preflight eligibility consistency CI exact event header drift":
+            raise SystemExit(
+                "preflight eligibility event rejected for wrong reason: " + str(exc)
+            ) from exc
+    else:
+        raise SystemExit("preflight eligibility accepted extra event")
+    for name, suffix in (
+        ("spaced on", "on :\n  issues:\n"),
+        ("quoted on", "'on':\n  issues:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    ):
+        try:
+            validate_trigger_reachability(source + "\n" + suffix)
+        except SystemExit as exc:
+            if str(exc) != "preflight eligibility consistency CI root YAML key shadow drift":
+                raise SystemExit(
+                    "preflight eligibility root shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("preflight eligibility accepted root shadow: " + name)
+    anchor = "permissions:\n  contents: read\n"
+    if source.count(anchor) != 1:
+        raise SystemExit("preflight eligibility permission negative anchor drift")
+    for name, extra in (
+        ("spaced", "  contents : write\n"),
+        ("quoted", "  'contents': write\n"),
+    ):
+        mutated = source.replace(anchor, anchor + extra, 1)
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != "preflight eligibility consistency CI permission leaf shadow drift":
+                raise SystemExit(
+                    "preflight eligibility permission shadow rejected for wrong reason: "
+                    + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("preflight eligibility accepted permission shadow: " + name)
+    print("PASS: preflight eligibility consistency CI semantic YAML negatives "
+          "(1 extra-event, 4 root, 2 permission exact-diagnostic cases)")
     print("PASS: preflight eligibility consistency CI event-specific triggers (46 removals; 8 additions; 1 shortened inventory negative)")
 
 
