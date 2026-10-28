@@ -18,6 +18,55 @@ INDEPENDENT = ".github/workflows/migration-production-shaped-admission-source-ne
 SELF = "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py"
 PUBLISHER_SHA = "de15191e084b753b379ca6f657b57521fa1dbf92"
 INDEPENDENT_SHA = "6e5d70153437516601b00c9d6d542dc90abf7191"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/migration-production-shaped-admission.yml",
+    ".github/workflows/migration-production-shaped-admission-source-negative.yml",
+    "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py",
+    "contracts/operations/requests/migration-production-shaped-admission-foundation.v1.json",
+    "contracts/operations/migration-production-shaped-admission-contract.v1.json",
+    "contracts/operations/migration-production-shaped-admission-registry.v1.json",
+    "docs/evidence/migration-production-shaped-admission/independent-reviews/**",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "contracts/operations/migration-evidence-registry.v1.json",
+    "contracts/operations/migration-evidence-registry-contract.v1.json",
+    "contracts/operations/release-baseline-registry-contract.v1.json",
+    "contracts/operations/release-baseline-registry.v1.json",
+    "contracts/operations/release-compatibility-pair-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "scripts/memory_os_migration_production_admission_ledger.py",
+    "scripts/register-memory-os-migration-production-shaped-admission.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission-negative.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission-generation-authority-negative.py",
+    "scripts/validate-memory-os-migration-production-admission-ledger-authority-negative.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission-reconcile-rollback.py",
+    "scripts/reconcile-memory-os-migration-production-shaped-admission.py",
+    "scripts/register-memory-os-release-baseline.py",
+    "scripts/register-memory-os-release-compatibility-pair.py",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/validate-memory-os-production-equivalent-environment-generation.py",
+    "scripts/register-memory-os-migration-rehearsal-evidence.py",
+    "scripts/validate-memory-os-migration-evidence-registry.py",
+    "scripts/validate-memory-os-release-baseline-registry.py",
+    "scripts/validate-memory-os-migration-lifecycle.py",
+    "scripts/validate-memory-os-operability.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/migration-production-shaped-admission.yml",
+    ".github/workflows/migration-production-shaped-admission-source-negative.yml",
+    "scripts/validate-memory-os-migration-production-shaped-admission-workflow-source-negative.py",
+    ".github/workflows/migration-production-shaped-negative-isolation.yml",
+    "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py",
+    "scripts/validate-memory-os-migration-production-shaped-admission-negative.py",
+    ".github/workflows/migration-production-shaped-admission-permission-negative.yml",
+    "scripts/validate-memory-os-migration-production-shaped-admission-permission-negative.py",
+)
 ISOLATION = ".github/workflows/migration-production-shaped-negative-isolation.yml"
 ISOLATION_SCRIPT = "scripts/diagnose-memory-os-migration-production-shaped-admission-negative-isolated.py"
 NEGATIVE_SCRIPT = "scripts/validate-memory-os-migration-production-shaped-admission-negative.py"
@@ -106,6 +155,77 @@ INDEPENDENT_REQUIRED = (
 )
 
 
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Pin every reviewed publisher/independent CI path under both PR and push."""
+    expected = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+    paths = expected if trigger_paths is None else trigger_paths
+    if len(paths) != len(expected) or len(set(paths)) != len(expected):
+        raise SystemExit("migration production-shaped CI trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    if any(source.count(marker) != 1 for marker in (pr, push, end)):
+        raise SystemExit("migration production-shaped CI event marker drift")
+    if not (source.index(pr) < source.index(push) < source.index(end)):
+        raise SystemExit("migration production-shaped CI event order drift")
+    for event, start, stop in (("pull_request", pr, push), ("push", push, end)):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in paths)
+        if actual != approved:
+            raise SystemExit("migration production-shaped CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Test all event-specific omissions, additions and shortened inventory."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, paths, is_publisher in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
+    ):
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        for event, start, stop in (("pull_request", pr, push), ("push", push, end)):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise SystemExit("migration production-shaped CI mutation anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration production-shaped CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration production-shaped CI accepted " + label + " " + event + " " + name)
+        try:
+            validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("migration production-shaped CI accepted shortened " + label + " inventory")
+    print("PASS: migration production-shaped CI event triggers (88 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def read(relative: str) -> str:
     path = ROOT / relative
     try:
@@ -119,6 +239,8 @@ def read(relative: str) -> str:
 
 
 def validate(publisher: str, independent: str) -> None:
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
     for name, source, required, reviewed in (
         ("publisher", publisher, PUBLISHER_REQUIRED, PUBLISHER_SHA),
         ("independent", independent, INDEPENDENT_REQUIRED, INDEPENDENT_SHA),
@@ -356,6 +478,7 @@ def main() -> int:
     publisher = read(PUBLISHER)
     independent = read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     verify_isolation_blob_bindings()
     verify_permission_blob_bindings()
     runtime(publisher, independent)
