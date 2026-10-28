@@ -107,6 +107,21 @@ def validate_yaml_authority(source: str) -> None:
             leaves.append(row)
     if leaves != ["  contents: read"]:
         raise SystemExit("generation independent review permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    job_rows = [
+        line for line in body.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  validate:"]:
+        raise SystemExit("generation independent review job mapping shadow drift")
+    job_keys = [
+        line for line in body.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_keys != ["    runs-on: ubuntu-latest", "    timeout-minutes: 8", "    steps:"]:
+        raise SystemExit("generation independent review job key/permission shadow drift")
 
 
 def prove_yaml_authority_negatives(source: str) -> None:
@@ -133,7 +148,24 @@ def prove_yaml_authority_negatives(source: str) -> None:
     ):
         cases.append((label, source.replace(anchor, anchor + leaf, 1),
                       "permission leaf shadow drift"))
-    if len(cases) != 9:
+    for label, suffix in (
+        ("duplicate job", "  validate: {}\n"),
+        ("spaced job", "  validate : {}\n"),
+        ("quoted job", "  'validate': {}\n"),
+    ):
+        cases.append((label, source.rstrip("\n") + "\n" + suffix,
+                      "job mapping shadow drift"))
+    runs_on = "    runs-on: ubuntu-latest\n"
+    if source.count(runs_on) != 1:
+        raise SystemExit("generation independent review job permission fixture anchor drift")
+    for label, leaf in (
+        ("job permission", "    permissions:\n      contents: write\n"),
+        ("spaced job permission", "    permissions :\n      contents: write\n"),
+        ("quoted job permission", "    'permissions':\n      contents: write\n"),
+    ):
+        cases.append((label, source.replace(runs_on, runs_on + leaf, 1),
+                      "job key/permission shadow drift"))
+    if len(cases) != 15:
         raise SystemExit("generation independent review YAML negative inventory drift")
     for label, mutated, diagnostic in cases:
         if mutated == source:
@@ -147,7 +179,7 @@ def prove_yaml_authority_negatives(source: str) -> None:
                                  + label + ": " + str(exc)) from exc
         else:
             raise SystemExit("generation independent review accepted YAML mutation: " + label)
-    print("PASS: generation independent review YAML event/root/permission authority (9 exact-diagnostic negatives)")
+    print("PASS: generation independent review YAML event/root/job/permission authority (15 exact-diagnostic negatives)")
 
 
 
