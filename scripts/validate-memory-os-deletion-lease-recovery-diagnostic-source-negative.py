@@ -197,11 +197,11 @@ REQUIRED = (
 
 def validate_yaml_root_permission(publisher: str, independent: str) -> None:
     """Pin YAML root mapping and permission leaves independently of full-source SHA."""
-    for label, value, roots in (
+    for label, value, roots, expected_leaf in (
         ("publisher", publisher, ["name: Deletion Lease Recovery",
-                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+                                  "on:", "permissions:", "concurrency:", "jobs:"], "  contents: write"),
         ("independent", independent, ["name: Deletion Lease Recovery Diagnostic Source Negative",
-                                      "on:", "permissions:", "jobs:"]),
+                                      "on:", "permissions:", "jobs:"], "  contents: read"),
     ):
         actual = [line for line in value.splitlines()
                   if line.strip() and not line[0].isspace()
@@ -216,7 +216,7 @@ def validate_yaml_root_permission(publisher: str, independent: str) -> None:
                 break
             if line.strip() and not line.lstrip().startswith("#"):
                 leaves.append(line)
-        if leaves != ["  contents: read"]:
+        if leaves != [expected_leaf]:
             raise AssertionError("lease-diagnostic " + label + " permission leaf shadow drift")
 
 
@@ -237,15 +237,18 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
                 ("quoted jobs", "'jobs': {}\n"),
             )
         ]
-        marker = "\npermissions:\n  contents: read\n"
+        marker = "\npermissions:\n" + ("  contents: write\n" if is_publisher else "  contents: read\n")
         if value.count(marker) != 1:
             raise AssertionError("lease-diagnostic " + label + " permission fixture anchor drift")
+        override = "read" if is_publisher else "write"
         for mutation, leaf in (
-            ("spaced contents", "  contents : write\n"),
-            ("quoted contents", "  'contents': write\n"),
+            ("spaced contents", "  contents : " + override + "\n"),
+            ("quoted contents", "  'contents': " + override + "\n"),
         ):
             cases.append((mutation, value.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
+        cases.append(("changed contents", value.replace(marker, "\npermissions:\n  contents: " + override + "\n", 1),
+                      "permission leaf shadow drift"))
         for mutation, changed, diagnostic in cases:
             if changed == value:
                 raise AssertionError("lease-diagnostic unchanged YAML fixture: " + mutation)
@@ -262,9 +265,9 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
             else:
                 raise AssertionError("lease-diagnostic accepted YAML shadow: " + label + " " + mutation)
             count += 1
-    if count != 12:
+    if count != 14:
         raise AssertionError("lease-diagnostic YAML negative inventory drift")
-    print("PASS: lease-diagnostic root/permission YAML authority (12 exact-diagnostic negatives)")
+    print("PASS: lease-diagnostic root/permission YAML authority (14 exact-diagnostic negatives)")
 
 
 def policy(value):
