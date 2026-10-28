@@ -360,3 +360,21 @@
 - **Protected-authority check:** All nine protected authority blob SHAs remain unchanged; `productionDecision=NO_GO`, OPS-P0-007 prerequisite-blocked with zero registered/eligible generations, approved objectives, executable reviewed requests, request-bound recovery evidence, complete typed eight-domain records and final candidates. Human promotion is separate and was not invoked.
 - **Learning boundary:** Supplemental append-only history is not canonical learning authority and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
 - **Next safe target:** Audit the ordering of the exact-source verification step relative to direct validator execution, without weakening the existing reviewed topology or external blockers.
+
+## 2026-10-28 — Exact-source verification must precede validator execution
+
+### Material failure: legitimate third-step clone validator rejected
+
+- **Symptom / observed evidence:** [Autonomous Learning Guard #40680150913](https://github.com/m-shogo/memories-project/actions/runs/40680150913) on exact `85fc5dbe` FAILED for `.github/workflows/migration-evidence-registry-source-negative.yml`: `direct Python validators must execute in reviewed second run step`.
+- **Verified root cause:** The reviewed migration-evidence workflow runs one Python source validator in its second step and an additional independent authority negative validator inside a disposable exact-source clone in its third step. The first order guard incorrectly required every Python command to be in step two.
+- **Failed approach:** Applying a universal second-step-only rule without accounting for the observed, reviewed third-step clone.
+- **Correction / executable recurrence guard:** [`817d4c35`](https://github.com/m-shogo/memories-project/commit/817d4c353ffb867f5e58545b275b1d700d0116ab) requires at least one direct Python validator in the reviewed second run step, allows the third-step Python command only for the exact migration-evidence workflow, and still requires source verification before any validator. Two synthetic step-order negatives cover the ordinary and setup-go positive controls, raising reachability negatives from 153 to 155.
+- **Retry condition:** Expand the third-step exception only after reviewing another concrete executable, exact-source workflow and adding corresponding negative proof; do not generalize it.
+
+### Material success: reviewed step order and independent clone preserved
+
+- **Outcome / observed evidence:** [Autonomous Learning Guard #40680259125](https://github.com/m-shogo/memories-project/actions/runs/40680259125) completed SUCCESS on exact `817d4c353ffb867f5e58545b275b1d700d0116ab`. The job log proves 52 source-negative workflows, 63 direct Python commands, 155 executed reachability negative fixtures, 128 canonical learning negatives, 1,186 helper ancestor negatives and canonical append-only PASS.
+- **Why safe / reusable mechanism:** The common read-only guard now binds source verification to the first run step and Python validator execution to the reviewed second step, with one narrowly scoped disposable-clone exception. Reviewed workflow source, credentials, production traffic, evidence, readiness and human promotion were not changed.
+- **Protected-authority check:** Nine protected contract/registry blob SHAs remain unchanged. `productionDecision=NO_GO`; OPS-P0-007 remains prerequisite-blocked with zero registered/semantically eligible generations, approved objectives, executable reviewed drill requests, request-bound recovery evidence, complete typed eight-domain non-resurrection records or final candidates. No human promotion.
+- **Learning boundary:** This append-only addendum is not canonical learning authority and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
+- **Next safe target:** Audit the independently reviewed third-step clone's source binding and ensure no other source-negative workflows can acquire unreviewed post-validator execution authority. Do not retry unchanged canonical learning transport, Quay MinIO HTTP 401 or human approval blockers.
