@@ -90,14 +90,12 @@ def validate_independent_trigger_reachability(
             raise SystemExit("semantic preflight reconcile independent trigger marker drift")
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    expected = ['      - "' + item + '"' for item in trigger_paths]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
-            raise SystemExit("semantic preflight reconcile independent " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            if block.count('      - "' + item + '"' + chr(10)) != 1:
-                raise SystemExit("semantic preflight reconcile independent " + event + " trigger drift: " + item)
+        actual = [line for line in block.splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+        if actual != expected:
+            raise SystemExit("semantic preflight reconcile independent " + event + " exact trigger inventory drift")
 
 
 def prove_independent_trigger_negatives(source: str) -> None:
@@ -117,6 +115,23 @@ def prove_independent_trigger_negatives(source: str) -> None:
             except SystemExit:
                 continue
             raise SystemExit("semantic preflight reconcile independent accepted missing " + event + " trigger: " + item)
+    # Unquoted YAML paths must be covered by digest-independent trigger admission.
+    for event, marker in (
+        ("pull_request", "  pull_request:\n    branches:\n      - so\n    paths:\n"),
+        ("push", push_marker),
+    ):
+        for label, injected in (
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + INDEPENDENT_TRIGGER_PATHS[0] + "\n"),
+        ):
+            if source.count(marker) != 1:
+                raise SystemExit("semantic preflight reconcile unquoted fixture marker drift")
+            mutated = source.replace(marker, marker + injected, 1)
+            try:
+                validate_independent_trigger_reachability(mutated)
+            except SystemExit:
+                continue
+            raise SystemExit("semantic preflight reconcile accepted " + event + " " + label)
     try:
         validate_independent_trigger_reachability(source, trigger_paths=INDEPENDENT_TRIGGER_PATHS[:-1])
     except SystemExit:
