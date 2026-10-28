@@ -62,6 +62,22 @@ def validate_trigger_reachability(
         header = value.split("\npermissions:\n", 1)[0]
         if header != expected:
             raise SystemExit("incident control " + label + " exact event trigger drift")
+        # The exact event prefix does not prove a later YAML root mapping
+        # cannot shadow on, permissions or jobs after that boundary.
+        expected_roots = (
+            ["name: Incident Control Exercise", "on:", "permissions:",
+             "concurrency:", "jobs:"]
+            if label == "publisher" else
+            ["name: Incident Control Exercise Diagnostic Source Negative",
+             "on:", "permissions:", "jobs:"]
+        )
+        observed_roots = [
+            row for row in value.splitlines()
+            if row.strip() and not row[0].isspace()
+            and not row.lstrip().startswith("#")
+        ]
+        if observed_roots != expected_roots:
+            raise SystemExit("incident control " + label + " root YAML key shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -135,10 +151,44 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             pass
         else:
             raise SystemExit("incident control accepted unreviewed event topology: " + label)
+    # All reviewed event-prefix bytes remain intact in these mutations.
+    # Require the intended semantic root-shadow diagnostic, not a blob failure.
+    root_shadows = (
+        ("spaced on", "on :\n  workflow_dispatch:\n"),
+        ("quoted on", "'on':\n  workflow_dispatch:\n"),
+        ("spaced permissions", "permissions :\n  contents: write\n"),
+        ("spaced jobs", "jobs : {}\n"),
+    )
+    root_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        for name, suffix in root_shadows:
+            mutated = original + suffix
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except SystemExit as exc:
+                expected = "incident control " + label + " root YAML key shadow drift"
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "incident control root shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "incident control accepted root YAML shadow: " + label + " " + name
+                )
+            root_negative_count += 1
+    if root_negative_count != 8:
+        raise SystemExit("incident control root shadow fixture count drift")
     if (omitted, added) != (32, 12):
         raise SystemExit("incident control trigger negative coverage drift")
     print("PASS: incident control exact event triggers (32 omissions; 12 additions; "
-          "2 shortened inventories; 3 event topology negatives)")
+          "2 shortened inventories; 3 event topology; 8 root shadow negatives)")
 
 
 def source(relative: str) -> str:
