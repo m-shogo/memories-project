@@ -12,6 +12,30 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/reconcile-backup-restore.yml"
 INDEPENDENT = ".github/workflows/reconcile-backup-restore-source-negative.yml"
 SELF = "scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-backup-restore.yml",
+    "contracts/operations/backup-restore-contract.v1.json",
+    "contracts/operations/local-logical-restore-contract.v1.json",
+    "contracts/operations/local-object-version-restore-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/runbooks/memory-os-backup-restore.md",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/validate-memory-os-backup-restore.py",
+    "scripts/validate-memory-os-backup-restore-reconcile-negative.py",
+    "scripts/reconcile-memory-os-backup-restore.py",
+    "scripts/validate-memory-os-local-logical-restore.py",
+    "scripts/validate-memory-os-local-object-version-restore.py",
+    "scripts/validate-memory-os-operability.py",
+    "scripts/validate-memory-os-entry-docs.py",
+    ".github/workflows/reconcile-backup-restore-source-negative.yml",
+    "scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-backup-restore.yml",
+    ".github/workflows/reconcile-backup-restore-source-negative.yml",
+    "scripts/validate-memory-os-reconcile-backup-restore-workflow-negative.py",
+)
 REVIEWED_PUBLISHER = "555fa8cc639b18db691481f1b95fed879e280de4"
 REVIEWED_INDEPENDENT = "f85ac3ffc1d2c3dc3db34189b23de5a68441d10a"
 D = chr(36)
@@ -72,10 +96,95 @@ def source(relative: str) -> str:
         raise SystemExit("restore policy CI source missing or substituted: " + relative) from exc
 
 
+
+def validate_trigger_reachability(
+    content: str, kind: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Require the full reviewed PR/push restore-policy trigger inventory without SHA."""
+    if kind == "publisher":
+        canonical = PUBLISHER_TRIGGER_PATHS
+        end_marker = "  workflow_dispatch:\n"
+    elif kind == "independent":
+        canonical = INDEPENDENT_TRIGGER_PATHS
+        end_marker = "\npermissions:\n"
+    else:
+        raise SystemExit("restore policy unrecognized CI trigger kind")
+    if trigger_paths is None:
+        trigger_paths = canonical
+    if len(trigger_paths) != len(canonical) or len(set(trigger_paths)) != len(canonical):
+        raise SystemExit("restore policy " + kind + " trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if content.count(marker) != 1:
+            raise SystemExit("restore policy " + kind + " CI event marker drift")
+    pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    approved = tuple('      - "' + path + '"' for path in trigger_paths)
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        if actual != approved:
+            raise SystemExit("restore policy " + kind + " " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    for kind, content, paths in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS),
+    ):
+        validate_trigger_reachability(content, kind)
+        for event in ("pull_request", "push"):
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if content.count(token) != 2:
+                    raise SystemExit("restore policy " + kind + " mutation anchor drift: " + path)
+                if event == "pull_request":
+                    mutated = content.replace(token, "", 1)
+                else:
+                    prefix, suffix = content.split(push_marker, 1)
+                    mutated = prefix + push_marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("restore policy " + kind + " accepted missing " + event + " trigger: " + path)
+            marker = pr_marker if event == "pull_request" else push_marker
+            for label, injected in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                if content.count(marker) != 1:
+                    raise SystemExit("restore policy " + kind + " addition marker drift: " + event)
+                mutated = content.replace(marker, marker + injected, 1)
+                if mutated == content:
+                    raise SystemExit("restore policy " + kind + " addition fixture unchanged")
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("restore policy " + kind + " accepted " + event + " addition: " + label)
+        try:
+            validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("restore policy " + kind + " shortened inventory accepted")
+    print("PASS: restore policy publisher/independent CI event-specific triggers (38 removals; 16 additions; 2 shortened inventory negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
+    validate_trigger_reachability(publisher, "publisher")
+    validate_trigger_reachability(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -184,6 +293,7 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     negatives(publisher, independent)
     return 0
