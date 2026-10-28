@@ -121,6 +121,17 @@ def validate_trigger_reachability(
     ]
     if observed_roots != expected_roots:
         raise SystemExit("human-tabletop CI root YAML key shadow drift")
+    # Both reviewed workflows are read-only at root. Quoted or spaced
+    # YAML contents keys must not shadow the visible reviewed leaf.
+    permission_lines = value.split("\npermissions:\n", 1)[1].splitlines()
+    permission_rows = []
+    for row in permission_lines:
+        if row.strip() and not row[0].isspace():
+            break
+        if row.strip() and not row.lstrip().startswith("#"):
+            permission_rows.append(row)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("human-tabletop CI permission leaf shadow drift")
 
 
 def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
@@ -224,6 +235,35 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
             root_negative_count += 1
     if root_negative_count != 8:
         raise SystemExit("human-tabletop CI root shadow fixture count drift")
+    permission_negative_count = 0
+    for label, original, is_publisher in (
+        ("publisher", publisher, True),
+        ("independent", independent, False),
+    ):
+        anchor = "permissions:\n  contents: read\n"
+        if original.count(anchor) != 1:
+            raise SystemExit("human-tabletop CI permission negative anchor drift: " + label)
+        for name, extra in (
+            ("spaced", "  contents : write\n"),
+            ("quoted", "  'contents': write\n"),
+        ):
+            mutated = original.replace(anchor, anchor + extra, 1)
+            try:
+                validate_trigger_reachability(mutated, publisher=is_publisher)
+            except SystemExit as exc:
+                if str(exc) != "human-tabletop CI permission leaf shadow drift":
+                    raise SystemExit(
+                        "human-tabletop CI permission shadow rejected for wrong reason: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit(
+                    "human-tabletop CI accepted permission leaf shadow: " + label + " " + name
+                )
+            permission_negative_count += 1
+    if permission_negative_count != 4:
+        raise SystemExit("human-tabletop CI permission leaf fixture count drift")
+    print("PASS: human-tabletop CI permission leaf shadows (4 exact-diagnostic negatives)")
     print("PASS: human-tabletop CI event triggers (30 removals; 16 additions; 4 shortened inventory; 2 event header; 8 root shadow negatives)")
 
 
