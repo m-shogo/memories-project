@@ -117,6 +117,37 @@ def validate_trigger_reachability(
             permission_rows.append(row)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("drill generation binding CI permission leaf shadow drift")
+    body = source.split("\n" + "jobs:\n", 1)[1]
+    jobs = (
+        ("validate-pr", "    if: github.event_name == 'pull_request'", "read"),
+        ("validate", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"),
+    )
+    headers = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if headers != ["  " + job[0] + ":" for job in jobs]:
+        raise SystemExit("drill generation binding CI job mapping shadow drift")
+    for index, (job, condition, scope) in enumerate(jobs):
+        section = body.split("  " + job + ":\n", 1)[1]
+        if index + 1 < len(jobs):
+            section = section.split("  " + jobs[index + 1][0] + ":\n", 1)[0]
+        keys = [
+            row for row in section.splitlines()
+            if row.startswith("    ") and not row.startswith("     ")
+            and row.strip() and not row.lstrip().startswith("#")
+        ]
+        if keys != [
+            condition, "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 10", "    steps:",
+        ]:
+            raise SystemExit("drill generation binding CI job key/permission shadow drift")
+        marker = "    permissions:\n"
+        if (section.count(marker) != 1
+                or section.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                != "      contents: " + scope + "\n"):
+            raise SystemExit("drill generation binding CI job permission scope drift")
 
 
 def prove_trigger_reachability_negatives(source: str) -> None:
@@ -213,6 +244,71 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 
 
 
+def prove_job_authority_negatives(source: str) -> None:
+    """Require exact diagnostics for reviewed PR/publisher job and permission shadows."""
+    cases = []
+    jobs = (
+        ("validate-pr", "    if: github.event_name == 'pull_request'", "read"),
+        ("validate", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"),
+    )
+    for job, condition, scope in jobs:
+        job_anchor = "  " + job + ":\n"
+        if source.count(job_anchor) != 1:
+            raise SystemExit("drill generation binding CI job negative anchor drift: " + job)
+        for label, suffix in (
+            ("duplicate job", "  " + job + ": {}\n"),
+            ("spaced job", "  " + job + " : {}\n"),
+            ("quoted job", "  '" + job + "': {}\n"),
+        ):
+            cases.append((job + " " + label, source.rstrip("\n") + "\n" + suffix,
+                          "job mapping shadow drift"))
+        prefix, section = source.split(job_anchor, 1)
+        runs_on = "    runs-on: ubuntu-latest\n"
+        if runs_on not in section:
+            raise SystemExit("drill generation binding CI job runs-on negative anchor drift: " + job)
+        for label, leaf in (
+            ("job permission", "    permissions:\n      contents: write\n"),
+            ("spaced job permission", "    permissions :\n      contents: write\n"),
+            ("quoted job permission", "    'permissions':\n      contents: write\n"),
+        ):
+            cases.append((job + " " + label,
+                          prefix + job_anchor + section.replace(runs_on, runs_on + leaf, 1),
+                          "job key/permission shadow drift"))
+        permission = "    permissions:\n      contents: " + scope + "\n"
+        if permission not in section:
+            raise SystemExit("drill generation binding CI job scope negative anchor drift: " + job)
+        alternate = "write" if scope == "read" else "read"
+        cases.append((job + " direct scope", prefix + job_anchor + section.replace(
+            permission, "    permissions:\n      contents: " + alternate + "\n", 1),
+            "job permission scope drift"))
+        for label, leaf in (
+            ("spaced contents", "      contents : write\n"),
+            ("quoted contents", "      'contents': write\n"),
+        ):
+            cases.append((job + " " + label, prefix + job_anchor + section.replace(
+                permission, permission + leaf, 1), "job permission scope drift"))
+        if condition + "\n" not in section:
+            raise SystemExit("drill generation binding CI job event negative anchor drift: " + job)
+        cases.append((job + " event bypass", prefix + job_anchor + section.replace(
+            condition + "\n", "    if: true\n", 1),
+            "job key/permission shadow drift"))
+    if len(cases) != 20:
+        raise SystemExit("drill generation binding CI job YAML negative inventory drift")
+    for label, mutated, diagnostic in cases:
+        if mutated == source:
+            raise SystemExit("drill generation binding CI unchanged job negative: " + label)
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            expected = "drill generation binding CI " + diagnostic
+            if str(exc) != expected:
+                raise SystemExit("drill generation binding CI wrong job diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("drill generation binding CI accepted job mutation: " + label)
+    print("PASS: drill generation binding CI job mapping/event/permission authority (20 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     for label, token, expected in REQUIRED:
@@ -248,6 +344,7 @@ def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
+    prove_job_authority_negatives(source)
     prove_branch_guards_runtime()
     cases = (
         ("PR target", REQUIRED[0][1], "  pull_request:\n    paths:\n"),
