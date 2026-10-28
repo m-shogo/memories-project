@@ -258,3 +258,39 @@
 - **Why safe / reusable mechanism:** The reviewed source-negative CI workflows were not changed. The shared read-only validator now proves both direct command reachability and the approved Actions/checkout/interpreter/toolchain execution boundary; all new fixture mutations are synthetic.
 - **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged relative to the run baseline. Production Status stays `NO_GO`; OPS-P0-007 stays `PREREQUISITES_BLOCKED`. No registered or semantically eligible production-equivalent generation, approved current recovery objective, executable reviewed drill request, request-bound generation recovery evidence, complete typed eight-domain non-resurrection record, final candidate or human production-promotion authority was created. Learning is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence.
 - **Next safe target:** Audit the remaining GitHub Actions step metadata and shell source-boundary edge cases with the existing common guard; do not retry unchanged external MinIO, human approval or canonical learning transport blockers.
+
+## 2026-10-28 — Source-negative workflow metadata authority and CI fixture corrections
+
+### Material failure 1: source-negative positive control rejected
+
+- **Symptom:** [Autonomous Learning Guard #40678512591](https://github.com/m-shogo/memories-project/actions/runs/40678512591) on exact `9b01b08d` FAILED with `source-negative reachability positive control failed`. Canonical learning contract and 128 canonical negatives passed.
+- **Observed evidence:** The newly added environment inventory used the raw Python regex `r"^\\\\s*env:"`, which matches a literal backslash-s rather than whitespace. The synthetic positive fixture correctly had one reviewed `env:` block, but the regex counted zero.
+- **Verified root cause:** Double escaping while generating Python source through a JavaScript patch; the positive control failed closed.
+- **Failed approach:** Trusting source-string construction without running the CI positive control.
+- **Correction:** [`5231664b`](https://github.com/m-shogo/memories-project/commit/5231664bc09ff7532ba32193cafc44d05a389f74) replaced the literal-backslash pattern with `r"^\\s*env:"`.
+- **Executable recurrence guard:** The synthetic positive fixture now includes the reviewed exact PR-head environment block, and the existing entrypoint guard runs it before 121 negative fixtures.
+- **Retry condition:** Re-evaluate the environment regex only after the exact-source positive and negative CI results are checked; never relax it to permit unreviewed environment overrides.
+
+### Material failure 2: two semantic negatives escaped
+
+- **Symptom:** [Autonomous Learning Guard #40678614650](https://github.com/m-shogo/memories-project/actions/runs/40678614650) on exact `5231664b` FAILED because `job runner override` and `job timeout override` negatives escaped.
+- **Observed evidence:** The common validator compared the ordered job metadata key names but not their scalar values. A changed runner or timeout preserved the expected keys.
+- **Verified root cause:** Structural-key equivalence was incorrectly treated as value authority.
+- **Failed approach:** Key-only job metadata validation.
+- **Correction / executable recurrence guard:** [`71979b00`](https://github.com/m-shogo/memories-project/commit/71979b00bb25501b914d1a2f9fc4552023ef9041) additionally requires exact `runs-on: ubuntu-latest` and `timeout-minutes: 5`. The two previously escaped mutations remain mandatory negatives; 121 cases are bound to the shared CI entrypoint.
+- **Retry condition:** Only change the exact runner/timeout values after independent review of the execution environment and exact-source positive/negative CI evidence.
+
+### Material transient tool failure: GitHub Git-object write preparation
+
+- **Symptom / evidence:** A GitHub GraphQL request failed transiently at 2026-10-28 11:15:43 UTC with request reference `B71E:1146FE:26F13B:81549D:6AE1D95E`; a subsequent read confirmed the intended regex correction had not reached the branch.
+- **Root cause:** Unknown external GraphQL execution failure, not evidence of an application defect.
+- **Failed approach:** The first Git-object preparation attempt returned no confirmed commit.
+- **Correction / recurrence guard:** Re-read `so`, the target file and learning contract; rebuild the commit on the advanced branch and publish with an expected-HEAD lease. No force push.
+- **Retry condition:** Retry only after a fresh successful read confirms source state; stop on a mismatched lease rather than overwriting concurrent work.
+
+### Scoped success and authority boundary
+
+- **Outcome / observed evidence:** A read-only inventory of the 52 source-negative workflows found the reviewed job timeout and sole `PR_HEAD_SHA` environment mapping consistently present. The code commits `9b01b08d`, `5231664b` and `71979b00` changed only the common read-only entrypoint validator; the latest exact-source CI for `71979b00` remains **unconfirmed at this learning append**.
+- **Why safe / reusable mechanism:** Fifteen new synthetic metadata mutations cover workflow concurrency/defaults/environment, job runner/timeout/container/strategy/environment, and step working directory/ID/environment/PR-head/continue-on-error/timeout. Production workflows and authorities were not edited.
+- **Protected-authority check:** The nine protected production status, OPS-P0-007 snapshot, generation/objective/drill/evidence/typed-non-resurrection/promotion registries and canonical learning contract remained byte-identical by blob SHA on the checked branch. `productionDecision=NO_GO`, OPS-P0-007 has zero eligible generations, objectives, executable requests, recovery evidence, typed eight-domain records and final candidates. No production or human-promotion authority was created.
+- **Learning boundary:** This is append-only supplemental history, not the canonical 4.17 MB learning authority and never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness or promotion evidence. Canonical transport blocker remains unchanged; do not retry it blindly.
