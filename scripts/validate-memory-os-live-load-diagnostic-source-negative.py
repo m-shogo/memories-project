@@ -158,6 +158,93 @@ def live_load_trigger_matrix(
     ):
         if live_load_trigger_header(content) != expected:
             raise AssertionError("live-load " + label + " exact trigger matrix drift")
+    live_load_validate_yaml_root_permissions(writer, pr, independent)
+
+
+
+def live_load_validate_yaml_root_permissions(
+    writer: str, pr: str, independent: str
+) -> None:
+    """Pin distinct writer/PR/independent effective YAML permission authorities."""
+    for label, content, expected_roots, permission in (
+        ("writer", writer, [
+            "name: Reconcile Live Load Authority V2", "on:", "permissions:",
+            "concurrency:", "jobs:",
+        ], "write"),
+        ("PR", pr, [
+            "name: Validate Live Load Authority V2 PR", "on:", "permissions:",
+            "concurrency:", "jobs:",
+        ], "read"),
+        ("independent", independent, [
+            "name: Live Load Authority Diagnostic Source Negative", "on:",
+            "permissions:", "jobs:",
+        ], "read"),
+    ):
+        roots = [
+            line for line in content.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if roots != expected_roots:
+            raise AssertionError("live-load " + label + " root YAML key shadow drift")
+        if content.count("\npermissions:\n") != 1:
+            raise AssertionError("live-load " + label + " permission leaf shadow drift")
+        permission_rows = []
+        for line in content.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                permission_rows.append(line)
+        if permission_rows != ["  contents: " + permission]:
+            raise AssertionError("live-load " + label + " permission leaf shadow drift")
+
+
+def live_load_yaml_shadow_negatives(writer: str, pr: str, independent: str) -> None:
+    total = 0
+    sources = (writer, pr, independent)
+    for index, (label, content, permission) in enumerate((
+        ("writer", writer, "write"),
+        ("PR", pr, "read"),
+        ("independent", independent, "read"),
+    )):
+        cases = []
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: " + permission + "\n"
+        if content.count(anchor) != 1:
+            raise AssertionError("live-load " + label + " permission mutation anchor drift")
+        shadow_value = "read" if permission == "write" else "write"
+        for name, extra in (
+            ("spaced contents", "  contents : " + shadow_value + "\n"),
+            ("quoted contents", "  'contents': " + shadow_value + "\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise AssertionError("live-load YAML fixture unchanged: " + label + "/" + name)
+            mutated = list(sources)
+            mutated[index] = altered
+            try:
+                live_load_trigger_matrix(*mutated)
+            except AssertionError as exc:
+                expected = "live-load " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "live-load YAML wrong diagnostic: " + label + "/" + name
+                        + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError("live-load accepted YAML shadow: " + label + "/" + name)
+            total += 1
+    if total != 18:
+        raise AssertionError("live-load YAML fixture count drift")
+    print("PASS: live-load writer/PR/independent YAML root/permission (18 exact-diagnostic negatives)")
 
 
 def live_load_trigger_replace(content: str, old: str, new: str) -> str:
@@ -462,6 +549,7 @@ def main() -> None:
     policy(publisher)
     live_load_trigger_matrix(publisher, pr, independent)
     live_load_trigger_negatives(publisher, pr, independent)
+    live_load_yaml_shadow_negatives(publisher, pr, independent)
     mutations(publisher)
     writer_runtime(publisher)
     validator_shell_runtime(publisher)
