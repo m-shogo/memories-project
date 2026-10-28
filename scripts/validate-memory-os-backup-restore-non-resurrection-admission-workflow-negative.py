@@ -306,6 +306,24 @@ def validate_yaml_authority(source: str, kind: str) -> None:
         block = body.split(job + "\n", 1)[1]
         if index + 1 < len(jobs):
             block = block.split(jobs[index + 1][0] + "\n", 1)[0]
+        expected_if = (
+            "    if: github.event_name == 'pull_request'"
+            if job == "  validate-pr:" else
+            "    " + PUBLISHER_SCOPE.strip()
+            if job == "  validate:" else
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')"
+        )
+        expected_timeout = "8" if kind == "publisher" else "5"
+        job_keys = [
+            line for line in block.splitlines()
+            if line.startswith("    ") and not line.startswith("     ")
+            and line.strip() and not line.lstrip().startswith("#")
+        ]
+        if job_keys != [
+            expected_if, "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: " + expected_timeout, "    steps:",
+        ]:
+            raise SystemExit("typed non-resurrection " + kind + " job key/permission shadow drift")
         if block.count("    permissions:\n") != 1 or block.count("    runs-on:") != 1:
             raise SystemExit("typed non-resurrection " + kind + " job permission leaf shadow drift")
         section = block.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
@@ -318,7 +336,7 @@ def validate_yaml_authority(source: str, kind: str) -> None:
 
 
 def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
-    """Prove 30 exact-diagnostic YAML shadow rejections without blob fallback."""
+    """Prove 39 exact-diagnostic YAML shadows including post-runs-on job overrides."""
     count = 0
     for kind, source in (("publisher", publisher), ("independent", independent)):
         validate_yaml_authority(source, kind)
@@ -361,6 +379,22 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
                 cases.append((label + " " + job,
                               source.replace(marker, marker + leaf, 1),
                               "job permission leaf shadow drift"))
+        for job, _ in jobs:
+            job_marker = "  " + job + ":\n"
+            if source.count(job_marker) != 1:
+                raise SystemExit("typed non-resurrection " + kind + " late permission fixture anchor drift: " + job)
+            prefix, block = source.split(job_marker, 1)
+            runs_on = "    runs-on: ubuntu-latest\n"
+            if runs_on not in block:
+                raise SystemExit("typed non-resurrection " + kind + " late permission runs-on anchor drift: " + job)
+            for label, leaf in (
+                ("plain", "    permissions:\n      contents: write\n"),
+                ("spaced", "    permissions :\n      contents: write\n"),
+                ("quoted", "    'permissions':\n      contents: write\n"),
+            ):
+                cases.append((label + " late " + job,
+                              prefix + job_marker + block.replace(runs_on, runs_on + leaf, 1),
+                              "job key/permission shadow drift"))
         for label, mutated, diagnostic in cases:
             if mutated == source:
                 raise SystemExit("typed non-resurrection " + kind + " unchanged YAML fixture: " + label)
@@ -374,9 +408,9 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
             else:
                 raise SystemExit("typed non-resurrection " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 30:
+    if count != 39:
         raise SystemExit("typed non-resurrection YAML negative inventory drift")
-    print("PASS: typed non-resurrection publisher/independent YAML event/root/job/permission authority (30 exact-diagnostic negatives)")
+    print("PASS: typed non-resurrection publisher/independent YAML event/root/job/permission authority (39 exact-diagnostic negatives)")
 
 
 def validate(publisher: str, independent: str, *, check_blob: bool = True) -> None:
