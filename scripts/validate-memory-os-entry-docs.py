@@ -348,9 +348,9 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             if any(re.fullmatch(r" {10,}(?:exit(?: +0)?|set +\+e)\s*", previous)
                    for previous in block[:offset]):
                 issues.append("Python validator unreachable or shell errexit disabled")
-            if any(re.fullmatch(r" {10,}if (?:false|0); then\s*", previous)
+            if any(re.match(r" {10,}(?:if|elif|case|while|until|for)\b", previous)
                    for previous in block[:offset]):
-                issues.append("Python validator inside disabled shell branch")
+                issues.append("Python validator may be conditionally skipped by shell control flow")
             commands.append(match.group(1))
             last_python = offset
         if last_python >= 0:
@@ -371,9 +371,10 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
             if tracked_positions and status_positions:
                 before_clean = after[:max(tracked_positions[0], status_positions[0]) + 1]
                 if any(re.fullmatch(
-                        r" {10,}(?:exit(?: +0)?|set +\+e|if (?:false|0); then)\s*",
-                        row) for row in before_clean):
-                    issues.append("post-validator clean checks unreachable or shell disabled")
+                        r" {10,}(?:exit(?: +0)?|set +\+e)\s*", row)
+                        or re.match(r" {10,}(?:if|elif|case|while|until|for)\b", row)
+                        for row in before_clean):
+                    issues.append("post-validator clean checks unreachable or conditional")
     if not commands:
         issues.append("no directly executed Python validator")
     if len(commands) != len(set(commands)):
@@ -451,6 +452,24 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         "duplicate push branch filter": fixture.replace(
             "  push:\n    branches: [so]\n",
             "  push:\n    branches: [so]\n    branches: [main]\n"),
+        "conditional validator with true shell branch": fixture.replace(
+            "          python scripts/check.py\n",
+            "          if true; then\n          python scripts/check.py\n          fi\n"),
+        "conditional validator with event shell branch": fixture.replace(
+            "          python scripts/check.py\n",
+            '          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then\n'
+            "          python scripts/check.py\n          fi\n"),
+        "validator inside shell loop": fixture.replace(
+            "          python scripts/check.py\n",
+            "          for attempt in 1; do\n          python scripts/check.py\n          done\n"),
+        "validator inside shell case": fixture.replace(
+            "          python scripts/check.py\n",
+            '          case "$GITHUB_EVENT_NAME" in\n'
+            "          push) python scripts/check.py ;;\n          esac\n"),
+        "conditional post-validator clean checks": fixture.replace(
+            "          python scripts/check.py\n          git diff --exit-code\n",
+            '          python scripts/check.py\n          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then\n'
+            "          git diff --exit-code\n          fi\n"),
         "masked post-validator untracked check": fixture.replace(
             '          git diff --exit-code\n          test -z "$(git status --porcelain)"\n',
             '          git diff --exit-code\n          test -z "$(git status --porcelain)" || true\n'),
@@ -588,7 +607,7 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
         ))
     if not failures:
         print(f"source-negative CI reachability verified: {len(observed)} workflows, "
-              f"{invocation_count} direct Python commands, 42 negative fixtures")
+              f"{invocation_count} direct Python commands, 47 negative fixtures")
 
 
 def main() -> int:
