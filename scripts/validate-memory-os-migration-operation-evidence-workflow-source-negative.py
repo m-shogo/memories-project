@@ -13,6 +13,31 @@ INDEPENDENT = ".github/workflows/migration-operation-evidence-source-negative.ym
 SELF = "scripts/validate-memory-os-migration-operation-evidence-workflow-source-negative.py"
 PUBLISHER_SHA = "fae2ea025d19fa8fce0b319a6392d67f368247fa"
 INDEPENDENT_SHA = "a148fe425e74a2bab16973771b6137e95be20479"
+
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/migration-operation-evidence.yml",
+    ".github/workflows/migration-operation-evidence-source-negative.yml",
+    "scripts/validate-memory-os-migration-operation-evidence-workflow-source-negative.py",
+    "contracts/operations/migration-operation-evidence-contract.v1.json",
+    "contracts/operations/migration-lifecycle-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "scripts/migration_operation_evidence_lib.py",
+    "scripts/create-memory-os-migration-operation-evidence.py",
+    "scripts/validate-memory-os-migration-operation-evidence.py",
+    "scripts/validate-memory-os-migration-operation-library-authority-negative.py",
+    "scripts/validate-memory-os-migration-operation-evidence-reconcile-negative.py",
+    "scripts/validate-memory-os-migration-operation-reconcile-authority-negative.py",
+    "scripts/reconcile-memory-os-migration-operation-evidence.py",
+    "scripts/validate-memory-os-migration-lifecycle.py",
+    "scripts/validate-memory-os-operability.py",
+    "docs/evidence/migration-operations/**",
+    "docs/fixtures/memory-os-operability/migration-operation-record.template.v1.json",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/migration-operation-evidence.yml",
+    ".github/workflows/migration-operation-evidence-source-negative.yml",
+    "scripts/validate-memory-os-migration-operation-evidence-workflow-source-negative.py",
+)
 CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 WRITER_SCOPE = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
@@ -20,6 +45,79 @@ PR_BASE = 'test "${GITHUB_BASE_REF:-}" = "so"'
 WRITER_REF = 'test "${GITHUB_REF:-}" = "refs/heads/so"'
 PR_SHA = '[[ "$expected" =~ ^[0-9a-f]{40}$ ]]'
 WRITER_SHA = '[[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]]'
+
+
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Pin every reviewed PR/push path independently of the full Git blob."""
+    expected = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+    paths = expected if trigger_paths is None else trigger_paths
+    if len(paths) != len(expected) or len(set(paths)) != len(expected):
+        raise SystemExit("migration operation CI trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    first, second = (push, pr) if publisher else (pr, push)
+    if any(source.count(marker) != 1 for marker in (first, second, end)):
+        raise SystemExit("migration operation CI trigger marker drift")
+    if not (source.index(first) < source.index(second) < source.index(end)):
+        raise SystemExit("migration operation CI event ordering drift")
+    for event, start, stop in (("first", first, second), ("second", second, end)):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in paths)
+        if actual != approved:
+            raise SystemExit("migration operation CI " + event + " exact trigger inventory drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove every single-event omission, quoted/unquoted addition and inventory truncation."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, paths, is_publisher in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS, True),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS, False),
+    ):
+        first, second = (push, pr) if is_publisher else (pr, push)
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        for event, start, stop in (("first", first, second), ("second", second, end)):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise SystemExit("migration operation CI mutation anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration operation CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except SystemExit:
+                    pass
+                else:
+                    raise SystemExit("migration operation CI accepted " + label + " " + event + " " + name)
+        try:
+            validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("migration operation CI accepted shortened " + label + " inventory")
+    print("PASS: migration operation CI event triggers (40 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 def require(condition: bool, message: str) -> None:
@@ -87,6 +185,8 @@ INDEPENDENT_REQUIRED = (
 def validate(publisher: str, independent: str) -> None:
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -155,6 +255,7 @@ def runtime_proofs() -> None:
 def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     return 0
