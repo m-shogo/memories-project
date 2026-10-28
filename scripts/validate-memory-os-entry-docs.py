@@ -295,6 +295,24 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     for event in ("pull_request", "push"):
         if relative not in paths[event]:
             issues.append(f"{event}: source-negative workflow not self-triggered")
+    # A reviewed third-step executable must also be reachable when its own
+    # validator/test sources change; checking the workflow self-trigger and
+    # second-step Python commands alone is insufficient.
+    if relative == ".github/workflows/local-migration-recovery-source-negative.yml":
+        independent = "scripts/validate-memory-os-local-migration-recovery-artifact-reconcile-negative.py"
+        for event in ("pull_request", "push"):
+            if independent not in paths[event]:
+                issues.append(f"{event}: local recovery third-step validator trigger missing")
+    if relative == ".github/workflows/live-object-stage-source-negative.yml":
+        go_test_sources = (
+            "services/import-api/internal/httpserver/live_object_load_test.go",
+            "services/import-api/internal/httpserver/live_load_test.go",
+            "services/import-api/internal/httpserver/live_result_atomic_test.go",
+        )
+        for event in ("pull_request", "push"):
+            for test_source in go_test_sources:
+                if test_source not in paths[event]:
+                    issues.append(f"{event}: reviewed Go test source trigger missing: {test_source}")
     if len(re.findall(r"(?m)^    if:", source)) != 1:
         issues.append("duplicate or missing job-level event condition")
     if len(re.findall(r"(?m)^permissions:$", source)) != 1:
@@ -781,7 +799,7 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
     return issues
 
 
-EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 183
+EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 188
 
 
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
@@ -886,6 +904,16 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
         '          go-version: "1.23.x"\n'
         "          cache: false\n"
         "      - name: Verify source\n",
+    )
+    go_test_sources = (
+        "services/import-api/internal/httpserver/live_object_load_test.go",
+        "services/import-api/internal/httpserver/live_load_test.go",
+        "services/import-api/internal/httpserver/live_result_atomic_test.go",
+    )
+    go_fixture = go_fixture.replace(
+        '      - "scripts/check.py"\n',
+        '      - "scripts/check.py"\n'
+        + "".join(f'      - "{source}"\n' for source in go_test_sources),
     )
     go_fixture += (
         "      - name: Prove reviewed Go checks\n"
@@ -1069,6 +1097,16 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "          bypass() { echo unreviewed; }\n"),
         "strict-shell unreviewed check after clean": strict_fixture + (
             "          git diff --check\n"),
+        "setup-go PR missing first test source trigger": go_fixture.replace(
+            f'      - "{go_test_sources[0]}"\n', "", 1),
+        "setup-go push missing first test source trigger": "".join(
+            go_fixture.rsplit(f'      - "{go_test_sources[0]}"\n', 1)),
+        "setup-go missing second test source trigger": go_fixture.replace(
+            f'      - "{go_test_sources[1]}"\n', ""),
+        "local-clone PR missing independent validator trigger": local_fixture.replace(
+            f'      - "{local_script}"\n', "", 1),
+        "local-clone push missing independent validator trigger": "".join(
+            local_fixture.rsplit(f'      - "{local_script}"\n', 1)),
         "validator precedes source verification": reversed_fixture,
         "setup-go validator precedes source verification": reversed_go_fixture,
         "extra shell run step after validator": fixture + (
