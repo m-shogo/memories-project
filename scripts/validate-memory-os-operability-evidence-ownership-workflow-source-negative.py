@@ -179,6 +179,7 @@ def validate(publisher: str, independent: str) -> None:
         ("publisher", publisher, publisher_required, REVIEWED_PUBLISHER),
         ("independent", independent, independent_required, REVIEWED_INDEPENDENT),
     ):
+        validate_yaml_authority(content, label)
         for token in required:
             if token not in content:
                 raise SystemExit("ownership " + label + " missing source: " + token)
@@ -188,6 +189,100 @@ def validate(publisher: str, independent: str) -> None:
         raise SystemExit("ownership raw log disclosure")
     if "path.parent.mkdir(parents=True, exist_ok=True)" in publisher:
         raise SystemExit("ownership diagnostic creates unchecked parent")
+
+
+def validate_yaml_authority(content: str, kind: str) -> None:
+    """Pin effective YAML event/root/permission authority for ownership publisher and CI."""
+    if kind == "publisher":
+        name = "name: Operability Evidence Ownership"
+        events = ["  push:", "  workflow_dispatch:"]
+        roots = [name, "on:", "permissions:", "concurrency:", "jobs:"]
+        permission = "  contents: write"
+    elif kind == "independent":
+        name = "name: Operability Evidence Ownership Source Negative"
+        events = ["  pull_request:", "  push:"]
+        roots = [name, "on:", "permissions:", "jobs:"]
+        permission = "  contents: read"
+    else:
+        raise SystemExit("ownership unknown YAML authority kind")
+    prefix = "ownership " + kind + " "
+    if (content.count("\non:\n") != 1 or content.count("\npermissions:\n") != 1
+            or not content.startswith(name + "\n\non:\n")):
+        raise SystemExit(prefix + "event header drift")
+    event_block = content.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_keys = [
+        line for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("    ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_keys != events:
+        raise SystemExit(prefix + "event topology drift")
+    root_keys = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if root_keys != roots:
+        raise SystemExit(prefix + "root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != [permission]:
+        raise SystemExit(prefix + "permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    """Require exact semantic diagnostics for both ownership workflow authorities."""
+    count = 0
+    for kind, content, permission, alternate in (
+        ("publisher", publisher, "write", "read"),
+        ("independent", independent, "read", "write"),
+    ):
+        validate_yaml_authority(content, kind)
+        event = content.replace("on:\n", "on:\n  issues:\n", 1)
+        if event == content:
+            raise SystemExit("ownership " + kind + " event fixture anchor drift")
+        cases = [("extra event", event, "event topology drift")]
+        for label, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: " + alternate + "\n"),
+            ("quoted permissions", "'permissions':\n  contents: " + alternate + "\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((label, content.rstrip("\n") + "\n" + suffix,
+                          "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: " + permission + "\n"
+        if content.count(marker) != 1:
+            raise SystemExit("ownership " + kind + " permission fixture anchor drift")
+        for label, leaf in (
+            ("spaced contents", "  contents : " + alternate + "\n"),
+            ("quoted contents", "  'contents': " + alternate + "\n"),
+        ):
+            cases.append((label, content.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        if len(cases) != 9:
+            raise SystemExit("ownership " + kind + " YAML fixture count drift")
+        for label, mutated, diagnostic in cases:
+            if mutated == content:
+                raise SystemExit("ownership " + kind + " unchanged YAML fixture: " + label)
+            try:
+                validate_yaml_authority(mutated, kind)
+            except SystemExit as exc:
+                expected = "ownership " + kind + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit("ownership " + kind + " wrong YAML diagnostic: "
+                                     + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("ownership " + kind + " accepted YAML mutation: " + label)
+            count += 1
+    if count != 18:
+        raise SystemExit("ownership YAML negative population drift")
+    print("PASS: ownership publisher/independent YAML event/root/permission authority (18 exact-diagnostic negatives)")
 
 
 def inline_writer(publisher: str) -> str:
@@ -346,6 +441,7 @@ def predicate_runtime(independent: str) -> None:
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     validate(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
     prove_trigger_reachability_negatives(publisher, independent)
