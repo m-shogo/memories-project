@@ -1752,6 +1752,46 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             "duplicate or missing job-level event condition",
         "disabled job": "missing reviewed live PR/push job condition",
     }
+    direct_command_cases = {
+        "help-only validator execution",
+        "short-help validator execution",
+        "validator with unreviewed repo root",
+        "validator output redirected",
+    }
+    heredoc_cases = {
+        "validator inert in cat heredoc",
+        "validator inert in noop heredoc",
+    }
+    function_cases = {
+        "validator trapped in shell function",
+        "validator trapped in function keyword",
+        "validator trapped in multiline function",
+    }
+    resolution_cases = {
+        "validator shadowed by python alias",
+        "validator shadowed by hash pin",
+        "validator shadowed by sourced shell",
+        "validator shadowed by PATH assignment",
+        "validator shadowed by exported PYTHONPATH",
+        "validator shadowed by eval",
+    }
+    trap_cases = {
+        "ERR trap masks validator failure",
+        "EXIT trap masks validator failure",
+        "DEBUG trap masks validator failure",
+        "RETURN trap masks validator failure",
+        "unreviewed EXIT cleanup trap",
+    }
+    short_circuit_cases = {
+        "validator skipped by true-or shell list",
+        "validator skipped by false-and shell list",
+    }
+    conditional_shell_cases = {
+        "conditional validator with true shell branch",
+        "conditional validator with event shell branch",
+        "validator inside shell loop",
+        "validator inside shell case",
+    }
     diagnostic_bound = 0
     for name, mutation in cases.items():
         if name.startswith("setup-go "):
@@ -1817,13 +1857,27 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             expected_issue = job_condition_cases[name]
         elif name == "missing exact HEAD check":
             expected_issue = "missing, shadowed or duplicated exact-source HEAD comparison"
+        elif name in direct_command_cases:
+            expected_issue = "unreviewed/bypassed direct Python command"
+        elif name in heredoc_cases:
+            expected_issue = "Python validator may be inert heredoc content"
+        elif name in function_cases:
+            expected_issue = "Python validator may be trapped in shell function"
+        elif name in resolution_cases:
+            expected_issue = "Python validator command resolution may be overridden"
+        elif name in trap_cases:
+            expected_issue = "unreviewed shell trap may mask validator failure"
+        elif name in short_circuit_cases:
+            expected_issue = "Python validator short-circuited by preceding shell list"
+        elif name in conditional_shell_cases:
+            expected_issue = "Python validator may be conditionally skipped by shell control flow"
         if expected_issue is not None:
             diagnostic_bound += 1
             if not any(expected_issue in issue for issue in issues):
                 failures.append(
                     f"source-negative negative rejected for wrong reason: {name}: {issues}"
                 )
-    if diagnostic_bound != 97:
+    if diagnostic_bound != 123:
         failures.append(
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
