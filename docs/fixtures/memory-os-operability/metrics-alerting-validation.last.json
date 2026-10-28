@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v2",
   "workflow": "reconcile-metrics-authority",
-  "sourceCommitSha": "9b01b08d8c559ad79301ba9ee5313d7e44a34f48",
+  "sourceCommitSha": "5231664bc09ff7532ba32193cafc44d05a389f74",
   "result": "FAIL",
   "exitCode": 1,
   "steps": [
@@ -23,7 +23,7 @@
     {
       "command": "python scripts/reconcile-memory-os-metrics-contract.py",
       "exitCode": 1,
-      "output": "ENTRYPOINT DOCUMENT VALIDATION FAILED\n- source-negative reachability positive control failed\nMETRICS CONTRACT RECONCILE FAILED: validator rejected authority: scripts/validate-memory-os-entry-docs.py returned 1\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nautonomous-learning guard verified: Autonomous improvement/learning contract validation PASS\nautonomous-learning guard verified: Autonomous learning negative validation PASS (128 fail-closed cases)\n"
+      "output": "ENTRYPOINT DOCUMENT VALIDATION FAILED\n- source-negative reachability negative escaped: job runner override\n- source-negative reachability negative escaped: job timeout override\nMETRICS CONTRACT RECONCILE FAILED: validator rejected authority: scripts/validate-memory-os-entry-docs.py returned 1\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS metrics contract validation PASS\nmetrics: 28  slis: 17  slos: 3  alerts: 7\nnegative cases rejected: 14\nOPS-P0-004 status: PARTIAL\nMemory OS metrics scrape validation PASS\nPrometheus exporter: implemented\nauthenticated scrape handler: implemented\nHTTP server mount seam: supported, production unmounted\nOPS-P0-004 status: PARTIAL\nproduction decision: NO_GO\nMemory OS production-operability validation PASS\nready gates: 0/10\nproduction decision: NO_GO\nautonomous-learning guard verified: Autonomous improvement/learning contract validation PASS\nautonomous-learning guard verified: Autonomous learning negative validation PASS (128 fail-closed cases)\n"
     }
   ],
   "containsSecrets": false,
