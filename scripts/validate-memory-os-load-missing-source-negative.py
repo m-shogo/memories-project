@@ -190,6 +190,79 @@ def load_missing_trigger_matrix_negatives(publisher: str, independent: str) -> N
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Pin reviewed root YAML mapping and read-only permission leaves."""
+    for label, value, roots in (
+        ("publisher", publisher, ["name: Reconcile Load Missing Evidence",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Load Missing Evidence Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [line for line in value.splitlines()
+                  if line.strip() and not line[0].isspace()
+                  and not line.lstrip().startswith("#")]
+        if actual != roots:
+            raise AssertionError("load-missing " + label + " root YAML key shadow drift")
+        if value.count("\npermissions:\n") != 1:
+            raise AssertionError("load-missing " + label + " permission boundary drift")
+        leaves = []
+        for line in value.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise AssertionError("load-missing " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow mutations."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, value, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = [
+            (mutation, value + "\n" + suffix, "root YAML key shadow drift")
+            for mutation, suffix in (
+                ("spaced on", "on :\n  issues:\n"),
+                ("quoted on", "'on':\n  issues:\n"),
+                ("spaced jobs", "jobs : {}\n"),
+                ("quoted jobs", "'jobs': {}\n"),
+            )
+        ]
+        marker = "\npermissions:\n  contents: read\n"
+        if value.count(marker) != 1:
+            raise AssertionError("load-missing " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, value.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == value:
+                raise AssertionError("load-missing unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except AssertionError as exc:
+                expected = "load-missing " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError("load-missing wrong YAML diagnostic: "
+                                         + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("load-missing accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise AssertionError("load-missing YAML negative inventory drift")
+    print("PASS: load-missing root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def policy(s: str) -> None:
     if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
         raise AssertionError("missing-evidence immutable Actions drift")
@@ -325,6 +398,8 @@ def main() -> None:
     policy(source)
     load_missing_validate_trigger_matrix(source, independent)
     load_missing_trigger_matrix_negatives(source, independent)
+    validate_yaml_root_permission(source, independent)
+    yaml_root_permission_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
