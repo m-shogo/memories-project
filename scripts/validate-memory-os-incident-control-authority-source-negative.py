@@ -16,6 +16,124 @@ SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "ba7f30a04b9c81142a896e3fcab95d2f656cdffb"
 REVIEWED_INDEPENDENT = "efbb317ad48d26d5424ae784843cb9462575d564"
 
+PUBLISHER_TRIGGER_PATHS = tuple([".github/workflows/reconcile-incident-control-authority.yml","contracts/operations/incident-control-exercise-contract.v1.json","contracts/operations/production-operability-status.json","docs/fixtures/memory-os-operability/incident-control-exercise-results.sample.v1.json","scripts/reconcile-memory-os-incident-control-authority.py","scripts/validate-memory-os-incident-control-authority-reconcile-negative.py","scripts/validate-memory-os-incident-control-exercise.py","scripts/validate-memory-os-incident-response.py","scripts/validate-memory-os-incident-tabletop.py","scripts/validate-memory-os-operability.py"])
+INDEPENDENT_TRIGGER_PATHS = tuple([".github/workflows/reconcile-incident-control-authority.yml",".github/workflows/incident-control-authority-source-negative.yml","scripts/validate-memory-os-incident-control-authority-source-negative.py"])
+
+
+
+def validate_trigger_reachability(
+    publisher: str, independent: str, *,
+    publisher_paths: tuple[str, ...] | None = None,
+    independent_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Pin publisher PR/push/schedule/dispatch and independent PR/push path topology."""
+    pub = PUBLISHER_TRIGGER_PATHS if publisher_paths is None else publisher_paths
+    ind = INDEPENDENT_TRIGGER_PATHS if independent_paths is None else independent_paths
+    if (len(pub) != len(PUBLISHER_TRIGGER_PATHS) or
+        len(ind) != len(INDEPENDENT_TRIGGER_PATHS) or
+        len(set(pub)) != len(pub) or len(set(ind)) != len(ind)):
+        raise AssertionError("incident authority shortened or duplicated trigger inventory")
+    pub_paths = "".join('      - "' + path + '"\n' for path in pub)
+    ind_paths = "".join('      - "' + path + '"\n' for path in ind)
+    expected_pub = (
+        "name: Reconcile Incident Control Authority\n\non:\n"
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + pub_paths +
+        "  push:\n    branches:\n      - so\n    paths:\n" + pub_paths +
+        '  schedule:\n    - cron: "37 22 * * *"\n  workflow_dispatch:\n'
+    )
+    expected_ind = (
+        "name: Incident Control Authority Source Negative\n\non:\n"
+        "  pull_request:\n    branches:\n      - so\n    paths:\n" + ind_paths +
+        "  push:\n    branches:\n      - so\n    paths:\n" + ind_paths
+    )
+    for label, value, expected in (
+        ("publisher", publisher, expected_pub), ("independent", independent, expected_ind)
+    ):
+        if value.count("\npermissions:\n") != 1:
+            raise AssertionError("incident authority " + label + " permissions boundary drift")
+        if value.split("\npermissions:\n", 1)[0] != expected:
+            raise AssertionError("incident authority " + label + " exact event trigger drift")
+
+
+def trigger_negatives(publisher: str, independent: str) -> None:
+    """Independent semantic proof: each event path, extras, truncation and event matrix."""
+    cases = (
+        ("publisher PR", publisher, "  pull_request:\n    branches:\n      - so\n    paths:\n",
+         "  push:\n", PUBLISHER_TRIGGER_PATHS, True),
+        ("publisher push", publisher, "  push:\n    branches:\n      - so\n    paths:\n",
+         "  schedule:\n", PUBLISHER_TRIGGER_PATHS, True),
+        ("independent PR", independent, "  pull_request:\n    branches:\n      - so\n    paths:\n",
+         "  push:\n", INDEPENDENT_TRIGGER_PATHS, False),
+        ("independent push", independent, "  push:\n    branches:\n      - so\n    paths:\n",
+         "\npermissions:\n", INDEPENDENT_TRIGGER_PATHS, False),
+    )
+    omitted = added = 0
+    for label, value, start, stop, paths, is_publisher in cases:
+        if value.count(start) != 1 or value.count(stop) != 1:
+            raise AssertionError("incident authority event negative anchor drift: " + label)
+        begin = value.index(start) + len(start)
+        end = value.index(stop, begin)
+        block = value[begin:end]
+        mutations = []
+        for path in paths:
+            token = '      - "' + path + '"\n'
+            if block.count(token) != 1:
+                raise AssertionError("incident authority trigger negative anchor missing: " + path)
+            mutations.append(("omission " + path, block.replace(token, "", 1), True))
+        mutations.extend((
+            ("quoted extra", block + '      - "unreviewed/**"\n', False),
+            ("quoted duplicate", block + '      - "' + paths[0] + '"\n', False),
+            ("unquoted extra", block + "      - unreviewed/**\n", False),
+            ("unquoted duplicate", block + "      - " + paths[0] + "\n", False),
+        ))
+        for name, changed, is_omission in mutations:
+            mutated = value[:begin] + changed + value[end:]
+            if mutated == value:
+                raise AssertionError("incident authority unchanged negative fixture: " + name)
+            try:
+                if is_publisher:
+                    validate_trigger_reachability(mutated, independent)
+                else:
+                    validate_trigger_reachability(publisher, mutated)
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("incident authority accepted " + label + " " + name)
+            omitted += int(is_omission)
+            added += int(not is_omission)
+    for label, kwargs in (
+        ("publisher", {"publisher_paths": PUBLISHER_TRIGGER_PATHS[:-1]}),
+        ("independent", {"independent_paths": INDEPENDENT_TRIGGER_PATHS[:-1]}),
+    ):
+        try:
+            validate_trigger_reachability(publisher, independent, **kwargs)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("incident authority accepted shortened " + label + " inventory")
+    for label, value, is_publisher in (
+        ("publisher schedule deletion", publisher.replace(
+            '  schedule:\n    - cron: "37 22 * * *"\n', "", 1), True),
+        ("publisher unreviewed event", publisher.replace(
+            "  workflow_dispatch:\n", "  workflow_dispatch:\n  issues:\n", 1), True),
+        ("independent dispatch introduction", independent.replace(
+            "\npermissions:\n", "  workflow_dispatch:\n\npermissions:\n", 1), False),
+    ):
+        try:
+            if is_publisher:
+                validate_trigger_reachability(value, independent)
+            else:
+                validate_trigger_reachability(publisher, value)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("incident authority accepted event topology mutation: " + label)
+    if (omitted, added) != (26, 16):
+        raise AssertionError("incident authority trigger negative population drift")
+    print("PASS: incident authority exact event triggers (26 omissions; 16 additions; "
+          "2 shortened inventories; 3 event topology negatives)")
+
+
 def blob(content: str) -> str:
     data = content.encode("utf-8")
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
@@ -141,6 +259,8 @@ def main() -> None:
         if marker not in independent:
             raise AssertionError("incident authority independent CI reachability drift: " + marker)
     reviewed_blob_negatives(publisher, independent)
+    validate_trigger_reachability(publisher, independent)
+    trigger_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Confirm exact clean PR authority source", False)
