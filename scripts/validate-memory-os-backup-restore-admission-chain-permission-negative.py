@@ -533,8 +533,8 @@ def run_independent_workflow_permission_negative() -> None:
     require(completed.returncode == 0,
             "independent workflow permission negative failed: exit " + str(completed.returncode))
     for expected in (
-        "PASS: independent permission event-specific trigger reachability (36 removals; 1 shortened inventory negative)",
-        "PASS: admission chain negative event-specific trigger reachability (152 removals; 1 shortened inventory negative)",
+        "PASS: independent permission event-specific trigger reachability (36 removals; 8 additions; 1 shortened inventory negative)",
+        "PASS: admission chain negative event-specific trigger reachability (152 removals; 8 additions; 1 shortened inventory negative)",
         "Backup/restore admission-chain workflow permission negative PASS",
     ):
         require(expected in completed.stdout,
@@ -554,13 +554,12 @@ def validate_publisher_trigger_paths(source: str, *, trigger_paths: tuple[str, .
     pr = source.split(pr_marker, 1)[1].split(push_marker, 1)[0]
     push = source.split(push_marker, 1)[1].split(dispatch_marker, 1)[0]
     for event, block in (("pull_request", pr), ("push", push)):
-        actual = [line[9:-1] for line in block.splitlines()
-                  if line.startswith('      - "') and line.endswith('"')]
-        require(len(actual) == len(trigger_paths) and set(actual) == set(trigger_paths),
-                "admission publisher " + event + " trigger inventory drift")
-        for item in trigger_paths:
-            require(block.count('      - "' + item + '"\n') == 1,
-                    "admission publisher " + event + " missing or duplicate trigger: " + item)
+        approved = tuple('      - "' + item + '"' for item in trigger_paths)
+        actual = tuple(
+            line for line in block.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+        require(actual == approved, "admission publisher " + event + " exact trigger inventory drift")
 
 
 def prove_publisher_trigger_path_negatives(source: str) -> None:
@@ -581,13 +580,29 @@ def prove_publisher_trigger_path_negatives(source: str) -> None:
             except Fail:
                 continue
             raise Fail("admission publisher accepted missing " + event + " trigger: " + item)
+    for event in ("pull_request", "push"):
+        marker = "  pull_request:\n    paths:\n" if event == "pull_request" else push_marker
+        for label, injected in (
+            ("quoted extra", '      - "unreviewed/**"\n'),
+            ("quoted duplicate", '      - "' + PUBLISHER_TRIGGER_PATHS[0] + '"\n'),
+            ("unquoted extra", "      - unreviewed/**\n"),
+            ("unquoted duplicate", "      - " + PUBLISHER_TRIGGER_PATHS[0] + "\n"),
+        ):
+            require(source.count(marker) == 1, "admission publisher addition marker drift: " + event)
+            mutated = source.replace(marker, marker + injected, 1)
+            require(mutated != source, "admission publisher addition fixture unchanged")
+            try:
+                validate_publisher_trigger_paths(mutated)
+            except Fail:
+                continue
+            raise Fail("admission publisher accepted " + event + " addition: " + label)
     try:
         validate_publisher_trigger_paths(source, trigger_paths=PUBLISHER_TRIGGER_PATHS[:-1])
     except Fail:
         pass
     else:
         raise Fail("admission publisher accepted shortened trigger inventory")
-    print("PASS: admission publisher event-specific trigger reachability (32 removals; 1 shortened inventory negative)")
+    print("PASS: admission publisher event-specific trigger reachability (32 removals; 8 additions; 1 shortened inventory negative)")
 
 
 def main() -> int:
