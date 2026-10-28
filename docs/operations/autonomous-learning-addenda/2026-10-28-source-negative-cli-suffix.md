@@ -88,3 +88,28 @@
 - **Why safe / reusable mechanism:** The shared read-only validator now rejects two ways to make a visible Python line non-executable. No reviewed workflow, production registry/evidence, credential, traffic, readiness or human promotion authority was modified.
 - **Protected-authority check:** All nine protected contract/registry blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`, with zero registered/semantically eligible generations, approved recovery objectives, executable reviewed requests, generation evidence, complete typed eight-domain records or final candidates. Learning remains supplementary history, never production or promotion evidence.
 - **Next safe target:** Confirm exact-source CI, then examine command-resolution shadowing (aliases, shell functions named `python`, PATH changes) and whether CI still validates all 52 workflows on each relevant source change.
+
+## 2026-10-28 — Exact-source CI confirms 58-case heredoc/function guard
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** [Autonomous Learning Guard #40671625215](https://github.com/m-shogo/memories-project/actions/runs/40671625215) completed SUCCESS on exact `9d4a5d27` source. Job logs prove 52 workflows, 63 direct Python commands, **58 executed semantic reachability negatives**, 128 canonical learning negatives, and 1,186 helper-ancestor negatives. [#40671504188](https://github.com/m-shogo/memories-project/actions/runs/40671504188) also completed SUCCESS on exact `5e0e85ec` source, proving the corrected 53-case inventory and restoring the previously shadowed fixture.
+- **Why safe / reusable mechanism:** The existing read-only entrypoint script rejects inert heredoc/function Python lines; the exact-source CI now proves the expanded fixture inventory is executed, not merely declared.
+- **Protected-authority check:** All nine protected contract/registry blobs remained unchanged after both code changes. `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED`; no production evidence or human promotion is inferred.
+
+## 2026-10-28 — Command-resolution overrides rejected in source-negative CI
+
+### Material failure: symptom, evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **Symptom / evidence:** A read-only audit of all 52 source-negative workflows found no alias, hash-pin, source, eval, exec or PATH/PYTHONPATH assignment in the direct validator shell blocks. The common scanner nevertheless did not reject these future overrides. Two reviewed migration workflows do use a cleanup `trap`; that legitimate pattern was preserved. This is a static future-bypass gap, not a production failure.
+- **Verified root cause:** The scanner checked the Python line and shell control flow but not preceding command-resolution changes. This reuses the already recorded readonly-workflow shell function/hash-pin lesson rather than repeating a known failed approach.
+- **Failed approach:** Literal `python scripts/check.py` and clean-source checks alone do not prove the intended interpreter is invoked if an alias, hash pin, sourced shell file, eval or PATH override changes command resolution.
+- **Correction / executable recurrence guard:** [797dd48b](https://github.com/m-shogo/memories-project/commit/797dd48ba5dc04321e909f25dbbc3a67331f4af5) rejects such unreviewed overrides before Python validator execution. Six semantic negatives cover alias, hash pin, source, PATH, exported PYTHONPATH and eval; fixture inventory advances from 58 to 64. Legitimate reviewed cleanup traps are not blanket-rejected.
+- **Retry condition:** Revisit only if reviewed workflow command-resolution architecture changes or an observed bypass escapes the bounded classifier. Do not retry unchanged canonical large-file transport, Quay MinIO HTTP 401 or human-promotion blockers.
+
+### Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **Outcome / evidence:** GitHub post-write source/diff reads confirm only the CI-reachable entrypoint script changed (33 additions, 1 deletion). Sixty-four unique literal negative fixture names were statically counted before write. Exact-source [Autonomous Learning Guard #40671800058](https://github.com/m-shogo/memories-project/actions/runs/40671800058) was QUEUED at recording time; CI success is not asserted.
+- **Why safe / reusable mechanism:** The new guard checks interpreter resolution while retaining all existing workflow triggers, step execution paths, read-only permissions and the two legitimate cleanup traps. No production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective/evidence or human promotion authority changed.
+- **Protected-authority check:** All nine protected authority blob SHAs remained unchanged. `productionDecision=NO_GO`; OPS-P0-007=`PREREQUISITES_BLOCKED`, with zero eligible generations, approved objectives, executable reviewed requests, generation evidence, typed eight-domain records or final candidates. Learning remains supplemental and cannot promote readiness.
+- **Next safe target:** Verify exact-source 64-case CI and inspect cross-step `GITHUB_PATH`/`GITHUB_ENV` command-resolution persistence and step-level env overrides without altering reviewed workflows.
