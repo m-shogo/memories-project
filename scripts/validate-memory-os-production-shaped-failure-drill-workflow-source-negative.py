@@ -194,12 +194,103 @@ def read(relative: str) -> str:
         raise SystemExit("production-shaped drill source missing/substituted: " + relative) from exc
 
 
+
+def validate_yaml_authority(content: str, *, publisher: bool) -> None:
+    """Bind exact event/root/read-only YAML authority independently of blob."""
+    label = "publisher" if publisher else "independent"
+    name = ("Production Shaped Failure Drill Admission" if publisher
+            else "Production Shaped Failure Drills Source Negative")
+    paths = PUBLISHER_TRIGGER_PATHS if publisher else INDEPENDENT_TRIGGER_PATHS
+
+    def event(key: str) -> str:
+        return ("  " + key + ":\n    branches:\n      - so\n    paths:\n"
+                + "".join('      - "' + item + '"\n' for item in paths))
+
+    expected_events = (
+        event("push") + event("pull_request") + "  workflow_dispatch:\n"
+        if publisher else event("pull_request") + event("push")
+    )
+    expected_header = "name: " + name + "\n\non:\n" + expected_events
+    if (content.count("\npermissions:\n") != 1
+            or content.split("\npermissions:\n", 1)[0] != expected_header):
+        raise SystemExit("production-shaped drill " + label + " exact event header drift")
+    roots = [
+        line for line in content.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    expected_roots = ["name: " + name, "on:", "permissions:"]
+    if publisher:
+        expected_roots.append("concurrency:")
+    expected_roots.append("jobs:")
+    if roots != expected_roots:
+        raise SystemExit("production-shaped drill " + label + " root YAML key shadow drift")
+    permission_rows = []
+    for line in content.split("\npermissions:\n", 1)[1].splitlines():
+        if line.strip() and not line[0].isspace():
+            break
+        if line.strip() and not line.lstrip().startswith("#"):
+            permission_rows.append(line)
+    if permission_rows != ["  contents: read"]:
+        raise SystemExit("production-shaped drill " + label + " permission leaf shadow drift")
+
+
+def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
+    total = 0
+    for label, content, is_publisher in (
+        ("publisher", publisher, True), ("independent", independent, False),
+    ):
+        validate_yaml_authority(content, publisher=is_publisher)
+        cases = [
+            ("extra event", content.replace("on:\n", "on:\n  issues:\n", 1),
+             "exact event header drift"),
+        ]
+        for name, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced permissions", "permissions :\n  contents: write\n"),
+            ("spaced jobs", "jobs : {}\n"),
+        ):
+            cases.append((name, content + "\n" + suffix, "root YAML key shadow drift"))
+        anchor = "permissions:\n  contents: read\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("production-shaped drill " + label
+                             + " permission mutation anchor drift")
+        for name, extra in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((name, content.replace(anchor, anchor + extra, 1),
+                          "permission leaf shadow drift"))
+        for name, altered, diagnostic in cases:
+            if altered == content:
+                raise SystemExit("production-shaped drill YAML fixture unchanged: " + name)
+            try:
+                validate_yaml_authority(altered, publisher=is_publisher)
+            except SystemExit as exc:
+                expected = "production-shaped drill " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise SystemExit(
+                        "production-shaped drill YAML wrong diagnostic: " + label + "/"
+                        + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("production-shaped drill accepted YAML shadow: "
+                                 + label + "/" + name)
+            total += 1
+    if total != 14:
+        raise SystemExit("production-shaped drill YAML fixture count drift")
+    print("PASS: production-shaped drill publisher/independent YAML event/root/permission (14 exact-diagnostic negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True
 ) -> None:
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
+    validate_yaml_authority(publisher, publisher=True)
+    validate_yaml_authority(independent, publisher=False)
     for name, source, required, reviewed in (
         ("publisher", publisher, PUBLISHER_REQUIRED, PUBLISHER_SHA),
         ("independent", independent, INDEPENDENT_REQUIRED, INDEPENDENT_SHA),
@@ -375,6 +466,7 @@ def main() -> int:
     independent = read(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
+    prove_yaml_authority_negatives(publisher, independent)
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
     negatives(publisher, independent)
