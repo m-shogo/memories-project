@@ -62,6 +62,80 @@ def validate_trigger_reachability(
             raise AssertionError("mutation-evidence " + label + " exact event trigger drift")
 
 
+
+def validate_yaml_root_permission(publisher: str, independent: str) -> None:
+    """Require exclusive reviewed YAML root mapping and read-only permission leaves."""
+    for label, source, roots in (
+        ("publisher", publisher, ["name: Reconcile Deletion Mutation Evidence",
+                                  "on:", "permissions:", "concurrency:", "jobs:"]),
+        ("independent", independent, ["name: Deletion Mutation Evidence Source Negative",
+                                      "on:", "permissions:", "jobs:"]),
+    ):
+        actual = [
+            line for line in source.splitlines()
+            if line.strip() and not line[0].isspace()
+            and not line.lstrip().startswith("#")
+        ]
+        if actual != roots:
+            raise AssertionError("mutation-evidence " + label + " root YAML key shadow drift")
+        if source.count("\npermissions:\n") != 1:
+            raise AssertionError("mutation-evidence " + label + " permission boundary drift")
+        leaves = []
+        for line in source.split("\npermissions:\n", 1)[1].splitlines():
+            if line.strip() and not line[0].isspace():
+                break
+            if line.strip() and not line.lstrip().startswith("#"):
+                leaves.append(line)
+        if leaves != ["  contents: read"]:
+            raise AssertionError("mutation-evidence " + label + " permission leaf shadow drift")
+
+
+def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
+    """Prove twelve exact-diagnostic YAML root and permission shadow rejections."""
+    validate_yaml_root_permission(publisher, independent)
+    count = 0
+    for label, source, other, is_publisher in (
+        ("publisher", publisher, independent, True),
+        ("independent", independent, publisher, False),
+    ):
+        cases = []
+        for mutation, suffix in (
+            ("spaced on", "on :\n  issues:\n"),
+            ("quoted on", "'on':\n  issues:\n"),
+            ("spaced jobs", "jobs : {}\n"),
+            ("quoted jobs", "'jobs': {}\n"),
+        ):
+            cases.append((mutation, source + "\n" + suffix, "root YAML key shadow drift"))
+        marker = "\npermissions:\n  contents: read\n"
+        if source.count(marker) != 1:
+            raise AssertionError("mutation-evidence " + label + " permission fixture anchor drift")
+        for mutation, leaf in (
+            ("spaced contents", "  contents : write\n"),
+            ("quoted contents", "  'contents': write\n"),
+        ):
+            cases.append((mutation, source.replace(marker, marker + leaf, 1),
+                          "permission leaf shadow drift"))
+        for mutation, changed, diagnostic in cases:
+            if changed == source:
+                raise AssertionError("mutation-evidence unchanged YAML fixture: " + mutation)
+            try:
+                if is_publisher:
+                    validate_yaml_root_permission(changed, other)
+                else:
+                    validate_yaml_root_permission(other, changed)
+            except AssertionError as exc:
+                expected = "mutation-evidence " + label + " " + diagnostic
+                if str(exc) != expected:
+                    raise AssertionError("mutation-evidence wrong YAML diagnostic: "
+                                         + label + " " + mutation + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("mutation-evidence accepted YAML shadow: " + label + " " + mutation)
+            count += 1
+    if count != 12:
+        raise AssertionError("mutation-evidence YAML negative inventory drift")
+    print("PASS: mutation-evidence root/permission YAML authority (12 exact-diagnostic negatives)")
+
+
 def trigger_negatives(publisher: str, independent: str) -> None:
     """Prove each event path omission, unquoted addition and event topology."""
     cases = (
@@ -344,6 +418,8 @@ def main() -> None:
     reviewed_negatives(publisher, independent)
     validate_trigger_reachability(publisher, independent)
     trigger_negatives(publisher, independent)
+    validate_yaml_root_permission(publisher, independent)
+    yaml_root_permission_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Capture exact PR source", False)
