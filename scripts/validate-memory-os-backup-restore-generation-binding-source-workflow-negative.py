@@ -216,6 +216,42 @@ def validate_yaml_authority(content: str, kind: str) -> None:
             permission_rows.append(line)
     if permission_rows != ["  contents: read"]:
         raise SystemExit("generation binding " + kind + " permission leaf shadow drift")
+    body = content.split("\n" + "jobs:\n", 1)[1]
+    if kind == "publisher":
+        jobs = (
+            ("validate-pr", "    if: github.event_name == 'pull_request'", "read", 8),
+            ("validate", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write", 8),
+        )
+    else:
+        jobs = (
+            ("source-admission", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read", 5),
+        )
+    headers = [
+        row for row in body.splitlines()
+        if row.startswith("  ") and not row.startswith("   ")
+        and row.strip() and not row.lstrip().startswith("#")
+    ]
+    if headers != ["  " + job[0] + ":" for job in jobs]:
+        raise SystemExit("generation binding " + kind + " job mapping shadow drift")
+    for index, (job, condition, scope, timeout) in enumerate(jobs):
+        section = body.split("  " + job + ":\n", 1)[1]
+        if index + 1 < len(jobs):
+            section = section.split("  " + jobs[index + 1][0] + ":\n", 1)[0]
+        keys = [
+            row for row in section.splitlines()
+            if row.startswith("    ") and not row.startswith("     ")
+            and row.strip() and not row.lstrip().startswith("#")
+        ]
+        if keys != [
+            condition, "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: " + str(timeout), "    steps:",
+        ]:
+            raise SystemExit("generation binding " + kind + " job key/permission shadow drift")
+        marker = "    permissions:\n"
+        if (section.count(marker) != 1
+                or section.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                != "      contents: " + scope + "\n"):
+            raise SystemExit("generation binding " + kind + " job permission scope drift")
 
 
 def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
@@ -245,6 +281,53 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
                 raise SystemExit("generation binding " + kind + " permission fixture anchor drift")
             cases.append((label, content.replace(marker, marker + leaf, 1),
                           "permission leaf shadow drift"))
+        jobs = (
+            (("validate-pr", "    if: github.event_name == 'pull_request'", "read"),
+             ("validate", "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'", "write"))
+            if kind == "publisher" else
+            (("source-admission", "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read"),)
+        )
+        for job, condition, scope in jobs:
+            job_anchor = "  " + job + ":\n"
+            if content.count(job_anchor) != 1:
+                raise SystemExit("generation binding " + kind + " job fixture anchor drift: " + job)
+            for label, suffix in (
+                ("duplicate job", "  " + job + ": {}\n"),
+                ("spaced job", "  " + job + " : {}\n"),
+                ("quoted job", "  '" + job + "': {}\n"),
+            ):
+                cases.append((job + " " + label, content.rstrip("\n") + "\n" + suffix,
+                              "job mapping shadow drift"))
+            prefix, section = content.split(job_anchor, 1)
+            runs_on = "    runs-on: ubuntu-latest\n"
+            if runs_on not in section:
+                raise SystemExit("generation binding " + kind + " runs-on fixture anchor drift: " + job)
+            for label, leaf in (
+                ("job permission", "    permissions:\n      contents: write\n"),
+                ("spaced job permission", "    permissions :\n      contents: write\n"),
+                ("quoted job permission", "    'permissions':\n      contents: write\n"),
+            ):
+                cases.append((job + " " + label,
+                              prefix + job_anchor + section.replace(runs_on, runs_on + leaf, 1),
+                              "job key/permission shadow drift"))
+            permission = "    permissions:\n      contents: " + scope + "\n"
+            if permission not in section:
+                raise SystemExit("generation binding " + kind + " scope fixture anchor drift: " + job)
+            alternate = "write" if scope == "read" else "read"
+            cases.append((job + " direct scope", prefix + job_anchor + section.replace(
+                permission, "    permissions:\n      contents: " + alternate + "\n", 1),
+                "job permission scope drift"))
+            for label, leaf in (
+                ("spaced contents", "      contents : write\n"),
+                ("quoted contents", "      'contents': write\n"),
+            ):
+                cases.append((job + " " + label, prefix + job_anchor + section.replace(
+                    permission, permission + leaf, 1), "job permission scope drift"))
+            if condition + "\n" not in section:
+                raise SystemExit("generation binding " + kind + " event fixture anchor drift: " + job)
+            cases.append((job + " event bypass", prefix + job_anchor + section.replace(
+                condition + "\n", "    if: true\n", 1),
+                "job key/permission shadow drift"))
         for label, mutated, diagnostic in cases:
             if mutated == content:
                 raise SystemExit("generation binding " + kind + " unchanged YAML negative: " + label)
@@ -258,9 +341,9 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
             else:
                 raise SystemExit("generation binding " + kind + " accepted YAML mutation: " + label)
             count += 1
-    if count != 18:
+    if count != 48:
         raise SystemExit("generation binding YAML negative inventory drift")
-    print("PASS: generation binding YAML event/root/permission authority (18 exact-diagnostic negatives)")
+    print("PASS: generation binding YAML event/root/job/permission authority (48 exact-diagnostic negatives)")
 
 
 
