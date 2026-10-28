@@ -16,12 +16,140 @@ CHECKOUT = "uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
 SETUP = "uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
 REVIEWED_PUBLISHER = "ecb7b9858fdb3b203f07205454836c0a6c6af149"
 REVIEWED_INDEPENDENT = "67cad76cab58313a92bf4993b707a9123c4150a6"
+
+PUBLISHER_PR_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-deletion-lease-recovery-authority.yml",
+    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py",
+    "scripts/reconcile-memory-os-load-readiness-note.py",
+    "scripts/reconcile-memory-os-load-missing-evidence.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-lease-recovery-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json",
+    "contracts/operations/load-test-scenario-contract.v1.json",
+    "contracts/operations/production-operability-status.json",
+)
+PUBLISHER_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-deletion-lease-recovery-authority.yml",
+    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py",
+    "scripts/reconcile-memory-os-load-readiness-note.py",
+    "scripts/reconcile-memory-os-load-missing-evidence.py",
+    "scripts/validate-memory-os-load.py",
+    "scripts/validate-memory-os-operability.py",
+    "contracts/operations/deletion-lease-recovery-contract.v1.json",
+    "docs/fixtures/memory-os-operability/deletion-lease-recovery-results.sample.v1.json",
+)
+INDEPENDENT_PR_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-deletion-lease-recovery-authority.yml",
+    ".github/workflows/deletion-lease-recovery-authority-source-negative.yml",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py",
+)
+INDEPENDENT_PUSH_TRIGGER_PATHS = (
+    ".github/workflows/reconcile-deletion-lease-recovery-authority.yml",
+    ".github/workflows/deletion-lease-recovery-authority-source-negative.yml",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-source-negative.py",
+    "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py",
+    "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py",
+    "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py",
+)
 RECONCILER = "scripts/reconcile-memory-os-deletion-lease-recovery-authority.py"
 RECONCILE_NEGATIVE = "scripts/validate-memory-os-deletion-lease-recovery-authority-reconcile-negative.py"
 CROSS_NEGATIVE = "scripts/validate-memory-os-deletion-deferred-reason-cross-publisher-negative.py"
 REVIEWED_RECONCILER = "0d04c6728c0d208d9334cb57ca8e5539f93e74a2"
 REVIEWED_RECONCILE_NEGATIVE = "45274a621d1964f7ece7a203a857daa71972fbdf"
 REVIEWED_CROSS_NEGATIVE = "0a6217af102ab01273df28516d856ba2b87d8654"
+
+
+def validate_trigger_reachability(
+    source: str, *, publisher: bool,
+    pr_paths: tuple[str, ...] | None = None,
+    push_paths: tuple[str, ...] | None = None,
+) -> None:
+    """Keep distinct reviewed PR/push path authorities, including intentional asymmetry."""
+    expected_pr = PUBLISHER_PR_TRIGGER_PATHS if publisher else INDEPENDENT_PR_TRIGGER_PATHS
+    expected_push = PUBLISHER_PUSH_TRIGGER_PATHS if publisher else INDEPENDENT_PUSH_TRIGGER_PATHS
+    pr_inventory = expected_pr if pr_paths is None else pr_paths
+    push_inventory = expected_push if push_paths is None else push_paths
+    for label, actual, expected in (
+        ("PR", pr_inventory, expected_pr), ("push", push_inventory, expected_push)
+    ):
+        if len(actual) != len(expected) or len(set(actual)) != len(expected):
+            raise AssertionError("lease authority CI " + label + " trigger inventory shortened or duplicated")
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n" if publisher else "\npermissions:\n"
+    if any(source.count(marker) != 1 for marker in (pr, push, end)):
+        raise AssertionError("lease authority CI trigger marker drift")
+    if not (source.index(pr) < source.index(push) < source.index(end)):
+        raise AssertionError("lease authority CI trigger ordering drift")
+    for event, start, stop, approved_paths in (
+        ("PR", pr, push, pr_inventory), ("push", push, end, push_inventory)
+    ):
+        block = source.split(start, 1)[1].split(stop, 1)[0]
+        actual = tuple(line for line in block.splitlines()
+                       if line.strip() and not line.lstrip().startswith("#"))
+        approved = tuple('      - "' + path + '"' for path in approved_paths)
+        if actual != approved:
+            raise AssertionError("lease authority CI " + event + " exact trigger path drift")
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    """Prove all event-specific omissions, quoted/unquoted additions and inventory truncations."""
+    pr = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push = "  push:\n    branches:\n      - so\n    paths:\n"
+    for label, source, is_publisher, pr_paths, push_paths in (
+        ("publisher", publisher, True, PUBLISHER_PR_TRIGGER_PATHS, PUBLISHER_PUSH_TRIGGER_PATHS),
+        ("independent", independent, False, INDEPENDENT_PR_TRIGGER_PATHS, INDEPENDENT_PUSH_TRIGGER_PATHS),
+    ):
+        end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        for event, start, stop, paths in (
+            ("PR", pr, push, pr_paths), ("push", push, end, push_paths)
+        ):
+            start_index = source.index(start) + len(start)
+            end_index = source.index(stop, start_index)
+            block = source[start_index:end_index]
+            for path in paths:
+                token = '      - "' + path + '"\n'
+                if block.count(token) != 1:
+                    raise AssertionError("lease authority CI mutation anchor drift: " + path)
+                mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("lease authority CI accepted missing " + label + " " + event + " trigger: " + path)
+            for name, injection in (
+                ("quoted extra", '      - "unreviewed/**"\n'),
+                ("quoted duplicate", '      - "' + paths[0] + '"\n'),
+                ("unquoted extra", "      - unreviewed/**\n"),
+                ("unquoted duplicate", "      - " + paths[0] + "\n"),
+            ):
+                mutated = source[:start_index] + injection + source[start_index:]
+                try:
+                    validate_trigger_reachability(mutated, publisher=is_publisher)
+                except AssertionError:
+                    pass
+                else:
+                    raise AssertionError("lease authority CI accepted " + label + " " + event + " " + name)
+        for event in ("PR", "push"):
+            try:
+                validate_trigger_reachability(
+                    source, publisher=is_publisher,
+                    pr_paths=pr_paths[:-1] if event == "PR" else pr_paths,
+                    push_paths=push_paths[:-1] if event == "push" else push_paths,
+                )
+            except AssertionError:
+                pass
+            else:
+                raise AssertionError("lease authority CI accepted shortened " + label + " " + event + " inventory")
+    print("PASS: lease authority CI event triggers (32 removals; 16 additions; 4 shortened inventory negatives)")
+
 
 def blob(content: str) -> str:
     data = content.encode("utf-8")
@@ -225,6 +353,9 @@ def main() -> None:
             or independent.count(CROSS_NEGATIVE) != 2):
         raise AssertionError("lease authority transitive negative CI reachability drift")
     reviewed_negatives(publisher, independent)
+    validate_trigger_reachability(publisher, publisher=True)
+    validate_trigger_reachability(independent, publisher=False)
+    prove_trigger_reachability_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Capture exact PR source", False)
