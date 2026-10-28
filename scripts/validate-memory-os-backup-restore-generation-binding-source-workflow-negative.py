@@ -20,6 +20,66 @@ SELF = "scripts/validate-memory-os-backup-restore-generation-binding-source-work
 BINDING_NEGATIVE = "scripts/validate-memory-os-backup-restore-generation-binding-negative.py"
 REVIEWED_PUBLISHER = "d01915e43432927f97c9f15d3243200f1a6a5622"
 REVIEWED_INDEPENDENT = "bd93725cf6b91fed44a47bd8c6a0bae8507893ab"
+PUBLISHER_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-generation-binding.yml",
+    "contracts/operations/backup-restore-generation-binding-contract.v1.json",
+    "contracts/operations/backup-restore-drill-contract.v1.json",
+    "contracts/operations/backup-restore-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-contract.v1.json",
+    "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+    "contracts/operations/production-equivalent-environment-record.v1.schema.json",
+    "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
+    "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
+    "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+    "contracts/operations/backup-restore-drill-request-contract.v1.json",
+    "contracts/operations/backup-restore-drill-request-registry.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-contract.v1.json",
+    "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+    "contracts/operations/recovery-objectives-admission-contract.v1.json",
+    "contracts/operations/recovery-objectives-registry.v1.json",
+    "contracts/operations/requests/backup-restore-generation-reconcile.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "docs/evidence/backup-restore/**",
+    "docs/evidence/recovery-objectives/approvals/**",
+    "docs/fixtures/memory-os-operability/backup-restore-generation-evidence/**",
+    "docs/fixtures/memory-os-operability/recovery-objectives-approval/**",
+    "scripts/memory_os_backup_restore_blockers.py",
+    "scripts/memory_os_environment_generation_eligibility.py",
+    "scripts/register-memory-os-production-equivalent-environment-generation.py",
+    "scripts/validate-memory-os-production-equivalent-environment-record.py",
+    "scripts/register-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives.py",
+    "scripts/validate-memory-os-recovery-objectives-negative.py",
+    "scripts/request-memory-os-backup-restore-drill.py",
+    "scripts/register-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence.py",
+    "scripts/validate-memory-os-backup-restore-review-source-order.py",
+    "scripts/validate-memory-os-backup-restore-generation-independent-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-material-delta-review-execution-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-evidence-negative.py",
+    "scripts/validate-memory-os-backup-restore-semantic-generation-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-candidate-mutation-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-candidate-registry-row-mutation-negative.py",
+    "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-negative.py",
+    "scripts/validate-memory-os-backup-restore-non-resurrection-registry-aggregate-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding.py",
+    "scripts/validate-memory-os-backup-restore-generation-binding-negative.py",
+    "scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py",
+    "scripts/reconcile-memory-os-backup-restore-generation-status.py",
+    "scripts/validate-memory-os-backup-restore.py",
+    "scripts/validate-memory-os-operability.py",
+    ".github/workflows/backup-restore-generation-binding-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-generation-binding-source-workflow-negative.py",
+)
+INDEPENDENT_TRIGGER_PATHS = (
+    ".github/workflows/backup-restore-generation-binding.yml",
+    ".github/workflows/backup-restore-generation-binding-source-negative.yml",
+    "scripts/validate-memory-os-backup-restore-generation-binding-source-workflow-negative.py",
+)
 D = chr(36)
 PR_BASE = 'test "' + D + '{GITHUB_BASE_REF:-}" = "so"'
 PUSH_REF = 'test "' + D + '{GITHUB_REF:-}" = "refs/heads/so"'
@@ -87,10 +147,75 @@ def source(relative: str) -> str:
         raise SystemExit("generation binding CI source missing or substituted: " + relative) from exc
 
 
+def validate_trigger_reachability(
+    content: str, kind: str, *, trigger_paths: tuple[str, ...] | None = None
+) -> None:
+    """Check exact reviewed paths per event independently of workflow blob digest."""
+    if kind == "publisher":
+        canonical = PUBLISHER_TRIGGER_PATHS
+        end_marker = "  workflow_dispatch:\n"
+    elif kind == "independent":
+        canonical = INDEPENDENT_TRIGGER_PATHS
+        end_marker = "\npermissions:\n"
+    else:
+        raise SystemExit("generation binding unrecognized CI trigger kind")
+    if trigger_paths is None:
+        trigger_paths = canonical
+    if len(trigger_paths) != len(canonical) or len(set(trigger_paths)) != len(canonical):
+        raise SystemExit("generation binding " + kind + " CI trigger inventory shortened or duplicated")
+    pr_marker = "  pull_request:\n    branches:\n      - so\n    paths:\n"
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for marker in (pr_marker, push_marker, end_marker):
+        if content.count(marker) != 1:
+            raise SystemExit("generation binding " + kind + " CI event trigger marker drift")
+    pr = content.split(pr_marker, 1)[1].split(push_marker, 1)[0]
+    push = content.split(push_marker, 1)[1].split(end_marker, 1)[0]
+    for event, block in (("pull_request", pr), ("push", push)):
+        actual = [line[9:-1] for line in block.splitlines()
+                  if line.startswith('      - "') and line.endswith('"')]
+        if len(actual) != len(trigger_paths) or set(actual) != set(trigger_paths):
+            raise SystemExit("generation binding " + kind + " " + event + " trigger inventory drift")
+        for item in trigger_paths:
+            if block.count('      - "' + item + '"' + chr(10)) != 1:
+                raise SystemExit("generation binding " + kind + " " + event + " trigger path drift: " + item)
+
+
+def prove_trigger_reachability_negatives(publisher: str, independent: str) -> None:
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    for kind, content, paths in (
+        ("publisher", publisher, PUBLISHER_TRIGGER_PATHS),
+        ("independent", independent, INDEPENDENT_TRIGGER_PATHS),
+    ):
+        for event in ("pull_request", "push"):
+            for item in paths:
+                token = '      - "' + item + '"' + chr(10)
+                if content.count(token) != 2:
+                    raise SystemExit("generation binding " + kind + " trigger mutation anchor drift: " + item)
+                if event == "pull_request":
+                    mutated = content.replace(token, "", 1)
+                else:
+                    prefix, suffix = content.split(push_marker, 1)
+                    mutated = prefix + push_marker + suffix.replace(token, "", 1)
+                try:
+                    validate_trigger_reachability(mutated, kind)
+                except SystemExit:
+                    continue
+                raise SystemExit("generation binding " + kind + " accepted missing " + event + " trigger: " + item)
+        try:
+            validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
+        except SystemExit:
+            pass
+        else:
+            raise SystemExit("generation binding " + kind + " shortened trigger inventory accepted")
+    print("PASS: generation binding CI event-specific trigger reachability (112 removals; 2 shortened inventory negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
+    validate_trigger_reachability(publisher, "publisher")
+    validate_trigger_reachability(independent, "independent")
     for name, content, required, digest in (
         ("publisher", publisher, MAIN_REQUIRED, REVIEWED_PUBLISHER),
         ("independent", independent, INDEPENDENT_REQUIRED, REVIEWED_INDEPENDENT),
@@ -617,6 +742,7 @@ def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
+    prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
