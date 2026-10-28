@@ -27,9 +27,9 @@ TRIGGER_PATHS = (
     "contracts/operations/production-equivalent-environment-generation-record.v1.schema.json",
     "contracts/operations/production-operability-status.json",
 )
-PR_MARKER = "  pull_request:\\n    branches: [so]\\n    paths:\\n"
-PUSH_MARKER = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
-DISPATCH_MARKER = "  workflow_dispatch:\\n"
+PR_MARKER = "  pull_request:\n    branches: [so]\n    paths:\n"
+PUSH_MARKER = "  push:\n    branches:\n      - so\n    paths:\n"
+DISPATCH_MARKER = "  workflow_dispatch:\n"
 REQUIRED = (
     ("checkout SHA", "      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n", 1),
     ("setup-python SHA", "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n", 1),
