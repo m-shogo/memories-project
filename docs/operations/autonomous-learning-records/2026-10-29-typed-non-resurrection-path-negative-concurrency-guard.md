@@ -1,0 +1,19 @@
+# Supplemental OPS learning — typed non-resurrection path-negative CI concurrency (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, production/backup/restore/RPO/RTO/skew/drill/credential/traffic/readiness evidence, environment generation, approved current recovery objective, executable reviewed drill, typed eight-domain non-resurrection coverage, independent review, or human promotion.
+
+## Material failure and executable recurrence prevention
+- **Symptom:** The typed non-resurrection path-negative workflow had a reviewed concurrency group and noncancelling policy, but its source-negative validator only pinned the root `concurrency:` mapping and whole Git blob; it did not independently diagnose nested group/cancellation shadow changes. This was a static CI semantic coverage gap, not an observed production admission bypass.
+- **Observed evidence:** Reviewed workflow blob `3ef2ff4b3682e312351c655c50bbda3595ce1bc6` has `backup-restore-non-resurrection-path-negative-${{ github.event.pull_request.number || 'so' }}` and `cancel-in-progress: false`. Previous validator blob `4b128b05424325c60452fb2049b50177fc7bd3ca` lacked a nested concurrency diagnostic.
+- **Verified root cause:** Root-key and whole-source digest checks reject changed bytes but do not classify YAML-equivalent cancellation or grouping shadows independently.
+- **Failed approach:** Treating root mapping presence and a Git blob mismatch as sufficient semantic proof of noncancelling path-negative serialization.
+- **Correction / recurrence guard:** [`58bb2ba8`](https://github.com/m-shogo/memories-project/commit/58bb2ba8c85d92c8998a4c61b1e00334e31e357a) adds `validate_concurrency_authority` and ten in-memory exact-diagnostic negatives for global group, enabled cancellation, duplicate/spaced/quoted leaves, unreviewed leaf, and removed cancellation.
+- **Retry condition:** Revisit only after a reviewed concurrency policy change, observed semantic bypass, or exact-source CI regression. Do not retry unchanged MinIO 401, canonical learning transfer, workflow-write permission, or human approval blockers.
+
+## Material success and protected authority
+- **Observed outcome/evidence:** [Backup Restore Non-Resurrection Path Negative #40816846517](https://github.com/m-shogo/memories-project/actions/runs/40816846517) completed **SUCCESS** at exact code `58bb2ba8`. Job log confirms ten concurrency exact-diagnostic negatives, 15 YAML authority negatives, and 20 trigger removals plus eight additions and one shortened inventory negative.
+- **Why safe:** Only the existing CI-reachable read-only Python validator changed (+51 lines, zero deletions). Reviewed workflow and all production evidence, generation/objective/drill/typed-domain/promotion registries and credentials/traffic were not modified.
+- **Reusable mechanism:** Validate noncancelling concurrency independently of source SHA, with expected diagnostic classification for YAML-equivalent shadow leaves. Preserve OPS-P0-007 separation between registered and semantically preflight-eligible generations, human-approved current objective, executable reviewed request, typed eight-domain coverage, independent review, and separate human promotion.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No learning or CI success satisfies production or promotion gates.
+- **Canonical-learning limitation:** Canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` content was empty through the available connector read and the raw large-file fetch failed. Existing unchanged transfer blocker was not retried.
+- **Next safe target:** Audit backup-restore drill preflight reconcile-negative concurrency semantic authority; keep publisher/independent CI outcomes separate from full admission.
