@@ -272,6 +272,64 @@ def live_object_trigger_matrix_negatives(publisher: str, independent: str) -> No
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def live_object_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed event-scoped noncancelling publisher serialization."""
+    marker = "\nconcurrency:\n"
+    if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
+        raise SystemExit("live-object-stage publisher concurrency authority drift")
+    observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = ("  group: reconcile-live-object-stage-diagnostics-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    if observed != expected:
+        raise SystemExit("live-object-stage publisher concurrency authority drift")
+
+
+def live_object_concurrency_negatives(publisher: str) -> None:
+    """Prove twelve exact-diagnostic effective YAML concurrency mutations."""
+    marker = "\nconcurrency:\n"
+    original = ("  group: reconcile-live-object-stage-diagnostics-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    anchor = marker + original + "\njobs:\n"
+    if publisher.count(anchor) != 1:
+        raise SystemExit("live-object-stage concurrency fixture anchor drift")
+    group = original.splitlines(keepends=True)[0]
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+        ("missing group", original.replace(group, "", 1)),
+        ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+        ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+        ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+        ("extra group leaf", original.replace(group, group + "  unreviewed: true\n", 1)),
+        ("enabled cancellation", original.replace(cancel, "  cancel-in-progress: true\n", 1)),
+        ("missing cancellation", original.replace(cancel, "", 1)),
+        ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: true\n", 1)),
+        ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': true\n", 1)),
+        ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : true\n", 1)),
+        ("extra cancellation leaf", original.replace(cancel, cancel + "  unreviewed: true\n", 1)),
+    )
+    if len(cases) != 12:
+        raise SystemExit("live-object-stage concurrency fixture inventory drift")
+    live_object_concurrency_authority(publisher)
+    for name, replacement in cases:
+        altered = publisher.replace(anchor, marker + replacement + "\njobs:\n", 1)
+        if altered == publisher:
+            raise SystemExit("live-object-stage unchanged concurrency fixture: " + name)
+        try:
+            live_object_concurrency_authority(altered)
+        except SystemExit as exc:
+            if str(exc) != "live-object-stage publisher concurrency authority drift":
+                raise SystemExit("live-object-stage wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("live-object-stage accepted concurrency mutation: " + name)
+    print("PASS: live-object-stage publisher concurrency (12 exact-diagnostic negatives)")
+
 def policy(text):
     for marker in REQUIRED:
         if marker not in text:
@@ -709,6 +767,8 @@ def main():
     live_object_validate_trigger_matrix(publisher, independent)
     live_object_trigger_matrix_negatives(publisher, independent)
     live_object_yaml_shadow_negatives(publisher, independent)
+    live_object_concurrency_authority(publisher)
+    live_object_concurrency_negatives(publisher)
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
     runtime(publisher, "Reconcile stage diagnostics", True)
