@@ -2673,6 +2673,10 @@ def main() -> int:
                 for label, event_source, expected_count in (
                     ("quoted-on", "'on':\n  push:\n    paths:\n      - 'scripts/synthetic.py'\n", 1),
                     ("scalar-push", "on: push\n", 1),
+                    ("quoted-push-event",
+                     "on:\n  'push':\n    paths:\n      - 'scripts/synthetic.py'\n", 1),
+                    ("quoted-pr-event",
+                     'on:\n  "pull_request":\n    paths:\n      - "scripts/synthetic.py"\n', 1),
                     ("dispatch-only", "on: workflow_dispatch\n", 0),
                 ):
                     with tempfile.TemporaryDirectory(prefix="ops-fanout-") as temporary:
