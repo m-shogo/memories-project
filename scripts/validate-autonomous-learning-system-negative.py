@@ -838,6 +838,54 @@ def prove_upload_route_run_key_negatives() -> None:
             raise RuntimeError("Upload Route run-key negative accepted: " + label)
 
 
+def require_reviewed_upload_route_working_directories(source: str) -> None:
+    """Bind Go test and formatting working directories to their named steps."""
+    import re
+    observed = re.findall(r"(?m)^        working-directory: ([^\r\n]+)$", source)
+    mentions = re.findall(
+        r"""(?m)(?<![A-Za-z0-9_-])(?:working-directory|['"]working-directory['"])\s*:""",
+        source,
+    )
+    if observed != ["services/import-api"] * 2 or len(mentions) != len(observed):
+        raise RuntimeError("unreviewed Upload Route working directory")
+    names = []
+    for section in re.split(r"(?m)^      - (?=name:)", source)[1:]:
+        name = section.splitlines()[0].split(":", 1)[1].strip()
+        if re.search(r"(?m)^        working-directory:", section):
+            names.append(name)
+    if names != ["Format and verify source diff", "Run focused route and live upload regressions"]:
+        raise RuntimeError("unreviewed Upload Route working directory")
+
+
+def prove_upload_route_working_directory_negatives() -> None:
+    base = ("steps:\n      - name: Format and verify source diff\n"
+            "        working-directory: services/import-api\n"
+            "      - name: Run focused route and live upload regressions\n"
+            "        working-directory: services/import-api\n")
+    require_reviewed_upload_route_working_directories(base)
+    for label, candidate in (
+        ("changed root", base.replace("working-directory: services/import-api",
+                                      "working-directory: .", 1)),
+        ("missing", base.replace("        working-directory: services/import-api\n", "", 1)),
+        ("duplicate", base.replace("        working-directory: services/import-api\n",
+                                   "        working-directory: services/import-api\n"
+                                   "        working-directory: .\n", 1)),
+        ("spaced shadow", base.replace("working-directory: services/import-api",
+                                       "working-directory : services/import-api", 1)),
+        ("quoted shadow", base.replace("working-directory: services/import-api",
+                                       '"working-directory": services/import-api', 1)),
+        ("wrong step", base.replace("Format and verify source diff", "Another step")),
+        ("global default", base + "defaults:\n  run:\n    working-directory: .\n"),
+    ):
+        try:
+            require_reviewed_upload_route_working_directories(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route working directory":
+                raise
+        else:
+            raise RuntimeError("Upload Route working-directory negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1656,6 +1704,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_runtime_command_negatives()
     prove_upload_route_shell_dispatch_negatives()
     prove_upload_route_run_key_negatives()
+    prove_upload_route_working_directory_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1883,6 +1932,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_runtime_commands(source)
         reject_unreviewed_upload_route_shell_dispatch(source)
         require_reviewed_upload_route_run_keys(source, 11 if event == "push" else 10)
+        require_reviewed_upload_route_working_directories(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
