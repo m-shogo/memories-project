@@ -608,6 +608,20 @@ def prove_prewrite_python_negatives() -> None:
     overlong = "# bounded fixture\n" * (PREWRITE_MAX_SOURCE_LINES + 1) + baseline
     dense_baseline = "# repeated\n" * 800 + baseline
     unexecutable = baseline.replace('if __name__', 'return 1\nif __name__')
+    # Module-scope checks must not reject deferred or local main bindings.
+    local_controls = (
+        ("function local", 'def helper():\n    main = 1\n', (2, 0)),
+        ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
+        ("lambda local", 'helper = lambda main: main\n', (1, 0)),
+        ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
+    )
+    for label, insertion, expected in local_controls:
+        scoped = baseline.replace('if __name__', insertion + 'if __name__')
+        observed = validate_prewrite_python(
+            baseline, scoped, expected_sha256=sha, max_added=4, max_removed=0
+        )
+        if observed != expected:
+            raise ValidationFailure("prewrite scope positive control failed: " + label)
     cases = (
         ("dense repeated lines", dense_baseline.replace(
             '    return 0\n', '    # edit\n    return 0\n'),
