@@ -66,6 +66,10 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # A second BOM is not a reviewed event-filter spelling: fail closed.
     if "\ufeff" in source:
         return True
+    # YAML double-quoted mapping keys can decode \u escapes into "on".
+    # Unknown escaped root keys are not proof of a dispatch-only workflow.
+    if re.search(r'(?m)^"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
+        return True
     # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
@@ -87,6 +91,9 @@ def workflow_matches_path(source: str, relative: str) -> bool:
            for event in ("push", "pull_request_target", "pull_request")):
         return True
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
+    # YAML double-quoted values may decode an escaped event name.
+    if inline and "\\" in inline.group(1):
+        return True
     # GitHub Actions supports YAML aliases; an inline sequence may expand to
     # a push/PR event without spelling that event in the on: value.
     if inline and re.search(r"\*[A-Za-z_][A-Za-z0-9_-]*", inline.group(1)):
@@ -101,6 +108,9 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     if section is None:
         return bool(re.search(r"(?m)^  (?:push|pull_request_target|pull_request):", source))
     block = section.group(1)
+    # An escaped quoted mapping key may decode to push/pull_request.
+    if re.search(r'(?m)^  "[^"\r\n]*\\[^"\r\n]*"[ \t]*:', block):
+        return True
     # Block YAML sequences are equivalent to inline event arrays. Treat
     # aliases or unreviewed entries as potentially unfiltered push/PR.
     live_rows = [
@@ -294,6 +304,12 @@ def self_test(repo_root: Path) -> None:
         ("block aliased sequence", 'name: &trigger push\non:\n  - *trigger\n', "scripts/a.py", True),
         ("inline aliased sequence", 'name: &trigger push\non: [*trigger]\n', "scripts/a.py", True),
         ("inline dispatch list", 'on: [workflow_dispatch]\n', "scripts/a.py", False),
+        ("root escaped on key", '"o\\u006e": push\n', "scripts/a.py", True),
+        ("inline escaped event", 'on: "p\\u0075sh"\n', "scripts/a.py", True),
+        ("inline escaped event array", 'on: ["p\\u0075sh"]\n', "scripts/a.py", True),
+        ("nested escaped event key", 'on:\n  "p\\u0075sh":\n    paths:\n      - "docs/**"\n',
+         "scripts/a.py", True),
+        ("plain quoted unrelated root", '"name": workflow_dispatch\n', "scripts/a.py", False),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -322,9 +338,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 52 or hashlib.sha256(
+    if (len(cases) != 57 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "2dcd3f14b5d4d06c27a5c3df402068a144c38d61f8a738b771ded183227bbba5"):
+    ).hexdigest() != "3fdb90e2ec80278eb0ac49738367850c7c0665a6a74c4b06b3aac6090507286e"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
