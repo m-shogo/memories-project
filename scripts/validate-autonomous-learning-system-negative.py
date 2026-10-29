@@ -3225,6 +3225,8 @@ def main() -> int:
         ("deferred generator body", "(globals().__setitem__('main', None) for _ in (0,))\n"),
         ("comprehension-local target", "[0 for main in (0,)]\n"),
         ("deferred lambda body", "(lambda: globals().__setitem__('main', None))\n"),
+        ("decorator lambda local main", "@(lambda fn: (main := fn))\ndef eager():\n    pass\n"),
+        ("decorator lambda local learning guard", "@(lambda fn: (validate_learning_guards := fn))\ndef eager():\n    pass\n"),
     ):
         with tempfile.TemporaryDirectory(prefix="learning-comprehension-positive-") as tmp:
             root = Path(tmp)
@@ -3512,6 +3514,11 @@ def main() -> int:
             ("class-body", f"class Eager:\n    globals()['{symbol}'] = None"),
             ("class-global", f"class Eager:\n    global {symbol}\n    {symbol} = None"),
             ("function-default", f"def eager(value=globals().__setitem__('{symbol}', None)):\n    pass"),
+            # Wildcard imports have an unbounded module export set; annotation
+            # expressions may run at definition time without postponement.
+            ("wildcard-import", "from math import *"),
+            ("parameter-annotation", f"def eager(value: globals().__setitem__('{symbol}', None)):\n    pass"),
+            ("return-annotation", f"def eager() -> globals().__setitem__('{symbol}', None):\n    pass"),
             ("function-decorator", f"@lambda fn: (globals().__setitem__('{symbol}', None), fn)[1]\ndef eager():\n    pass"),
             ("class-base", f"class Eager(globals().__setitem__('{symbol}', None) or object):\n    pass"),
             ("class-decorator", f"@lambda cls: (globals().__setitem__('{symbol}', None), cls)[1]\nclass Eager:\n    pass"),
