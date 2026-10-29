@@ -253,14 +253,23 @@ def self_test(repo_root: Path) -> None:
     entry_docs = matching_workflows(
         repo_root, "scripts/validate-memory-os-entry-docs.py"
     )
-    if ".github/workflows/autonomous-learning-guard.yml" not in entry_docs:
-        raise AuditFailure("shared entrypoint direct trigger identity missing")
+    reviewed_entry_docs = {
+        ".github/workflows/autonomous-learning-guard.yml",
+        ".github/workflows/diagnose-metrics-alerting.yml",
+        ".github/workflows/operability-contracts.yml",
+        ".github/workflows/rate-limit-operation-evidence.yml",
+        ".github/workflows/reconcile-backup-restore.yml",
+        ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+        ".github/workflows/reconcile-metrics-scrape-status.yml",
+        ".github/workflows/reconcile-observability-access.yml",
+        ".github/workflows/reconcile-rate-limit-operations.yml",
+    }
+    if (set(entry_docs) != reviewed_entry_docs or
+            len(entry_docs) != len(reviewed_entry_docs)):
+        raise AuditFailure("shared entrypoint direct workflow identity changed; review required")
     entry_risk = classify(entry_docs)
-    if entry_risk not in {
-        "BOUNDED_DIRECT_MATCH_ONLY", "BLOCKED_HIGH_FANOUT",
-        "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY",
-    }:
-        raise AuditFailure("shared entrypoint direct trigger risk unclassified")
+    if entry_risk != "BOUNDED_DIRECT_MATCH_ONLY":
+        raise AuditFailure("shared entrypoint direct workflow risk changed; review required")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
