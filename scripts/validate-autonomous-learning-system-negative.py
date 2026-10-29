@@ -1128,7 +1128,30 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count == 1 and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite fanout CLI matched identity missing: " + label)
-    return len(cases) + 1
+    # Check a real known-risk path, including exact reported count versus
+    # emitted workflow identities. The sample is diagnostic, not a trigger proof.
+    import re
+    try:
+        risk = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(source_root),
+             "--path", "scripts/validate-memory-os-rate-limit-operations-source-negative.py"],
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("prewrite fanout known-risk CLI timed out") from exc
+    lines = risk.stdout.splitlines()
+    reports = [re.fullmatch(
+        r"risk: BLOCKED_KNOWN_EXTERNAL_DEPENDENCY; matched workflow count: ([0-9]+)",
+        line,
+    ) for line in lines]
+    counts = [int(match.group(1)) for match in reports if match is not None]
+    workflows = [line[2:] for line in lines if line.startswith("- .github/workflows/")]
+    if (risk.returncode != 2 or risk.stderr or len(counts) != 1 or
+            counts[0] != len(workflows) or not workflows or
+            ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
+        raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
+    print("prewrite rate-limit possible matches sample: " + ", ".join(workflows[:10]))
+    return len(cases) + 2
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
