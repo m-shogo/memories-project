@@ -509,6 +509,25 @@ def prove_go_embed_negatives() -> None:
             raise RuntimeError("Go embed negative accepted: " + label)
 
 
+def require_upload_route_event_path_parity(publisher: tuple[str, ...],
+                                          pr: tuple[str, ...]) -> None:
+    if publisher != pr:
+        raise RuntimeError("Upload Route publisher/PR trigger path drift")
+
+
+def prove_upload_route_path_parity_negatives() -> None:
+    baseline = ("a/**", "b/**")
+    require_upload_route_event_path_parity(baseline, baseline)
+    for candidate in (("a/**", "c/**"), ("b/**", "a/**")):
+        try:
+            require_upload_route_event_path_parity(baseline, candidate)
+        except RuntimeError as exc:
+            if str(exc) != "Upload Route publisher/PR trigger path drift":
+                raise
+        else:
+            raise RuntimeError("Upload Route equal-count path drift accepted")
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -516,6 +535,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_go_workspace_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
+    prove_upload_route_path_parity_negatives()
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
@@ -633,14 +653,17 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         raise RuntimeError("upload route path-negative fixture failed")
     prove_upload_route_event_parser_negatives()
     uncovered = []
+    reviewed_paths = []
     for workflow, event in (
         ("reconcile-upload-route-authority.yml", "push"),
         ("reconcile-upload-route-authority-pr.yml", "pull_request"),
     ):
         source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
         patterns = upload_route_event_paths(source, event)
+        reviewed_paths.append(patterns)
         uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
                              for path in inputs))
+    require_upload_route_event_path_parity(*reviewed_paths)
     if len(inputs) < 109 or any(count < 81 for count in uncovered):
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
