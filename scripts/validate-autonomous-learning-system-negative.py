@@ -636,9 +636,12 @@ def require_reviewed_upload_route_actions(source: str) -> None:
     """Pin reviewed workflow action identities without claiming tags immutable."""
     import re
     observed = re.findall(r"(?m)^\s*(?:-\s*)?uses:\s*(\S+)\s*$", source)
+    # YAML also accepts spaced, quoted and flow-mapping keys. Reject any
+    # additional uses key that the canonical line parser did not recognize.
+    mentions = re.findall(r"""(?m)(?<![A-Za-z0-9_])(?:uses|["']uses["'])\s*:""", source)
     expected = ["actions/checkout@v4", "actions/setup-go@v5",
                 "actions/setup-python@v5"]
-    if observed != expected:
+    if len(mentions) != len(observed) or observed != expected:
         raise RuntimeError("unreviewed Upload Route action identity")
 
 
@@ -656,6 +659,10 @@ def prove_upload_route_action_negatives() -> None:
         ("reordered actions", base.replace(
             "  - uses: actions/setup-go@v5\n  - uses: actions/setup-python@v5\n",
             "  - uses: actions/setup-python@v5\n  - uses: actions/setup-go@v5\n")),
+        ("spaced uses shadow", base + "  - uses : other/action@v1\n"),
+        ("quoted uses shadow", base + '  - "uses": other/action@v1\n'),
+        ("single-quoted uses shadow", base + "  - 'uses': other/action@v1\n"),
+        ("flow mapping uses shadow", base + "  - {uses: other/action@v1}\n"),
     ):
         try:
             require_reviewed_upload_route_actions(candidate)
