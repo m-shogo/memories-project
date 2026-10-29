@@ -3779,7 +3779,8 @@ def main() -> int:
                     or kind.endswith(("attrgetter", "methodcaller"))
                     or kind.endswith("-reload")
                     or kind.endswith(("-find-spec", "-resolve-name"))
-                    or kind.endswith(("-exec", "-eval", "-import"))):
+                    or kind.endswith(("-exec", "-eval"))
+                    or kind == "eager-qualified-import"):
                 reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",
