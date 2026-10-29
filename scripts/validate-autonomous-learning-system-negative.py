@@ -453,9 +453,18 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
         accept("symlink", args, "prewrite input missing or symlinked")
         after.unlink()
         accept("missing candidate", args, "prewrite input missing or symlinked")
+        after.write_text(candidate, encoding="utf-8")
+        alias = Path(tmp) / "aliased-parent"
+        alias.symlink_to(Path(tmp), target_is_directory=True)
+        candidate_args = args.copy()
+        candidate_args[5] = str(alias / after.name)
+        accept("symlinked candidate parent", candidate_args, "prewrite input missing or symlinked")
+        baseline_args = args.copy()
+        baseline_args[3] = str(alias / before.name)
+        accept("symlinked baseline parent", baseline_args, "prewrite input missing or symlinked")
         accept("incomplete CLI arguments", args[:4],
                "prewrite requires baseline, candidate and SHA-256")
-    return len(cases) + 4
+    return len(cases) + 6
 
 
 def main() -> int:
