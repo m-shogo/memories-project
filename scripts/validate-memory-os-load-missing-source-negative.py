@@ -269,7 +269,7 @@ def load_missing_concurrency_authority(publisher: str) -> None:
     if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
         raise SystemExit("load-missing publisher concurrency authority drift")
     observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
-    expected = ("  group: reconcile-load-missing-diagnostics-" + chr(36)
+    expected = ("  group: reconcile-load-missing-evidence-" + chr(36)
                 + "{{ github.event_name }}-" + chr(36)
                 + "{{ github.event.pull_request.number || 'so' }}\n"
                 + "  cancel-in-progress: false\n")
@@ -280,7 +280,7 @@ def load_missing_concurrency_authority(publisher: str) -> None:
 def load_missing_concurrency_negatives(publisher: str) -> None:
     """Prove twelve exact-diagnostic effective YAML concurrency mutations."""
     marker = "\nconcurrency:\n"
-    original = ("  group: reconcile-load-missing-diagnostics-" + chr(36)
+    original = ("  group: reconcile-load-missing-evidence-" + chr(36)
                 + "{{ github.event_name }}-" + chr(36)
                 + "{{ github.event.pull_request.number || 'so' }}\n"
                 + "  cancel-in-progress: false\n")
