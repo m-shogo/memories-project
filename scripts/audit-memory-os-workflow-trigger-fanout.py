@@ -39,6 +39,13 @@ class AuditFailure(RuntimeError):
 
 def workflow_matches_path(source: str, relative: str) -> bool:
     """Conservatively match direct push/PR events; ambiguous filters are risky."""
+    # UTF-8 BOM is legal at the beginning of a YAML stream. Preserve its
+    # semantics instead of silently missing the first root-level "on" key.
+    if source.startswith("\ufeff"):
+        source = source[1:]
+    # A second BOM is not a reviewed event-filter spelling: fail closed.
+    if "\ufeff" in source:
+        return True
     # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
@@ -185,6 +192,10 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("prewrite control-character path negative accepted: " + label)
     cases = (
+        ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
+        ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
+        ("BOM unfiltered", '\ufeffon: push\n', "scripts/a.py", True),
+        ("BOM midstream ambiguity", 'on:\n  push:\n    paths:\n      - "docs/**"\n# \ufeff\n', "scripts/a.py", True),
         ("exact", 'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("glob", 'on:\n  pull_request:\n    paths:\n      - "scripts/validate-memory-os-rate-limit*.py"\n',
          "scripts/validate-memory-os-rate-limit-operations.py", True),

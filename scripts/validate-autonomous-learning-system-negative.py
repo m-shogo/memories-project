@@ -1206,6 +1206,10 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     """Require the actual fanout CLI to conservatively count ambiguous events."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
     cases = (
+        ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', 1),
+        ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', 0),
+        ("BOM unfiltered", '\ufeffon: push\n', 1),
+        ("BOM midstream ambiguity", 'on:\n  push:\n    paths:\n      - "docs/**"\n# \ufeff\n', 1),
         ("duplicate on", 'on:\n  push:\n    paths:\n      - "docs/**"\non: push\n', 1),
         ("duplicate event", 'on:\n  push:\n    paths:\n      - "docs/**"\n  push:\n    paths:\n      - "scripts/a.py"\n', 1),
         ("event alias", 'on: *events\n', 1),
