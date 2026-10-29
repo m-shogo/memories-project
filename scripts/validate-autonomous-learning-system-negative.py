@@ -2447,6 +2447,43 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
             raise RuntimeError("password skip negative accepted: " + label)
 
 
+def require_reviewed_upload_route_focused_skip_inventory(sources: dict[str, str]) -> None:
+    """Reject any unreviewed direct skip in the selected Go test source files."""
+    import re
+    reviewed = {
+        "services/import-api/internal/httpserver/route_authority_test.go": 0,
+        "services/import-api/internal/httpserver/server_live_test.go": 2,
+    }
+    if set(sources) != set(reviewed):
+        raise RuntimeError("unreviewed Upload Route focused skip inventory")
+    for path, expected in reviewed.items():
+        if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", sources[path])) != expected:
+            raise RuntimeError("unreviewed Upload Route focused skip inventory")
+
+
+def prove_upload_route_focused_skip_inventory_negatives(source_root: Path) -> None:
+    paths = ("services/import-api/internal/httpserver/route_authority_test.go",
+             "services/import-api/internal/httpserver/server_live_test.go")
+    files = {path: (source_root / path).read_text(encoding="utf-8") for path in paths}
+    require_reviewed_upload_route_focused_skip_inventory(files)
+    route, live = paths
+    for label, path, candidate in (
+        ("new route skip", route, files[route] + "\nfunc extra(t *testing.T) { t.SkipNow() }\n"),
+        ("new unrelated live skip", live, files[live] + "\nfunc extra(t *testing.T) { t.Skip(\"new\") }\n"),
+        ("missing password skip", live, files[live].replace(
+            't.Skip("test database URL carries no password', 't.Log("test database URL carries no password', 1)),
+    ):
+        changed = dict(files)
+        changed[path] = candidate
+        try:
+            require_reviewed_upload_route_focused_skip_inventory(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route focused skip inventory":
+                raise
+        else:
+            raise RuntimeError("focused skip inventory negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -2455,6 +2492,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_focused_go_test_negatives(source_root)
     prove_upload_route_live_skip_boundary_negatives(source_root)
     prove_upload_route_password_skip_negatives(source_root)
+    prove_upload_route_focused_skip_inventory_negatives(source_root)
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
