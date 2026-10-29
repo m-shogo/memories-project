@@ -361,12 +361,28 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
     target = source_root / "services/import-api/internal/httpserver"
+    native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
+    def reject_native(directory: Path) -> None:
+        if any(p.suffix.lower() in native_suffixes for p in directory.iterdir()):
+            raise RuntimeError("unreviewed Go native build input: " + str(directory))
+    reject_native(target)
+    module_text = (source_root / "services/import-api/go.mod").read_text(encoding="utf-8")
+    module_name = "module github.com/m-shogo/memories-project/services/import-api\n"
+    if (not module_text.startswith(module_name) or
+            re.search(r"(?m)^\s*replace\b", module_text)):
+        raise RuntimeError("unreviewed Go module path or replace directive")
+    # A local replacement or CGo input would invalidate a Go-only import closure.
+    if not re.search(r"(?m)^\s*replace\b", "replace example.com/x => ../x"):
+        raise RuntimeError("Go module replace negative fixture failed")
     go_files = sorted(target.glob("*.go"))
     if len(go_files) < 27 or not any(p.name.endswith("_test.go") for p in go_files):
         raise RuntimeError("upload route Go compilation surface shrank without review")
     packages: set[str] = set()
     for file in go_files:
-        packages.update(upload_route_local_go_imports(file.read_text(encoding="utf-8")))
+        source = file.read_text(encoding="utf-8")
+        if 'import "C"' in source:
+            raise RuntimeError("unreviewed Go CGo import")
+        packages.update(upload_route_local_go_imports(source))
     if len(packages) < 21:
         raise RuntimeError("upload route local Go package inventory shrank without review")
     inputs = {p.relative_to(source_root).as_posix() for p in go_files}
@@ -384,9 +400,13 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         files = [p for p in files if not p.name.endswith("_test.go")]
         if not files:
             raise RuntimeError("missing Go import closure package: " + package)
+        reject_native(directory)
         for file in files:
             inputs.add(file.relative_to(source_root).as_posix())
-            for dependency in upload_route_local_go_imports(file.read_text(encoding="utf-8")):
+            source = file.read_text(encoding="utf-8")
+            if 'import "C"' in source:
+                raise RuntimeError("unreviewed Go CGo import")
+            for dependency in upload_route_local_go_imports(source):
                 if dependency not in visited:
                     pending.append(dependency)
                     packages.add(dependency)
