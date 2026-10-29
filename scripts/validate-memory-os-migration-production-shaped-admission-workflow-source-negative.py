@@ -430,6 +430,58 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: migration production-shaped publisher/independent YAML event/root/job/permission authority (48 exact-diagnostic negatives)")
 
 
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind the reviewed migration admission publisher's noncancelling concurrency."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: migration-production-shaped-admission-${{ github.ref }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("migration production-shaped publisher concurrency scope drift")
+    if publisher.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("migration production-shaped publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Ten expected-diagnostic cases for publisher serialization/cancellation."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: migration-production-shaped-admission-${{ github.ref }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: migration-production-shaped-admission-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("migration production-shaped concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = publisher.replace(original, changed_block, 1)
+        if changed == publisher:
+            raise SystemExit("migration production-shaped unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "migration production-shaped publisher concurrency scope drift":
+                raise SystemExit("migration production-shaped wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("migration production-shaped accepted concurrency mutation: " + name)
+    print("PASS: migration production-shaped publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def runtime(publisher: str, independent: str) -> None:
     for name, source in (("publisher", publisher), ("independent", independent)):
         for label, token, key, value, allow in (
@@ -672,6 +724,7 @@ def main() -> int:
     independent = read(INDEPENDENT)
     validate(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_trigger_reachability_negatives(publisher, independent)
     verify_isolation_blob_bindings()
     verify_permission_blob_bindings()
