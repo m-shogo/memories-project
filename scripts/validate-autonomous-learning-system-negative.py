@@ -1260,6 +1260,25 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count == 1 and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite fanout CLI matched identity missing: " + label)
+    # An actual writer-named workflow must block even with one direct match.
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-writer-cas-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "reconcile-metrics-scrape-status.yml").write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', encoding="utf-8"
+        )
+        writer = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/a.py"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (writer.returncode != 2 or writer.stderr or
+                "risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: 1"
+                not in writer.stdout.splitlines() or
+                "- .github/workflows/reconcile-metrics-scrape-status.yml"
+                not in writer.stdout.splitlines()):
+            raise RuntimeError("prewrite writer CAS CLI negative failed")
     # Check a real known-risk path, including exact reported count versus
     # emitted workflow identities. The sample is diagnostic, not a trigger proof.
     import re
@@ -1296,7 +1315,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     entry_lines = entry.stdout.splitlines()
     entry_reports = [
         re.fullmatch(
-            r"risk: (BOUNDED_DIRECT_MATCH_ONLY|BLOCKED_HIGH_FANOUT|BLOCKED_KNOWN_EXTERNAL_DEPENDENCY); matched workflow count: ([0-9]+)",
+            r"risk: (BOUNDED_DIRECT_MATCH_ONLY|BLOCKED_HIGH_FANOUT|BLOCKED_KNOWN_EXTERNAL_DEPENDENCY|BLOCKED_KNOWN_WRITER_CAS); matched workflow count: ([0-9]+)",
             line,
         ) for line in entry_lines
     ]
@@ -1332,6 +1351,12 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
               set(entry_workflows) & {
                   ".github/workflows/reconcile-upload-route-authority.yml",
                   ".github/workflows/reconcile-upload-route-authority-pr.yml",
+              })) or
+            (entry_risk == "BLOCKED_KNOWN_WRITER_CAS" and
+             (entry.returncode != 2 or not
+              set(entry_workflows) & {
+                  ".github/workflows/diagnose-metrics-alerting.yml",
+                  ".github/workflows/reconcile-metrics-scrape-status.yml",
               }))):
         raise RuntimeError("prewrite entrypoint fanout CLI risk/exit mismatch")
     # Preserve the single-line stdout contract required by the entrypoint verifier.
