@@ -3103,6 +3103,12 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("dynamic reflective loader", baseline.replace(
                 'if __name__', 'getattr(loader, method)(None)\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
+            ("qualified reflective import", baseline.replace(
+                'if __name__', 'builtins.getattr(importlib, "import_module")("math")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("qualified dynamic reflective loader", baseline.replace(
+                'if __name__', 'builtins.getattr(loader, method)(None)\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
             ("diff budget", candidate.replace("    # safe edit\n", "    # a\n    # b\n").encode(),
              "prewrite diff exceeds reviewed line budget", ["--max-added-lines", "1"]),
         )
