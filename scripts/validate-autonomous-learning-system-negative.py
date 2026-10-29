@@ -632,6 +632,40 @@ def prove_upload_route_toolchain_environment_negatives() -> None:
             raise RuntimeError("Upload Route toolchain env negative accepted: " + name)
 
 
+def require_reviewed_upload_route_actions(source: str) -> None:
+    """Pin reviewed workflow action identities without claiming tags immutable."""
+    import re
+    observed = re.findall(r"(?m)^\s*(?:-\s*)?uses:\s*(\S+)\s*$", source)
+    expected = ["actions/checkout@v4", "actions/setup-go@v5",
+                "actions/setup-python@v5"]
+    if observed != expected:
+        raise RuntimeError("unreviewed Upload Route action identity")
+
+
+def prove_upload_route_action_negatives() -> None:
+    base = ("steps:\n  - uses: actions/checkout@v4\n"
+            "  - uses: actions/setup-go@v5\n"
+            "  - uses: actions/setup-python@v5\n")
+    require_reviewed_upload_route_actions(base)
+    for label, candidate in (
+        ("new action", base + "  - uses: other/action@v1\n"),
+        ("checkout ref change", base.replace("checkout@v4", "checkout@v5")),
+        ("mutable main ref", base.replace("setup-go@v5", "setup-go@main")),
+        ("missing action", base.replace("  - uses: actions/setup-go@v5\n", "")),
+        ("duplicate action", base + "  - uses: actions/checkout@v4\n"),
+        ("reordered actions", base.replace(
+            "  - uses: actions/setup-go@v5\n  - uses: actions/setup-python@v5\n",
+            "  - uses: actions/setup-python@v5\n  - uses: actions/setup-go@v5\n")),
+    ):
+        try:
+            require_reviewed_upload_route_actions(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route action identity":
+                raise
+        else:
+            raise RuntimeError("Upload Route action negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1446,6 +1480,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
     prove_upload_route_toolchain_environment_negatives()
+    prove_upload_route_action_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1669,6 +1704,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     ):
         source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
         require_reviewed_upload_route_toolchain_environment(source)
+        require_reviewed_upload_route_actions(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
