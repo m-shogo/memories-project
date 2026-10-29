@@ -3,10 +3,10 @@
   "registryClass": "NON_PRODUCTION_MIGRATION_REHEARSAL_EVIDENCE",
   "appendOnly": true,
   "productionEvidence": false,
-  "rehearsalEvidenceCount": 39,
-  "passingRehearsalCount": 39,
+  "rehearsalEvidenceCount": 40,
+  "passingRehearsalCount": 40,
   "productionEquivalentRehearsalCount": 0,
-  "latestRehearsalRunId": "mig_20261025_eb1788205158",
+  "latestRehearsalRunId": "mig_20261029_b13448059fde",
   "records": [
     {
       "schemaVersion": "memory-os-migration-rehearsal-evidence.v1",
@@ -2457,6 +2457,69 @@
           "riskId": "risk_local_same_cluster_only",
           "ownerRef": "opr_ci_recovery_owner",
           "deadline": "2026-11-24",
+          "status": "OPEN"
+        }
+      ],
+      "containsSecrets": false,
+      "productionTraffic": false,
+      "productionCredentials": false,
+      "productionEvidence": false
+    },
+    {
+      "schemaVersion": "memory-os-migration-rehearsal-evidence.v1",
+      "migrationRunId": "mig_20261029_b13448059fde",
+      "environmentClass": "LOCAL_POSTGRES_REHEARSAL",
+      "environmentGenerationId": null,
+      "databaseIdentityDigest": "be25430c6c28775d3d94506ae317bdde3c1c3c94e83520c130352f1b38ff9a48",
+      "sourceCommitSha": "b13448059fde2c2ba04ba77c7354adc7113b6720",
+      "migrationSequenceBefore": [
+        "001_memory_os_import_rls.sql",
+        "002_memory_os_account_control.sql",
+        "002_memory_os_upload_authorization.sql",
+        "003_memory_os_preview_domain.sql",
+        "004_memory_os_account_session.sql",
+        "005_memory_os_apply_memory.sql",
+        "006_memory_os_deletion_fencing.sql",
+        "007_memory_os_app_login.sql",
+        "008_memory_os_deletion_runtime.sql",
+        "009_memory_os_deletion_visibility.sql"
+      ],
+      "migrationSequenceAfter": [
+        "001_memory_os_import_rls.sql",
+        "002_memory_os_account_control.sql",
+        "002_memory_os_upload_authorization.sql",
+        "003_memory_os_preview_domain.sql",
+        "004_memory_os_account_session.sql",
+        "005_memory_os_apply_memory.sql",
+        "006_memory_os_deletion_fencing.sql",
+        "007_memory_os_app_login.sql",
+        "008_memory_os_deletion_runtime.sql",
+        "009_memory_os_deletion_visibility.sql",
+        "010_memory_os_apple_identity.sql"
+      ],
+      "startedAt": "2026-10-29T01:44:10Z",
+      "completedAt": "2026-10-29T01:44:14Z",
+      "operatorRef": "opr_ci_recovery_operator",
+      "reviewerRef": "rev_ci_recovery_reviewer",
+      "recoveryPointReference": "sha256:112234f837ded594134a49989618385d3117d8e9fc500fe0e9c7049cd3cccb2f",
+      "recoveryPointArtifactDigest": "112234f837ded594134a49989618385d3117d8e9fc500fe0e9c7049cd3cccb2f",
+      "recoveryPointVerified": true,
+      "restoreCapabilityEvidenceRef": "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json",
+      "restoreCapabilityVerified": true,
+      "recoveryPointRestoreEvidenceRef": "docs/evidence/migrations/recovery/mig_20261029_b13448059fde.json",
+      "lockBudgetMs": 5000,
+      "statementBudgetMs": 120000,
+      "observedLockWaitMs": 0,
+      "observedRuntimeMs": 61,
+      "preflightResult": "PASS",
+      "applyResult": "PASS",
+      "verificationResult": "PASS",
+      "recoveryDecision": "NO_RECOVERY_REQUIRED",
+      "openRisks": [
+        {
+          "riskId": "risk_local_same_cluster_only",
+          "ownerRef": "opr_ci_recovery_owner",
+          "deadline": "2026-11-28",
           "status": "OPEN"
         }
       ],
