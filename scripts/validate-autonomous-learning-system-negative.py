@@ -1306,6 +1306,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     if (entry.stderr or len(entry_reports) != 1 or
             int(entry_reports[0].group(2)) != len(entry_workflows) or
             len(entry_workflows) != len(set(entry_workflows)) or
+            entry_workflows != sorted(entry_workflows) or
             ".github/workflows/autonomous-learning-guard.yml" not in entry_workflows):
         raise RuntimeError("prewrite entrypoint fanout CLI count/identity mismatch")
     entry_risk = entry_reports[0].group(1)
