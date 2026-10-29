@@ -311,6 +311,62 @@ def rate_ops_trigger_matrix_negatives(publisher: str, independent: str) -> None:
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def rate_ops_concurrency_authority(publisher: str) -> None:
+    """Pin the publisher's effective noncancelling serialization authority."""
+    marker = "\nconcurrency:\n"
+    if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
+        raise SystemExit("rate-limit-operations publisher concurrency authority drift")
+    observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = ("  group: reconcile-rate-limit-operations-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    if observed != expected:
+        raise SystemExit("rate-limit-operations publisher concurrency authority drift")
+
+
+def rate_ops_concurrency_negatives(publisher: str) -> None:
+    """Prove twelve exact-diagnostic YAML concurrency override negatives."""
+    marker = "\nconcurrency:\n"
+    original = ("  group: reconcile-rate-limit-operations-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    anchor = marker + original + "\njobs:\n"
+    if publisher.count(anchor) != 1:
+        raise SystemExit("rate-limit-operations concurrency fixture anchor drift")
+    group = original.splitlines(keepends=True)[0]
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+        ("missing group", original.replace(group, "", 1)),
+        ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+        ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+        ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+        ("extra group leaf", original.replace(group, group + "  unrelated: true\n", 1)),
+        ("enabled cancellation", original.replace(cancel, "  cancel-in-progress: true\n", 1)),
+        ("missing cancellation", original.replace(cancel, "", 1)),
+        ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: true\n", 1)),
+        ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': true\n", 1)),
+        ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : true\n", 1)),
+        ("extra cancellation leaf", original.replace(cancel, cancel + "  unrelated: true\n", 1)),
+    )
+    if len(cases) != 12:
+        raise SystemExit("rate-limit-operations concurrency fixture inventory drift")
+    rate_ops_concurrency_authority(publisher)
+    for name, replacement in cases:
+        altered = publisher.replace(anchor, marker + replacement + "\njobs:\n", 1)
+        if altered == publisher:
+            raise SystemExit("rate-limit-operations unchanged concurrency fixture: " + name)
+        try:
+            rate_ops_concurrency_authority(altered)
+        except SystemExit as exc:
+            if str(exc) != "rate-limit-operations publisher concurrency authority drift":
+                raise SystemExit("rate-limit-operations wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("rate-limit-operations accepted concurrency mutation: " + name)
+    print("PASS: rate-limit-operations publisher concurrency (12 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -450,6 +506,8 @@ def main() -> None:
     rate_ops_validate_trigger_matrix(publisher, independent)
     rate_ops_trigger_matrix_negatives(publisher, independent)
     rate_ops_yaml_shadow_negatives(publisher, independent)
+    rate_ops_concurrency_authority(publisher)
+    rate_ops_concurrency_negatives(publisher)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Confirm exact clean PR authority source", False)
