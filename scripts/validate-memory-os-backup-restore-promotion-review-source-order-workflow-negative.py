@@ -79,6 +79,19 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
 def prove_trigger_reachability_negatives(source: str) -> None:
     """Remove each event's path independently and prove semantic rejection."""
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+
+    def expect_trigger_rejected(mutated: str, expected: str, case: str) -> None:
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "promotion source-order CI wrong trigger diagnostic: "
+                    + case + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("promotion source-order CI accepted " + case)
+
     for event in ("push", "pull_request"):
         for path in TRIGGER_PATHS:
             token = "      - '" + path + "'\n"
@@ -89,15 +102,18 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             else:
                 prefix, suffix = source.split(pr_marker, 1)
                 mutated = prefix + pr_marker + suffix.replace(token, "", 1)
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("promotion source-order CI trigger negative accepted: " + event + " " + path)
+            expect_trigger_rejected(
+                mutated, "promotion source-order CI " + event + " trigger inventory drift",
+                event + " missing " + path,
+            )
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if str(exc) != "promotion source-order CI trigger inventory drift":
+            raise SystemExit(
+                "promotion source-order CI wrong shortened-inventory diagnostic: "
+                + str(exc)
+            ) from exc
     else:
         raise SystemExit("promotion source-order CI shortened trigger inventory accepted")
     print(f"PASS: promotion source-order CI PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 1 shortened inventory negative)")
@@ -116,11 +132,10 @@ def prove_trigger_reachability_negatives(source: str) -> None:
                 mutated = prefix + pr_marker + suffix.replace(token, inserted + token, 1)
             if mutated == source:
                 raise SystemExit(f"promotion source-order CI addition fixture missing: {event} {label}")
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit(f"promotion source-order CI accepted {event} addition: {label}")
+            expect_trigger_rejected(
+                mutated, "promotion source-order CI " + event + " trigger inventory drift",
+                event + " addition " + label,
+            )
     print("PASS: promotion source-order CI trigger additions (8 event-specific semantic negatives)")
 
 
