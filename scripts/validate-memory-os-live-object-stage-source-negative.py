@@ -330,6 +330,113 @@ def live_object_concurrency_negatives(publisher: str) -> None:
             raise SystemExit("live-object-stage accepted concurrency mutation: " + name)
     print("PASS: live-object-stage publisher concurrency (12 exact-diagnostic negatives)")
 
+
+LIVE_OBJECT_JOB_HEADERS = [{"label":"publisher","name":"validate-pr","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"publisher","name":"reconcile","header":"    if: >-\n      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&\n      github.ref == 'refs/heads/so' &&\n      (github.event_name != 'push' ||\n      !contains(github.event.head_commit.message, 'test(load): classify MinIO lifecycle failures'))\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+
+
+def live_object_job_authority(publisher: str, independent: str) -> None:
+    """Pin reviewed effective job mapping and pre-step permission/execution authority."""
+    for label, content, names in (
+        ("publisher", publisher, ("validate-pr", "reconcile")),
+        ("independent", independent, ("source-negative",)),
+    ):
+        diagnostic = "live-object-stage " + label + " job authority drift"
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(diagnostic)
+        section = content.split("\njobs:\n", 1)[1]
+        mappings = [line for line in section.splitlines()
+                    if line.startswith("  ") and not line.startswith("    ")
+                    and line.strip() and not line.lstrip().startswith("#")]
+        if mappings != ["  " + name + ":" for name in names]:
+            raise SystemExit(diagnostic)
+        for item in LIVE_OBJECT_JOB_HEADERS:
+            if item["label"] != label:
+                continue
+            anchor = "\n  " + item["name"] + ":\n"
+            if content.count(anchor) != 1:
+                raise SystemExit(diagnostic)
+            actual = content.split(anchor, 1)[1].split("\n    steps:\n", 1)[0]
+            if actual != item["header"]:
+                raise SystemExit(diagnostic)
+
+
+def live_object_job_negatives(publisher: str, independent: str) -> None:
+    """Prove 40 exact-diagnostic job mapping, condition and permission negatives."""
+    live_object_job_authority(publisher, independent)
+    total = 0
+    for item in LIVE_OBJECT_JOB_HEADERS:
+        label, name, original = item["label"], item["name"], item["header"]
+        content = publisher if label == "publisher" else independent
+        anchor = "\n  " + name + ":\n" + original + "\n    steps:\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("live-object-stage job fixture anchor drift: " + name)
+        leaf = "write" if name == "reconcile" else "read"
+        opposite = "read" if leaf == "write" else "write"
+        first_if = original.splitlines(keepends=True)[0]
+        cases = (
+            ("condition bypass", original.replace(first_if, "    if: always()\n", 1)),
+            ("permission change", original.replace("      contents: " + leaf,
+                                                    "      contents: " + opposite, 1)),
+            ("runner change", original.replace("    runs-on: ubuntu-latest",
+                                               "    runs-on: ubuntu-24.04", 1)),
+            ("timeout change", original.replace("    timeout-minutes: ",
+                                                "    timeout-minutes: 1 # ", 1)),
+            ("continuation override", original + "\n    continue-on-error: true"),
+            ("duplicate permission", original + "\n    permissions:\n      contents: write"),
+            ("quoted permission", original.replace("      contents: " + leaf,
+                                                  "      'contents': " + opposite, 1)),
+            ("spaced permission", original.replace("      contents: " + leaf,
+                                                  "      contents : " + opposite, 1)),
+            ("duplicate condition", original + "\n    if: always()"),
+            ("spaced condition", original.replace(first_if, "    if : always()\n", 1)),
+        )
+        for name_case, changed in cases:
+            altered = content.replace(anchor, "\n  " + name + ":\n"
+                                      + changed + "\n    steps:\n", 1)
+            if altered == content:
+                raise SystemExit("live-object-stage unchanged job fixture: " + name + "/" + name_case)
+            try:
+                if label == "publisher":
+                    live_object_job_authority(altered, independent)
+                else:
+                    live_object_job_authority(publisher, altered)
+            except SystemExit as exc:
+                expected = "live-object-stage " + label + " job authority drift"
+                if str(exc) != expected:
+                    raise SystemExit("live-object-stage wrong job diagnostic: "
+                                     + name + "/" + name_case + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("live-object-stage accepted job mutation: " + name + "/" + name_case)
+            total += 1
+    for label, content, name in (
+        ("publisher", publisher, "validate-pr"),
+        ("independent", independent, "source-negative"),
+    ):
+        for name_case, changed in (
+            ("duplicate mapping", content + "\n  " + name + ":\n"),
+            ("quoted mapping", content + "\n  '" + name + "':\n"),
+            ("spaced mapping", content + "\n  " + name + " :\n"),
+            ("extra mapping", content + "\n  unreviewed:\n"),
+            ("missing mapping", content.replace("\n  " + name + ":\n",
+                                                "\n  missing-job:\n", 1)),
+        ):
+            if changed == content:
+                raise SystemExit("live-object-stage unchanged mapping fixture: " + name_case)
+            try:
+                if label == "publisher":
+                    live_object_job_authority(changed, independent)
+                else:
+                    live_object_job_authority(publisher, changed)
+            except SystemExit as exc:
+                if str(exc) != "live-object-stage " + label + " job authority drift":
+                    raise SystemExit("live-object-stage wrong mapping diagnostic: " + name_case) from exc
+            else:
+                raise SystemExit("live-object-stage accepted job mapping: " + name_case)
+            total += 1
+    if total != 40:
+        raise SystemExit("live-object-stage job negative inventory drift")
+    print("PASS: live-object-stage publisher/independent job authority (40 exact-diagnostic negatives)")
+
 def policy(text):
     for marker in REQUIRED:
         if marker not in text:
@@ -769,6 +876,8 @@ def main():
     live_object_yaml_shadow_negatives(publisher, independent)
     live_object_concurrency_authority(publisher)
     live_object_concurrency_negatives(publisher)
+    live_object_job_authority(publisher, independent)
+    live_object_job_negatives(publisher, independent)
     negatives(publisher)
     runtime(publisher, "Validate diagnostic source read-only", False)
     runtime(publisher, "Reconcile stage diagnostics", True)
