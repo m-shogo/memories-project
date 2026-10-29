@@ -2273,11 +2273,88 @@ def prove_autonomous_learning_trigger_negatives() -> None:
             raise RuntimeError("Autonomous Learning Guard event negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS = {
+    "services/import-api/internal/httpserver/route_authority_test.go": (
+        "TestRouteAuthorityMatchesRegisteredUploadSurface",
+        "TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes",
+    ),
+    "services/import-api/internal/httpserver/server_live_test.go": (
+        "TestUploadLifecycleOverHTTP",
+        "TestAccountDeletionFencesAndErasesOverHTTP",
+    ),
+}
+
+def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> None:
+    import re
+    failure = "unreviewed Upload Route focused Go test target"
+    if set(sources) != set(REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS):
+        raise RuntimeError(failure)
+    command = [value for value in REVIEWED_UPLOAD_ROUTE_RUNTIME_COMMANDS
+               if value.startswith("go test ./internal/httpserver ")]
+    if len(command) != 1:
+        raise RuntimeError(failure)
+    selectors = re.findall(r"-run '\^\(([^']+)\)\$'", command[0])
+    expected = tuple(name for names in REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS.values()
+                     for name in names)
+    if len(selectors) != 1 or tuple(selectors[0].split("|")) != expected:
+        raise RuntimeError(failure)
+    for path, names in REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS.items():
+        source = sources[path]
+        declarations = re.findall(r"(?m)^func[ \t]+(Test[A-Za-z0-9_]+)[ \t]*\(", source)
+        if tuple(name for name in declarations if name in expected) != names:
+            raise RuntimeError(failure)
+        for name in names:
+            signature = rf"(?m)^func[ \t]+{re.escape(name)}\(t \*testing\.T\)[ \t]*\{{"
+            matches = list(re.finditer(signature, source))
+            if len(matches) != 1:
+                raise RuntimeError(failure)
+            following = re.search(r"(?m)^func[ \t]+", source[matches[0].end():])
+            body = source[matches[0].end():(
+                matches[0].end() + following.start() if following else len(source))]
+            if (re.search(r"\bt\.Skip(?:f|Now)?[ \t]*\(", body) or
+                    not re.search(r"\bt\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
+                raise RuntimeError(failure)
+
+def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
+    files = {path: (source_root / path).read_text(encoding="utf-8")
+             for path in REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS}
+    require_reviewed_upload_route_focused_go_tests(files)
+    route, live = tuple(REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS)
+    def reject(label: str, path: str, old: str, new: str) -> None:
+        if files[path].count(old) != 1:
+            raise RuntimeError("focused Go test fixture anchor drift: " + label)
+        changed = dict(files)
+        changed[path] = files[path].replace(old, new, 1)
+        try:
+            require_reviewed_upload_route_focused_go_tests(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route focused Go test target":
+                raise
+        else:
+            raise RuntimeError("focused Go test negative accepted: " + label)
+    reject("renamed route test", route,
+           "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {",
+           "func TestRenamedRouteAuthority(t *testing.T) {")
+    reject("duplicate route test", route,
+           "func TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {",
+           "func TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {\n"
+           "func TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {")
+    reject("wrong live test signature", live,
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {",
+           "func TestUploadLifecycleOverHTTP(t *testing.B) {")
+    reject("skipped live test", live,
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {",
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tt.Skip(\"disabled\")")
+    reject("no route assertion", route,
+           't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
+    prove_upload_route_focused_go_test_negatives(source_root)
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
