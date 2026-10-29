@@ -1,0 +1,20 @@
+# Supplemental OPS learning — Upload Route container image source identity (2026-10-30)
+
+Append-only supplemental history only; canonical learning authority is `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory contract is `contracts/operations/autonomous-learning-system.json`. This is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review or human-promotion evidence.
+
+## Material failure / prospective unguarded image input
+
+- **Symptom:** Both Upload Route workflows could replace the PostgreSQL service image or the local MinIO Docker image/launch flags without changing reviewed Python/Go direct command lists, action `uses` references or action `with` input identity.
+- **Observed evidence:** Read-only source inspection showed `postgres:16-alpine` under the named PostgreSQL service and the exact local `docker run -d --name memory-os-upload-route-minio` command, port mapping, test-only MinIO environment variables and `quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data` in both workflows. No actual image drift or external production compromise was observed.
+- **Verified root cause:** Prior guards fingerprinted static Python/Go and GitHub Action execution surfaces, but not container image/launch source inputs.
+- **Failed approach:** Treating unchanged Go/Python commands and action refs as sufficient evidence of unchanged service-container dependencies.
+- **Correction / executable recurrence guard:** [`3765276c`](https://github.com/m-shogo/memories-project/commit/3765276c8cd2443623657240d8213c9506f9d2d5) adds a CI-reachable read-only guard requiring exactly the reviewed PostgreSQL image mapping and exact multiline MinIO launch block, with eight nested negative cases for changed tags, ports, flags, test-only credentials, duplicate/quoted image keys and extra Docker runs.
+- **Retry condition:** Rebaseline only after an independently reviewed image/source/launch change, exact-source CI and dependency/trigger closure review. The existing Quay MinIO HTTP 401 is unchanged and must not be retried without a changed prerequisite.
+
+## Material success / authority
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40944129830](https://github.com/m-shogo/memories-project/actions/runs/40944129830) SUCCESS on exact source `3765276c8cd2443623657240d8213c9506f9d2d5`. The sole code diff was +53 lines in `scripts/validate-autonomous-learning-system-negative.py`. Existing canonical 201 fail-closed negatives, 74 fanout synthetic, 1186 helper-ancestor negatives, append-only, entry-document and read-only checks remained successful. Eight nested negatives are not separately counted in the printed 201.
+- **Why safe:** No container was launched by the new read-only guard; no MinIO retry, workflow YAML change, image pull, credential, traffic, production service, recovery evidence or promotion change occurred.
+- **Reusable mechanism:** Pin source-level container image references and launch arguments separately from Go/Python commands and GitHub Actions inputs. This is **not** an immutable digest or third-party image provenance guarantee; existing image tags remain mutable and external authorization remains blocked.
+- **Protected-authority check:** Canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` and protected registries remain unchanged. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations 0/0; no approved current recovery objective, executable reviewed request, request-bound evidence, complete typed eight-domain coverage, independent review or human promotion.
+- **Next safe target:** Read-only enforcement of Upload Route top-level Publisher/PR `permissions` boundaries, rejecting duplicate/shadowed permissions and privilege expansion without touching workflow YAML.
