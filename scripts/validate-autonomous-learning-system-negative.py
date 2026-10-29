@@ -1156,7 +1156,22 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
     # Preserve the single-line stdout contract required by the entrypoint verifier.
-    return len(cases) + 2
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-parent-alias-") as tmp:
+        root = Path(tmp) / "repo"
+        root.mkdir()
+        external = Path(tmp) / "external"
+        (external / "workflows").mkdir(parents=True)
+        (external / "workflows" / "fixture.yml").write_text("on: push\n", encoding="utf-8")
+        (root / ".github").symlink_to(external, target_is_directory=True)
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/a.py"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (result.returncode != 1 or result.stdout or
+                result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow directory missing or symlinked\n"):
+            raise RuntimeError("prewrite fanout CLI accepted symlinked workflow parent")
+    return len(cases) + 3
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

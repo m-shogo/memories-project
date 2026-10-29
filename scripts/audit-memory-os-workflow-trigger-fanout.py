@@ -12,6 +12,7 @@ import argparse
 import fnmatch
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 MAX_REVIEWED_DIRECT_FANOUT = 12
@@ -120,7 +121,9 @@ def validate_relative_path(relative: str) -> None:
 def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     validate_relative_path(relative)
     directory = repo_root / ".github/workflows"
-    if directory.is_symlink() or not directory.is_dir():
+    # A normal workflow leaf beneath a symlinked .github ancestor is still
+    # an alias outside the reviewed repository tree.
+    if any(part.is_symlink() for part in (directory, *directory.parents)) or not directory.is_dir():
         raise AuditFailure("workflow directory missing or symlinked")
     matches: list[str] = []
     for workflow in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml"))):
@@ -215,8 +218,22 @@ def self_test(repo_root: Path) -> None:
         raise AuditFailure("known operability validator risk classification missing")
     if not (set(rate) & KNOWN_EXTERNAL_BLOCKED_WORKFLOWS):
         raise AuditFailure("known upload-route MinIO trigger coupling not detected")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
+        root = Path(tmp) / "repo"
+        root.mkdir()
+        external = Path(tmp) / "external"
+        (external / "workflows").mkdir(parents=True)
+        (external / "workflows" / "w.yml").write_text("on: push\n", encoding="utf-8")
+        (root / ".github").symlink_to(external, target_is_directory=True)
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "workflow directory missing or symlinked":
+                raise
+        else:
+            raise AuditFailure("symlinked workflow parent negative accepted")
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 2)
+        "prewrite fanout audit PASS: " + str(len(cases) + 3)
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; known MinIO coupling flagged; no workflow executed"
