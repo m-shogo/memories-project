@@ -299,6 +299,7 @@ def self_test(repo_root: Path) -> None:
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
         + "; entry-docs risk=" + entry_risk
+        + "; entry-docs workflows=" + ",".join(entry_docs)
         + "; known MinIO coupling flagged; no workflow executed"
     )
 
