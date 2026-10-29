@@ -655,13 +655,25 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
                 and isinstance(node.args[0], ast.Name)
                 and node.args[0].id == "os"):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
-        if (isinstance(node, ast.Attribute) and
-                isinstance(node.value, ast.Name) and node.value.id == "os"
-                and node.attr == "__dict__"):
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and ((node.value.id == "os" and
+                      node.attr in {"__dict__", "__getattribute__", "__class__"}) or
+                     (node.value.id == "sys" and node.attr == "modules"))):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.ImportFrom) and node.module == "os"
                 and any(alias.name in {"system", "popen"} or
                         alias.name.startswith(("spawn", "exec")) for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.ImportFrom) and node.module == "os" and
+                any(alias.name in {"*", "__dict__", "__getattribute__", "__class__"}
+                    for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.ImportFrom) and node.module == "sys" and
+                any(alias.name == "modules" for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.Import) and
+                any(alias.name == "sys" and alias.asname not in (None, "sys")
+                    for alias in node.names)):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Name)
@@ -750,6 +762,9 @@ def prove_upload_route_python_source_negatives() -> None:
         base + 'import os\nY = os.path.basename("x")\n', 1, digest
     )
     require_reviewed_upload_route_python_source(
+        base + 'import sys\nY = sys.stderr\n', 1, digest
+    )
+    require_reviewed_upload_route_python_source(
         base + 'from pathlib import Path\nY = Path("tmp") / "local.txt"\n',
         1, digest,
     )
@@ -771,6 +786,13 @@ def prove_upload_route_python_source_negatives() -> None:
         ("os getattr launcher", base + 'import os\nY = getattr(os, "system")("echo")\n'),
         ("os vars launcher", base + 'import os\nY = vars(os)["system"]("echo")\n'),
         ("os dict launcher", base + 'import os\nY = os.__dict__["system"]("echo")\n'),
+        ("os wildcard launcher", base + 'from os import *\nY = system("echo")\n'),
+        ("os imported dict launcher", base + 'from os import __dict__ as d\nY = d["system"]("echo")\n'),
+        ("os getattribute launcher", base + 'import os\nY = os.__getattribute__("system")("echo")\n'),
+        ("os class launcher", base + 'import os\nY = os.__class__.__getattribute__(os, "system")("echo")\n'),
+        ("sys modules launcher", base + 'import sys\nY = sys.modules["os"].system("echo")\n'),
+        ("sys modules from import", base + 'from sys import modules\nY = modules["os"].system("echo")\n'),
+        ("sys alias modules", base + 'import sys as s\nY = s.modules["os"].system("echo")\n'),
         ("Path root join", base + 'from pathlib import Path\nY = Path("contracts") / "operations/new.json"\n'),
         ("operator root join", base + 'Y = ROOT / "docs" / "fixtures/new.json"\n'),
         ("joinpath root", base + 'Y = ROOT.joinpath("services", "import-api")\n'),
