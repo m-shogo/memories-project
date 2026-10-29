@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import ast
 import difflib
 import hashlib
@@ -500,6 +501,7 @@ def validate(repo_root: Path) -> None:
 
 PREWRITE_MAX_SOURCE_BYTES = 512 * 1024
 PREWRITE_MAX_SOURCE_LINES = 4096
+PREWRITE_MAX_MATCH_PAIRS = 500_000
 PREWRITE_MAX_ADDED_LINES = 80
 PREWRITE_MAX_REMOVED_LINES = 40
 
@@ -566,9 +568,17 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         if sum(ast.dump(node, include_attributes=False) == entry_guard
                for node in tree.body) != 1:
             raise ValidationFailure("prewrite " + label + " must have one live main guard")
+    left_lines, right_lines = baseline.splitlines(), candidate.splitlines()
+    left_counts, right_counts = Counter(left_lines), Counter(right_lines)
+    # Bound the number of equal-token comparisons available to the matcher,
+    # independently of the byte/line limits and post-match diff budget.
+    match_pairs = sum(count * right_counts.get(line, 0)
+                      for line, count in left_counts.items())
+    if match_pairs > PREWRITE_MAX_MATCH_PAIRS:
+        raise ValidationFailure("prewrite line match density exceeds reviewed bound")
     added = removed = 0
     matcher = difflib.SequenceMatcher(
-        None, baseline.splitlines(), candidate.splitlines(), autojunk=False
+        None, left_lines, right_lines, autojunk=False
     )
     for op, a, b, c, d in matcher.get_opcodes():
         if op in ("replace", "delete"):
@@ -590,8 +600,13 @@ def prove_prewrite_python_negatives() -> None:
         raise ValidationFailure("prewrite positive control failed")
     with_comment = baseline.replace('    return 0\n', '    # removable\n    return 0\n')
     overlong = "# bounded fixture\n" * (PREWRITE_MAX_SOURCE_LINES + 1) + baseline
+    dense_baseline = "# repeated\n" * 800 + baseline
     unexecutable = baseline.replace('if __name__', 'return 1\nif __name__')
     cases = (
+        ("dense repeated lines", dense_baseline.replace(
+            '    return 0\n', '    # edit\n    return 0\n'),
+         hashlib.sha256(dense_baseline.encode("utf-8")).hexdigest(), 40, 20,
+         "line match density exceeds reviewed bound", dense_baseline),
         ("module return", unexecutable, sha, 40, 20,
          "candidate Python compilation invalid", baseline),
         ("module break", baseline.replace(
