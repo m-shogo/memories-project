@@ -1,0 +1,18 @@
+# Supplemental OPS learning — deletion container-kill authority concurrency serialization (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, production or backup/restore/RPO/RTO/skew evidence, a production-equivalent generation, approved objective, executable reviewed drill, typed eight-domain non-resurrection evidence, credentials, traffic, readiness, independent recovery review, or human promotion.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** The deletion container-kill authority source-negative validator bound reviewed Git blobs, event/ref/SHA, YAML roots and nested jobs, but lacked an independent semantic diagnostic for publisher concurrency cancellation and grouping. This was a static coverage gap, not observed production cancellation or a recovery bypass.
+- **Observed evidence:** Reviewed publisher blob `3284fc4bd9626bcac46a88b6c571d9db01dd3cf2` declares `group: reconcile-deletion-container-kill-authority-${{ github.ref }}` and `cancel-in-progress: false`. Previous validator blob `9b38f5972ef4a5659bb37224564c3e879020d0cf` pinned only root `concurrency:`, not the nested serialization policy.
+- **Verified root cause:** Whole-source SHA equality and root mapping guards reject changed bytes but cannot independently classify a YAML shadow or cancellation change; no dedicated nested concurrency fixture existed.
+- **Failed approach:** Treating reviewed blob identity and a root `concurrency:` key as complete independent proof of writer noncancellation.
+- **Correction / executable recurrence guard:** [`205387a0`](https://github.com/m-shogo/memories-project/commit/205387a0e577bde3d48191b62e1fc5ea771bd826) adds an exact reviewed publisher concurrency validator and ten exact-diagnostic negatives for global grouping, cancellation enablement, duplicate/spaced/quoted group and cancellation, unreviewed leaf, and missing cancellation.
+- **Retry condition:** Revisit only on an approved concurrency-policy change or demonstrated YAML shadow bypass. Do not retry unchanged MinIO HTTP 401, canonical-learning transport, workflow-write permissions or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Deletion Container-Kill Authority Source Negative #40805742792](https://github.com/m-shogo/memories-project/actions/runs/40805742792) completed **SUCCESS** on exact source `205387a0`. Job log confirms ten new concurrency negatives and 36 existing nested-job negatives; output explicitly states `production evidence generated: false`. The commit changed only the CI-reachable read-only validator (+49 lines, no deletions).
+- **Why safe:** No reviewed publisher or independent workflow, production status, backup/restore registry, credential, traffic, recovery objective, typed eight-domain evidence or human promotion authority was modified. In-memory mutations do not produce production evidence.
+- **Reusable mechanism:** Validate exact noncancelling concurrency group separately from root YAML and Git blob seals, then require mutation-specific diagnostics for shadow keys.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` still records `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Generation, objective, reviewed executable request, generation recovery evidence, typed eight-domain coverage and human promotion registries remain empty.
+- **Next safe target:** Audit deletion SIGKILL and lease-recovery authority source-negative concurrency coverage; avoid touching production authorities or triggering known external dependency blockers.
