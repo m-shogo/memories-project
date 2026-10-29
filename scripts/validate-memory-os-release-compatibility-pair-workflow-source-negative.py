@@ -341,6 +341,59 @@ def validate(publisher: str, independent: str) -> None:
     validate_job_authority(publisher, independent)
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
+    validate_concurrency_authority(publisher)
+
+
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed noncancelling release pair publisher group."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: release-compatibility-pair-" + chr(36) + "{{ github.ref }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    if (publisher.count(marker) != 1 or publisher.count(end) != 1
+            or publisher.split(marker, 1)[1].split(end, 1)[0] != expected):
+        raise SystemExit("release pair publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Reject ten effective group/cancellation mutations with exact diagnostics."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: release-compatibility-pair-" + chr(36) + "{{ github.ref }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    cases = (
+        ("global group", "  group: release-compatibility-pair-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancellation enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("release pair concurrency fixture anchor drift")
+    for name, replacement in cases:
+        changed = publisher.replace(original, replacement, 1)
+        if changed == publisher:
+            raise SystemExit("release pair unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "release pair publisher concurrency scope drift":
+                raise SystemExit(
+                    "release pair wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("release pair accepted concurrency mutation: " + name)
+    print("PASS: release pair publisher concurrency (10 exact-diagnostic negatives)")
 
 
 def negative_proofs(publisher: str, independent: str) -> None:
@@ -542,6 +595,7 @@ def main() -> int:
     release_pair_validate_trigger_matrix(publisher, independent)
     release_pair_trigger_matrix_negatives(publisher, independent)
     release_pair_yaml_shadow_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_job_authority_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
