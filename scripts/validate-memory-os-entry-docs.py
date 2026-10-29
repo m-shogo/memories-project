@@ -2666,6 +2666,26 @@ def main() -> int:
                                 + fanout_result.stderr[:300])
             else:
                 print(fanout_result.stdout.strip())
+                # Verify the actual CLI fails closed for both known risk
+                # classes; a passing self-test alone cannot prove its exit code.
+                for candidate in (
+                    "scripts/validate-memory-os-operability.py",
+                    "scripts/validate-memory-os-rate-limit-operations-source-negative.py",
+                ):
+                    try:
+                        cli_result = subprocess.run(
+                            [sys.executable, str(fanout_guard), "--path", candidate,
+                             "--repo-root", str(REPO_ROOT)],
+                            cwd=REPO_ROOT, capture_output=True, text=True,
+                            timeout=30, check=False,
+                        )
+                    except (OSError, subprocess.TimeoutExpired):
+                        failures.append("prewrite workflow fanout CLI unavailable: " + candidate)
+                    else:
+                        if (cli_result.returncode != 2
+                                or "risk: BLOCKED_" not in cli_result.stdout):
+                            failures.append("prewrite workflow fanout CLI failed closed: "
+                                            + candidate)
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
