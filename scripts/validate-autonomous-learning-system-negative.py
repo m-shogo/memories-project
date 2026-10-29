@@ -607,6 +607,12 @@ def require_reviewed_upload_route_toolchain_environment(source: str) -> None:
         "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT",
         "PYTHONSAFEPATH", "GOWORK", "GOFLAGS", "GOPATH", "GOMODCACHE",
         "GOTOOLCHAIN", "CGO_ENABLED", "GOENV", "GITHUB_ENV",
+        "PYTHONUSERBASE", "PYTHONWARNINGS", "PYTHONNOUSERSITE",
+        "PIP_CONFIG_FILE", "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL",
+        "PIP_NO_INDEX", "PIP_TRUSTED_HOST", "GOPROXY", "GOSUMDB",
+        "GOPRIVATE", "GONOPROXY", "GONOSUMDB", "GO111MODULE",
+        "GOROOT", "GOCACHE", "BASH_ENV", "ENV", "SHELLOPTS",
+        "BASHOPTS", "LD_PRELOAD", "LD_LIBRARY_PATH", "GITHUB_PATH", "PATH",
     )
     if re.search(r"(?<![A-Za-z0-9_])(?:" + "|".join(names) +
                  r")(?![A-Za-z0-9_])", source):
@@ -620,6 +626,12 @@ def prove_upload_route_toolchain_environment_negatives() -> None:
         "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT",
         "PYTHONSAFEPATH", "GOWORK", "GOFLAGS", "GOPATH", "GOMODCACHE",
         "GOTOOLCHAIN", "CGO_ENABLED", "GOENV", "GITHUB_ENV",
+        "PYTHONUSERBASE", "PYTHONWARNINGS", "PYTHONNOUSERSITE",
+        "PIP_CONFIG_FILE", "PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL",
+        "PIP_NO_INDEX", "PIP_TRUSTED_HOST", "GOPROXY", "GOSUMDB",
+        "GOPRIVATE", "GONOPROXY", "GONOSUMDB", "GO111MODULE",
+        "GOROOT", "GOCACHE", "BASH_ENV", "ENV", "SHELLOPTS",
+        "BASHOPTS", "LD_PRELOAD", "LD_LIBRARY_PATH", "GITHUB_PATH", "PATH",
     ):
         try:
             require_reviewed_upload_route_toolchain_environment(
