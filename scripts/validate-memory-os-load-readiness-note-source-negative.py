@@ -288,6 +288,64 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
     print("PASS: load-readiness root/permission YAML authority (12 exact-diagnostic negatives)")
 
 
+
+def load_readiness_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed event-scoped noncancelling publisher serialization."""
+    marker = "\nconcurrency:\n"
+    if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
+        raise SystemExit("load-readiness publisher concurrency authority drift")
+    observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = ("  group: reconcile-load-readiness-note-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    if observed != expected:
+        raise SystemExit("load-readiness publisher concurrency authority drift")
+
+
+def load_readiness_concurrency_negatives(publisher: str) -> None:
+    """Reject twelve effective YAML concurrency override mutations."""
+    marker = "\nconcurrency:\n"
+    original = ("  group: reconcile-load-readiness-note-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    anchor = marker + original + "\njobs:\n"
+    if publisher.count(anchor) != 1:
+        raise SystemExit("load-readiness concurrency fixture anchor drift")
+    group = original.splitlines(keepends=True)[0]
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+        ("missing group", original.replace(group, "", 1)),
+        ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+        ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+        ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+        ("extra group leaf", original.replace(group, group + "  unreviewed: true\n", 1)),
+        ("enabled cancellation", original.replace(cancel, "  cancel-in-progress: true\n", 1)),
+        ("missing cancellation", original.replace(cancel, "", 1)),
+        ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: true\n", 1)),
+        ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': true\n", 1)),
+        ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : true\n", 1)),
+        ("extra cancellation leaf", original.replace(cancel, cancel + "  unreviewed: true\n", 1)),
+    )
+    if len(cases) != 12:
+        raise SystemExit("load-readiness concurrency negative inventory drift")
+    load_readiness_concurrency_authority(publisher)
+    for name, replacement in cases:
+        altered = publisher.replace(anchor, marker + replacement + "\njobs:\n", 1)
+        if altered == publisher:
+            raise SystemExit("load-readiness unchanged concurrency fixture: " + name)
+        try:
+            load_readiness_concurrency_authority(altered)
+        except SystemExit as exc:
+            if str(exc) != "load-readiness publisher concurrency authority drift":
+                raise SystemExit("load-readiness wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("load-readiness accepted concurrency mutation: " + name)
+    print("PASS: load-readiness publisher concurrency (12 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -364,6 +422,8 @@ def main() -> None:
     load_readiness_trigger_matrix_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    load_readiness_concurrency_authority(publisher)
+    load_readiness_concurrency_negatives(publisher)
     mutations(publisher)
     identity(publisher, "Reconcile read-only PR authority", False)
     identity(publisher, "Capture exact clean source", True)
