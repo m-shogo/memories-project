@@ -438,17 +438,66 @@ def prove_upload_route_go_workspace_negatives() -> None:
             raise RuntimeError("broken Go workspace symlink accepted")
 
 
+def require_unaliased_go_path(source_root: Path, path: Path) -> None:
+    """Reject source aliases, missing paths and symlinked parent directories."""
+    try:
+        relative = path.relative_to(source_root)
+        resolved = path.resolve(strict=True).relative_to(source_root.resolve(strict=True))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError("unreviewed Go source path alias/missing") from exc
+    if path.is_symlink() or resolved != relative:
+        raise RuntimeError("unreviewed Go source path alias/missing")
+
+
+def prove_unaliased_go_path_negatives() -> None:
+    with tempfile.TemporaryDirectory(prefix="upload-go-path-negative-") as tmp:
+        root = Path(tmp)
+        directory = root / "pkg"
+        directory.mkdir()
+        path = directory / "file.go"
+        path.write_text("package pkg\n", encoding="utf-8")
+        require_unaliased_go_path(root, path)
+        path.unlink()
+        for label in ("missing", "symlink"):
+            if label == "symlink":
+                path.symlink_to("missing.go")
+            try:
+                require_unaliased_go_path(root, path)
+            except RuntimeError as exc:
+                if str(exc) != "unreviewed Go source path alias/missing":
+                    raise
+            else:
+                raise RuntimeError("Go source alias negative accepted: " + label)
+            if path.is_symlink():
+                path.unlink()
+        directory.rmdir()
+        other = root / "other"
+        other.mkdir()
+        (other / "file.go").write_text("package pkg\n", encoding="utf-8")
+        directory.symlink_to(other, target_is_directory=True)
+        try:
+            require_unaliased_go_path(root, directory / "file.go")
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go source path alias/missing":
+                raise
+        else:
+            raise RuntimeError("Go symlinked parent negative accepted")
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
+    prove_unaliased_go_path_negatives()
     target = source_root / "services/import-api/internal/httpserver"
+    require_unaliased_go_path(source_root, target)
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
     def reject_native(directory: Path) -> None:
         if any(p.suffix.lower() in native_suffixes for p in directory.iterdir()):
             raise RuntimeError("unreviewed Go native build input: " + str(directory))
     reject_native(target)
+    require_unaliased_go_path(source_root, source_root / "services/import-api/go.mod")
     module_text = (source_root / "services/import-api/go.mod").read_text(encoding="utf-8")
     module_name = "module github.com/m-shogo/memories-project/services/import-api\n"
     if (not module_text.startswith(module_name) or
@@ -462,6 +511,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         raise RuntimeError("upload route Go compilation surface shrank without review")
     packages: set[str] = set()
     for file in go_files:
+        require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
         if 'import "C"' in source:
             raise RuntimeError("unreviewed Go CGo import")
@@ -479,12 +529,15 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("unreviewed Go local import closure")
         visited.add(package)
         directory = source_root / "services/import-api" / package
+        if directory.exists() or directory.is_symlink():
+            require_unaliased_go_path(source_root, directory)
         files = list(directory.glob("*.go")) if directory.is_dir() else []
         files = [p for p in files if not p.name.endswith("_test.go")]
         if not files:
             raise RuntimeError("missing Go import closure package: " + package)
         reject_native(directory)
         for file in files:
+            require_unaliased_go_path(source_root, file)
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
             if 'import "C"' in source:
@@ -501,6 +554,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
                  "requirements-security-validation.txt"):
         if not (source_root / path).is_file():
             raise RuntimeError("missing upload route setup input: " + path)
+        require_unaliased_go_path(source_root, source_root / path)
         inputs.add(path)
     if not {"services/import-api/internal/metrics/recorder.go",
             "services/import-api/internal/reqid/reqid.go",
