@@ -528,6 +528,34 @@ def prove_upload_route_path_parity_negatives() -> None:
             raise RuntimeError("Upload Route equal-count path drift accepted")
 
 
+def require_reviewed_upload_route_input_set(observed: set[str], count: int,
+                                             expected_sha256: str) -> None:
+    """Pin actual path identity, not just the number of Go/Python inputs."""
+    canonical = "".join(path + "\n" for path in sorted(observed))
+    if (len(observed) != count or
+            hashlib.sha256(canonical.encode("utf-8")).hexdigest() != expected_sha256):
+        raise RuntimeError("upload route reviewed input identity changed; review required")
+
+
+def prove_upload_route_input_set_negatives() -> None:
+    baseline = {"alpha/a.go", "beta/b.go"}
+    digest = hashlib.sha256(b"alpha/a.go\nbeta/b.go\n").hexdigest()
+    require_reviewed_upload_route_input_set(baseline, 2, digest)
+    require_reviewed_upload_route_input_set(set(reversed(sorted(baseline))), 2, digest)
+    for label, candidate in (
+        ("same count, different path", {"alpha/a.go", "beta/c.go"}),
+        ("missing path", {"alpha/a.go"}),
+        ("extra path", baseline | {"gamma/c.go"}),
+    ):
+        try:
+            require_reviewed_upload_route_input_set(candidate, 2, digest)
+        except RuntimeError as exc:
+            if str(exc) != "upload route reviewed input identity changed; review required":
+                raise
+        else:
+            raise RuntimeError("Upload Route input identity negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -536,6 +564,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
     prove_upload_route_path_parity_negatives()
+    prove_upload_route_input_set_negatives()
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
@@ -634,6 +663,10 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("missing direct operability validator input: " + path)
         inputs.add(path)
 
+    require_reviewed_upload_route_input_set(
+        inputs, 109, "e91d5755313f84ffb1326d693d099c02ee840ae250e699dcea6169046fc76604"
+    )
+
     def matches(path: str, pattern: str) -> bool:
         if pattern.startswith("!") or any(c in pattern for c in "?[]{}"):
             raise RuntimeError("unsupported upload route path filter")
@@ -652,7 +685,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             "scripts/validate-memory-os-rate-limit*.py"):
         raise RuntimeError("upload route path-negative fixture failed")
     prove_upload_route_event_parser_negatives()
-    uncovered = []
+    uncovered_sets = []
     reviewed_paths = []
     for workflow, event in (
         ("reconcile-upload-route-authority.yml", "push"),
@@ -661,10 +694,14 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
-        uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
-                             for path in inputs))
+        uncovered_sets.append({path for path in inputs
+                               if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
-    if len(inputs) < 109 or any(count < 81 for count in uncovered):
+    for missing in uncovered_sets:
+        require_reviewed_upload_route_input_set(
+            missing, 81, "ecdb964e00dc346c1e8fefe730c18f01996c3512fe4c0dc3339387ef8f73024c"
+        )
+    if len(inputs) < 109 or any(len(missing) < 81 for missing in uncovered_sets):
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
