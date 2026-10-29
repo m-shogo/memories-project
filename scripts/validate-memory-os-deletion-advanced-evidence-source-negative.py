@@ -543,6 +543,62 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: advanced-evidence publisher/independent job authority (36 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed advanced-evidence event/PR cancellation policy."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = (
+        "  group: reconcile-deletion-advanced-evidence-"
+        + chr(36) + "{{ github.event_name }}-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    expected = group + "  cancel-in-progress: true\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("advanced-evidence publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("advanced-evidence publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Reject ten exact-diagnostic reviewed cancellation-policy mutations."""
+    validate_concurrency_authority(publisher)
+    group = (
+        "  group: reconcile-deletion-advanced-evidence-"
+        + chr(36) + "{{ github.event_name }}-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    original = group + "  cancel-in-progress: true\n"
+    cases = (
+        ("global group", "  group: reconcile-deletion-advanced-evidence-global\n  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("advanced-evidence concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("advanced-evidence unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "advanced-evidence publisher concurrency scope drift":
+                raise SystemExit(
+                    "advanced-evidence wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("advanced-evidence accepted concurrency mutation: " + name)
+    print("PASS: advanced-evidence publisher concurrency policy (10 exact-diagnostic negatives)")
+
+
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
@@ -564,6 +620,7 @@ def main() -> None:
     trigger_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     validate_job_authority(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
     policy(publisher)
