@@ -543,55 +543,55 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         # A unique main definition can still be shadowed by eager module
         # control flow. Ignore deferred function/lambda bodies and class-local
         # assignments; this is not a reflective-mutation proof.
-        def module_shadows_main(node: ast.AST, *, top_level: bool) -> bool:
+        def module_shadows_main(node: ast.AST, *, top_level: bool, class_local: bool = False) -> bool:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 # Function bodies are deferred; decorators and default
                 # argument expressions run immediately at definition time.
                 eager = [*node.decorator_list, *node.args.defaults,
                          *(value for value in node.args.kw_defaults
                            if value is not None)]
-                return ((not top_level and node.name == "main")
-                        or any(module_shadows_main(value, top_level=False)
+                return ((not top_level and not class_local and node.name == "main")
+                        or any(module_shadows_main(value, top_level=False, class_local=class_local)
                                for value in eager))
             if isinstance(node, ast.ClassDef):
-                # Class decorators/bases and the class body execute now.
-                # Ordinary class-local main assignments do not bind the
-                # module, so inspect only eager value/expression positions.
+                # Class decorators/bases execute in the enclosing scope;
+                # class body control flow is eager but its names are local
+                # unless a global declaration explicitly redirects them.
                 eager = [*node.decorator_list, *node.bases,
                          *(kw.value for kw in node.keywords)]
-                for stmt in node.body:
-                    if isinstance(stmt, ast.Expr):
-                        eager.append(stmt.value)
-                    elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
-                        if stmt.value is not None:
-                            eager.append(stmt.value)
-                return (node.name == "main"
-                        or any(module_shadows_main(value, top_level=False)
-                               for value in eager))
+                return ((not class_local and node.name == "main")
+                        or any(module_shadows_main(value, top_level=False,
+                                                   class_local=class_local)
+                               for value in eager)
+                        or any(module_shadows_main(stmt, top_level=False,
+                                                   class_local=True)
+                               for stmt in node.body))
             if isinstance(node, ast.Lambda):
                 return False
+            if isinstance(node, ast.Global):
+                return "main" in node.names
             # List/set/dict comprehensions evaluate their elements and filters
             # now, but keep iteration targets local. Generator expressions
             # defer their body and evaluate only the first iterable eagerly.
             if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
                 values = ([node.key, node.value] if isinstance(node, ast.DictComp)
                           else [node.elt])
-                return (any(module_shadows_main(value, top_level=False)
+                return (any(module_shadows_main(value, top_level=False, class_local=class_local)
                             for value in values)
-                        or any(module_shadows_main(gen.iter, top_level=False)
-                               or any(module_shadows_main(cond, top_level=False)
+                        or any(module_shadows_main(gen.iter, top_level=False, class_local=class_local)
+                               or any(module_shadows_main(cond, top_level=False, class_local=class_local)
                                       for cond in gen.ifs)
                                for gen in node.generators))
             if isinstance(node, ast.GeneratorExp):
                 return bool(node.generators) and module_shadows_main(
-                    node.generators[0].iter, top_level=False
+                    node.generators[0].iter, top_level=False, class_local=class_local
                 )
             if (isinstance(node, ast.Name) and node.id == "main"
                     and isinstance(node.ctx, (ast.Store, ast.Del))):
-                return True
+                return not class_local
             if isinstance(node, (ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
                 if node.name == "main":
-                    return True
+                    return not class_local
             # A module-level reflective namespace call or immediately invoked
             # lambda can rebind main without a lexical Store/Del node.
             if (isinstance(node, ast.Attribute) and node.attr == "main"
@@ -613,12 +613,12 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         and node.args[1].value == "main"):
                     return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
-                return any(
+                return not class_local and any(
                     (alias.asname or (alias.name.split(".")[0]
                                       if isinstance(node, ast.Import) else alias.name)) == "main"
                     for alias in node.names
                 )
-            return any(module_shadows_main(child, top_level=False)
+            return any(module_shadows_main(child, top_level=False, class_local=class_local)
                        for child in ast.iter_child_nodes(node))
 
         if any(module_shadows_main(node, top_level=True) for node in tree.body):
@@ -669,6 +669,9 @@ def prove_prewrite_python_negatives() -> None:
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
+        ("class conditional local", 'class Helper:\n    if True:\n        main = 1\n', (3, 0)),
+        ("class method named main", 'class Helper:\n    def main(self):\n        pass\n', (3, 0)),
+        ("nested class named main", 'class Helper:\n    class main:\n        pass\n', (3, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
         ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
         ("deferred generator reflection", 'items = (globals().__setitem__("main", None) for _ in (1,))\n', (1, 0)),
@@ -716,6 +719,21 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("class conditional reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    if True:\n        globals().__setitem__("main", None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class for reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    for _ in (1,):\n        globals().__setitem__("main", None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class try reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    try:\n        globals().__setitem__("main", None)\n    except Exception:\n        pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class global declaration", baseline.replace(
+            'if __name__', 'class Helper:\n    global main\n    main = None\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class method decorator reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    @globals().__setitem__("main", None)\n    def method(self):\n        pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("class decorator reflection", baseline.replace(
             'if __name__', '@globals().__setitem__("main", None)\nclass Helper:\n    pass\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
