@@ -1,0 +1,20 @@
+# Supplemental OPS learning — worker container-kill recovery job authority (2026-10-29)
+
+Append-only supplemental learning only, never canonical learning, production-equivalent host-failure evidence, backup/restore, RPO/RTO/skew, drill approval, credentials, traffic, readiness or human promotion.
+
+## Material static gap / recurrence prevention
+
+- **Symptom:** The worker container-kill recovery source-negative validator already pinned reviewed Git blobs, trigger inventory, root permissions and runtime source identity, but had no independently tested nested job mapping/permission shadow guard. This is a static CI-admission gap, not observed unauthorized recovery or production execution.
+- **Observed evidence:** Publisher blob `fd01bf06241cdb476cc592e507339914346038e8` has one `prove` job (inherited root `contents: write`, timeout 25, PostgreSQL service); independent blob `a35951e20d70d93700048bea78d33a2c6ac33293` has one `source-negative` job (PR/push `so` condition, explicit `contents: read`, timeout 5). The old source-negative script had no nested job semantic negatives.
+- **Verified root cause:** Root YAML permission checks and complete Git blob equality reject changes, but do not independently prove unique effective job identity, inherited write authority, service mapping, job-scoped read-only permission or fail-closed nested shadow behavior.
+- **Failed approach:** Treating root write/read checks or a whole-file digest as sufficient independent proof of nested publisher/independent job authority; assuming the publisher must declare job-level permissions would be incorrect.
+- **Correction / executable recurrence guard:** [Code `8face329`](https://github.com/m-shogo/memories-project/commit/8face32902e55f2abcdaed857eb49743e1799028) adds a read-only `validate_job_authority` and **24 exact-diagnostic in-memory negatives**. It pins the inherited-write publisher `prove` job and explicit-read independent `source-negative` job, rejecting duplicate/quoted/spaced mappings, runner/timeout/steps/service shadows, continuation, injected/quoted/spaced permission keys, unreviewed publisher condition and independent permission/condition shadows.
+- **Retry condition:** Revisit only if reviewed job topology, inherited permission, service configuration or a demonstrated semantic bypass changes. Do not retry unchanged PostgreSQL 18 client vs PostgreSQL 16 service, MinIO HTTP 401, canonical-learning transport or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [Container Kill Recovery Diagnostic Source Negative #40793207708](https://github.com/m-shogo/memories-project/actions/runs/40793207708) completed **SUCCESS** on exact code `8face329`. Job logs confirm 24 new exact-diagnostic job negatives, 14 YAML root/permission negatives, 20 trigger removals, 12 additions, three shortened inventories, 12 branch/SHA runtime cases, 23 source negatives, seven diagnostic-writer cases and eight atomic rollback cases passing. Output explicitly states `production evidence generated: false; production decision changed: false`.
+- **Why safe:** Only an existing CI-reachable read-only validator changed (+129/-0 lines); all fixture mutations were in-memory. The publisher workflow, evidence, registry, credentials, traffic and human promotion authority were not changed.
+- **Reusable mechanism:** Validate inherited root-write jobs separately from explicit job-read scopes and test nested shadow keys with expected diagnostics before applying the complete Git blob seal.
+- **Protected-authority check:** Production status blob `3956bb805ee124ca7baf594ba05bcb0d986783b4` remains `productionDecision=NO_GO`; canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` and learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No production-equivalent generation, approved objective, executable reviewed request, typed eight-domain record, independent final review or human promotion is asserted.
+- **Next safe target:** Audit the parallel worker SIGKILL recovery diagnostic source-negative job boundary without altering any production authority.
