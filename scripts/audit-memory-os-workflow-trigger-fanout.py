@@ -33,6 +33,13 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
     source = re.sub(r"""(?m)^  (['"])(push|pull_request_target|pull_request)\1:""", r"  \2:", source)
+    # YAML accepts whitespace before a mapping colon and indentation of
+    # root keys. The strict direct-filter parser below does not model these
+    # spellings, so treat them as potentially unfiltered rather than miss
+    # a push/PR trigger (including quoted variants).
+    if (re.search(r"""(?m)^[ \t]*(?:on|['"]on['"])[ \t]+:""", source) or
+            re.search(r"""(?m)^[ \t]+(?:on|['"]on['"]):""", source)):
+        return True
     # Duplicate YAML mappings and unresolved event aliases can replace a
     # reviewed path filter. Treat ambiguity as potentially unfiltered.
     if len(re.findall(r"(?m)^on:", source)) > 1:
@@ -179,6 +186,10 @@ def self_test(repo_root: Path) -> None:
         ("quoted-on-inline", '"on": [push, workflow_dispatch]\n',
          "scripts/a.py", True),
         ("scalar-push", "on: push\n", "scripts/a.py", True),
+        ("spaced on key", "on : push\n", "scripts/a.py", True),
+        ("quoted spaced on key", '"on" : [push]\n', "scripts/a.py", True),
+        ("indented on key", ' on:\n  push:\n    paths:\n      - "docs/**"\n',
+         "scripts/a.py", True),
         ("inline-map", "on: {pull_request: {paths: ['scripts/a.py']}}\n",
          "scripts/a.py", True),
         ("scalar-dispatch", "on: workflow_dispatch\n", "scripts/a.py", False),
