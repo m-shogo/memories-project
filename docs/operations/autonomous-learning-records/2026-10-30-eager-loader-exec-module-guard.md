@@ -1,0 +1,23 @@
+# Supplemental OPS learning — eager loader.exec_module execution boundary (2026-10-30)
+
+Append-only supplemental learning only. Canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md`, mandatory policy remains `contracts/operations/autonomous-learning-system.json`. This is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent review or human promotion evidence.
+
+## Material failure — prospective unreviewed loader execution
+
+- **Symptom:** A module-level `loader.exec_module(module)` call can execute arbitrary imported module code before the verified CI main dispatch, potentially rebinding protected functions through imported side effects. The same call could be accepted by a prewrite candidate static guard.
+- **Observed evidence:** At reviewed source `0abf57b2a0d1a9624b93d97d2fc68b240a10e9cf`, both AST visitors recognized `import_module`, `run_module` and `run_path` attribute calls, but not `exec_module`. No actual service or production execution incident was observed.
+- **Verified root cause:** The bounded lexical dynamic-execution inventory omitted the standard loader method `exec_module`.
+- **Failed approach:** Assuming the three previously reviewed module execution method names exhausted eager loader execution paths.
+- **Correction / executable recurrence guard:** [`16488964`](https://github.com/m-shogo/memories-project/commit/16488964f55dc57bc3f9a561b0c6705bd5737a70) adds `exec_module` to both CI entrypoint and prewrite AST visitor rejection sets, one prewrite negative and a deferred function-local positive. [`46d09bc9`](https://github.com/m-shogo/memories-project/commit/46d09bc927f56b344ff94c564153cb3efa1e7cd5) adds two exact-first-diagnostic entrypoint negatives for both protected-binding labels. These are static lexical guards; alias/transitive import closure remains unproven.
+- **Retry condition:** Revisit only after reviewed legitimate eager loader usage with explicit execution-effect evidence, positive/deferred controls and exact-source CI. Do not retry unchanged MinIO HTTP 401, workflow-write permissions, canonical large-history transport or human promotion blockers.
+
+## Material success
+
+- **Outcome/evidence:** [Autonomous Learning Guard #40965164028](https://github.com/m-shogo/memories-project/actions/runs/40965164028) SUCCESS on the visitor and nested controls. [Autonomous Learning Guard #40965364891](https://github.com/m-shogo/memories-project/actions/runs/40965364891) SUCCESS on exact source `46d09bc927f56b344ff94c564153cb3efa1e7cd5`: **234 canonical fail-closed cases** (up from 232), 74 fanout synthetic cases, 1,186 helper-ancestor negative mutations, append-only, entry-document and read-only checks PASS. The nested prewrite negative and deferred positive are not included in the displayed 234 count.
+- **Why safe:** Only the two existing read-only learning validators changed. No workflow YAML, service code, production evidence, credentials, traffic, generation/objective, reviewed requests, request-bound recovery, typed eight-domain records, independent review or promotion authority changed.
+- **Reusable mechanism:** Review module-execution methods as an explicit bounded set across both CI entrypoint and prewrite visitors; require negative tests for eager module scope and a deferred positive, and verify the exact first canonical failure.
+- **Protected-authority check:** All ten protected blobs unchanged: canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6`, generation `bfd1b04561a257d1a288bd127572bdad762bfae5`, objective `f4d74f333a4884f9aba2284a31ac011aae8b71bd`, drill request `acebcd02de9d4ec44891e70ff00b6898174451dd`, generation evidence `ae7e57efce7ca21d546c1cb336d3ee7bb7ebf93a`, typed non-resurrection `26bb1cc70c64ab3dfa09bee011545a52d46afc00`, promotion review `99cb895fbefb5b459d461926851186dbed742f88`. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; zero registered/eligible generations, approved current recovery objectives, executable reviewed requests, request-bound evidence, complete typed eight-domain records, final candidates or human promotion.
+
+## Next safe target
+
+Audit eager reflective `getattr(..., "import_module")` and related call construction with bounded static negatives. Preserve separate unresolved Go-only pre-MinIO CI trigger coverage and full Go/Python transitive input closure; do not change workflow paths or claim production readiness.
