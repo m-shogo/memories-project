@@ -391,6 +391,112 @@ def load_foundation_concurrency_negatives(publisher: str) -> None:
             raise SystemExit("load-foundation accepted concurrency mutation: " + name)
     print("PASS: load-foundation publisher concurrency (12 exact-diagnostic negatives)")
 
+LOAD_FOUNDATION_JOB_HEADERS = [{"label":"publisher","name":"validate-pr","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 10"},{"label":"publisher","name":"reconcile","header":"    if: >-\n      (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') &&\n      github.ref == 'refs/heads/so' &&\n      (github.event_name != 'push' ||\n       (!contains(github.event.head_commit.message, 'docs(ops): reconcile bounded load foundations') &&\n        !contains(github.event.head_commit.message, 'test(load): record bounded load authority diagnostic')))\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    timeout-minutes: 10"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+
+
+def load_foundation_job_authority(publisher: str, independent: str) -> None:
+    """Pin reviewed effective job mapping and pre-step permission/execution authority."""
+    for label, content, names in (
+        ("publisher", publisher, ("validate-pr", "reconcile")),
+        ("independent", independent, ("source-negative",)),
+    ):
+        diagnostic = "load-foundation " + label + " job authority drift"
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(diagnostic)
+        section = content.split("\njobs:\n", 1)[1]
+        mappings = [line for line in section.splitlines()
+                    if line.startswith("  ") and not line.startswith("    ")
+                    and line.strip() and not line.lstrip().startswith("#")]
+        if mappings != ["  " + name + ":" for name in names]:
+            raise SystemExit(diagnostic)
+        for item in LOAD_FOUNDATION_JOB_HEADERS:
+            if item["label"] != label:
+                continue
+            anchor = "\n  " + item["name"] + ":\n"
+            if content.count(anchor) != 1:
+                raise SystemExit(diagnostic)
+            actual = content.split(anchor, 1)[1].split("\n    steps:\n", 1)[0]
+            if actual != item["header"]:
+                raise SystemExit(diagnostic)
+
+
+def load_foundation_job_negatives(publisher: str, independent: str) -> None:
+    """Prove 40 exact-diagnostic job mapping, condition and permission negatives."""
+    load_foundation_job_authority(publisher, independent)
+    total = 0
+    for item in LOAD_FOUNDATION_JOB_HEADERS:
+        label, name, original = item["label"], item["name"], item["header"]
+        content = publisher if label == "publisher" else independent
+        anchor = "\n  " + name + ":\n" + original + "\n    steps:\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("load-foundation job fixture anchor drift: " + name)
+        leaf = "write" if name == "reconcile" else "read"
+        opposite = "read" if leaf == "write" else "write"
+        first_if = original.splitlines(keepends=True)[0]
+        cases = (
+            ("condition bypass", original.replace(first_if, "    if: always()\n", 1)),
+            ("permission change", original.replace("      contents: " + leaf,
+                                                    "      contents: " + opposite, 1)),
+            ("runner change", original.replace("    runs-on: ubuntu-latest",
+                                               "    runs-on: ubuntu-24.04", 1)),
+            ("timeout change", original.replace("    timeout-minutes: ",
+                                                "    timeout-minutes: 1 # ", 1)),
+            ("continuation override", original + "\n    continue-on-error: true"),
+            ("duplicate permission", original + "\n    permissions:\n      contents: write"),
+            ("quoted permission", original.replace("      contents: " + leaf,
+                                                  "      'contents': " + opposite, 1)),
+            ("spaced permission", original.replace("      contents: " + leaf,
+                                                  "      contents : " + opposite, 1)),
+            ("duplicate condition", original + "\n    if: always()"),
+            ("spaced condition", original.replace(first_if, "    if : always()\n", 1)),
+        )
+        for name_case, changed in cases:
+            altered = content.replace(anchor, "\n  " + name + ":\n"
+                                      + changed + "\n    steps:\n", 1)
+            if altered == content:
+                raise SystemExit("load-foundation unchanged job fixture: " + name + "/" + name_case)
+            try:
+                if label == "publisher":
+                    load_foundation_job_authority(altered, independent)
+                else:
+                    load_foundation_job_authority(publisher, altered)
+            except SystemExit as exc:
+                expected = "load-foundation " + label + " job authority drift"
+                if str(exc) != expected:
+                    raise SystemExit("load-foundation wrong job diagnostic: "
+                                     + name + "/" + name_case + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("load-foundation accepted job mutation: " + name + "/" + name_case)
+            total += 1
+    for label, content, name in (
+        ("publisher", publisher, "validate-pr"),
+        ("independent", independent, "source-negative"),
+    ):
+        for name_case, changed in (
+            ("duplicate mapping", content + "\n  " + name + ":\n"),
+            ("quoted mapping", content + "\n  '" + name + "':\n"),
+            ("spaced mapping", content + "\n  " + name + " :\n"),
+            ("extra mapping", content + "\n  unreviewed:\n"),
+            ("missing mapping", content.replace("\n  " + name + ":\n",
+                                                "\n  missing-job:\n", 1)),
+        ):
+            if changed == content:
+                raise SystemExit("load-foundation unchanged mapping fixture: " + name_case)
+            try:
+                if label == "publisher":
+                    load_foundation_job_authority(changed, independent)
+                else:
+                    load_foundation_job_authority(publisher, changed)
+            except SystemExit as exc:
+                if str(exc) != "load-foundation " + label + " job authority drift":
+                    raise SystemExit("load-foundation wrong mapping diagnostic: " + name_case) from exc
+            else:
+                raise SystemExit("load-foundation accepted job mapping: " + name_case)
+            total += 1
+    if total != 40:
+        raise SystemExit("load-foundation job negative inventory drift")
+    print("PASS: load-foundation publisher/independent job authority (40 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -613,6 +719,8 @@ def main() -> None:
     yaml_root_permission_negatives(publisher, independent)
     load_foundation_concurrency_authority(publisher)
     load_foundation_concurrency_negatives(publisher)
+    load_foundation_job_authority(publisher, independent)
+    load_foundation_job_negatives(publisher, independent)
     mutations(publisher)
     writer_runtime(publisher)
     capture_shell_runtime(publisher)
