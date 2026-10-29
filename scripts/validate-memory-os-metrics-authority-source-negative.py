@@ -388,6 +388,113 @@ def metrics_concurrency_negatives(writer: str, pr: str) -> None:
 
 
 
+
+def metrics_job_authority(writer: str, pr: str, independent: str) -> None:
+    """Reject effective job mapping, condition and permission shadows."""
+    for label, content, name, keys in (
+        ("writer", writer, "reconcile", (
+            "    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+            "    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:",
+        )),
+        ("PR", pr, "validate", (
+            "    if: github.event_name == 'pull_request' && github.base_ref == 'so'",
+            "    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:",
+        )),
+        ("independent", independent, "source-negative", (
+            "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+            "    permissions:", "    runs-on: ubuntu-latest",
+            "    timeout-minutes: 5", "    steps:",
+        )),
+    ):
+        if content.count("\njobs:\n") != 1:
+            raise AssertionError("metrics " + label + " job authority drift")
+        body = content.split("\njobs:\n", 1)[1]
+        jobs = [line for line in body.splitlines()
+                if line.startswith("  ") and not line.startswith("   ")
+                and line.strip() and not line.lstrip().startswith("#")]
+        leaves = [line for line in body.splitlines()
+                  if line.startswith("    ") and not line.startswith("     ")
+                  and line.strip() and not line.lstrip().startswith("#")]
+        if jobs != ["  " + name + ":"] or leaves != list(keys):
+            raise AssertionError("metrics " + label + " job authority drift")
+        if label == "independent":
+            permission = body.split("    permissions:\n", 1)[1].split("    runs-on:", 1)[0]
+            if permission != "      contents: read\n":
+                raise AssertionError("metrics independent job permission leaf drift")
+
+
+def metrics_job_negatives(writer: str, pr: str, independent: str) -> None:
+    count = 0
+    for index, label, original, name, condition, timeout in (
+        (0, "writer", writer, "reconcile",
+         "    if: (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n", "10"),
+        (1, "PR", pr, "validate",
+         "    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n", "10"),
+        (2, "independent", independent, "source-negative",
+         "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n", "5"),
+    ):
+        job = "  " + name + ":\n"
+        runner = "    runs-on: ubuntu-latest\n"
+        budget = "    timeout-minutes: " + timeout + "\n"
+        steps = "    steps:\n"
+        cases = (
+            ("duplicate job", job, job + job),
+            ("quoted job", job, "  '" + name + "':\n"),
+            ("spaced job", job, "  " + name + " :\n"),
+            ("extra job", job, "  unreviewed:\n    runs-on: ubuntu-latest\n" + job),
+            ("missing condition", condition, ""),
+            ("condition override", condition, "    if: true\n"),
+            ("runner override", runner, "    runs-on: self-hosted\n"),
+            ("timeout override", budget, "    timeout-minutes: 60\n"),
+            ("missing steps", steps, ""),
+            ("continuation override", runner, "    continue-on-error: true\n" + runner),
+            ("dependency injection", runner, "    needs: unreviewed\n" + runner),
+            ("permission override", runner,
+             ("    permissions:\n      contents: write\n" + runner)
+             if label != "independent" else
+             ("    permissions:\n      contents: write\n" + runner)),
+        )
+        for name_case, old, replacement in cases:
+            if original.count(old) != 1:
+                raise AssertionError("metrics job fixture anchor drift: " + label + " " + name_case)
+            sources = [writer, pr, independent]
+            sources[index] = original.replace(old, replacement, 1)
+            try:
+                metrics_job_authority(*sources)
+            except AssertionError as exc:
+                expected = "metrics " + label + " job authority drift"
+                if str(exc) != expected:
+                    raise AssertionError("metrics job wrong negative diagnostic: "
+                                         + label + " " + name_case + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("metrics accepted job mutation: " + label + " " + name_case)
+            count += 1
+    leaf = "      contents: read\n"
+    if independent.count(leaf) != 1:
+        raise AssertionError("metrics independent job permission fixture anchor drift")
+    for name, replacement in (
+        ("write", "      contents: write\n"),
+        ("quoted", "      'contents': read\n"),
+        ("spaced", "      contents : read\n"),
+        ("duplicate", leaf + leaf),
+        ("unknown", leaf + "      actions: write\n"),
+    ):
+        changed = independent.replace(leaf, replacement, 1)
+        try:
+            metrics_job_authority(writer, pr, changed)
+        except AssertionError as exc:
+            if str(exc) != "metrics independent job permission leaf drift":
+                raise AssertionError("metrics independent job permission wrong diagnostic: "
+                                     + name + ": " + str(exc)) from exc
+        else:
+            raise AssertionError("metrics accepted independent job permission: " + name)
+        count += 1
+    if count != 41:
+        raise AssertionError("metrics job negative inventory drift")
+    print("PASS: metrics job mapping, conditions and permissions (41 exact-diagnostic negatives)")
+
+
+
 def policy(s: str, required: tuple, label: str) -> None:
     if any(s.count(action) != 1 for action in (CHECKOUT, SETUP_GO, SETUP_PY)):
         raise AssertionError("metrics " + label + " immutable Actions drift")
@@ -522,6 +629,8 @@ def main() -> None:
     metrics_trigger_negatives(writer, pr, independent)
     metrics_concurrency_authority(writer, pr)
     metrics_concurrency_negatives(writer, pr)
+    metrics_job_authority(writer, pr, independent)
+    metrics_job_negatives(writer, pr, independent)
     negatives(writer, WRITER_REQUIRED, "writer")
     negatives(pr, PR_REQUIRED, "PR")
     head = "a" * 40
