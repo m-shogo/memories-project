@@ -1282,6 +1282,44 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             counts[0] != len(workflows) or not workflows or
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
+    # Audit the shared entrypoint on the real checked-out workflow tree.
+    # Reconcile exact count, identity, risk and CLI exit status; never infer
+    # a safe write from a partial connector/code-search workflow inventory.
+    try:
+        entry = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(source_root),
+             "--path", "scripts/validate-memory-os-entry-docs.py"],
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("prewrite entrypoint fanout CLI timed out") from exc
+    entry_lines = entry.stdout.splitlines()
+    entry_reports = [
+        re.fullmatch(
+            r"risk: (BOUNDED_DIRECT_MATCH_ONLY|BLOCKED_HIGH_FANOUT|BLOCKED_KNOWN_EXTERNAL_DEPENDENCY); matched workflow count: ([0-9]+)",
+            line,
+        ) for line in entry_lines
+    ]
+    entry_reports = [match for match in entry_reports if match is not None]
+    entry_workflows = [line[2:] for line in entry_lines
+                       if line.startswith("- .github/workflows/")]
+    if (entry.stderr or len(entry_reports) != 1 or
+            int(entry_reports[0].group(2)) != len(entry_workflows) or
+            len(entry_workflows) != len(set(entry_workflows)) or
+            ".github/workflows/autonomous-learning-guard.yml" not in entry_workflows):
+        raise RuntimeError("prewrite entrypoint fanout CLI count/identity mismatch")
+    entry_risk = entry_reports[0].group(1)
+    if ((entry_risk == "BOUNDED_DIRECT_MATCH_ONLY" and
+         (entry.returncode != 0 or len(entry_workflows) > 12)) or
+            (entry_risk == "BLOCKED_HIGH_FANOUT" and
+             (entry.returncode != 2 or len(entry_workflows) <= 12)) or
+            (entry_risk == "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY" and
+             (entry.returncode != 2 or not
+              set(entry_workflows) & {
+                  ".github/workflows/reconcile-upload-route-authority.yml",
+                  ".github/workflows/reconcile-upload-route-authority-pr.yml",
+              }))):
+        raise RuntimeError("prewrite entrypoint fanout CLI risk/exit mismatch")
     # Preserve the single-line stdout contract required by the entrypoint verifier.
     with tempfile.TemporaryDirectory(prefix="learning-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
