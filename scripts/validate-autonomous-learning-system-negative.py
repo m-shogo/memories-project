@@ -334,6 +334,19 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     if not {"services/import-api/internal/metrics/recorder.go",
             "services/import-api/internal/reqid/reqid.go"}.issubset(inputs):
         raise RuntimeError("known direct Go compile inputs vanished from inventory")
+    # These six additional runtime inputs are read by the invoked Python
+    # metrics, rate-limit, and observability validators, not by Go compilation.
+    for path in (
+        "contracts/operations/production-operability-status.json",
+        "docs/fixtures/memory-os-operability/metrics.negative.v1.json",
+        "docs/fixtures/memory-os-operability/rate-limit-policies.negative.v1.json",
+        "contracts/operations/observability-event-contract.v1.json",
+        "docs/fixtures/memory-os-operability/observability-events.valid.v1.json",
+        "docs/fixtures/memory-os-operability/observability-events.negative.v1.json",
+    ):
+        if not (source_root / path).is_file():
+            raise RuntimeError("missing direct Python validator input: " + path)
+        inputs.add(path)
 
     def matches(path: str, pattern: str) -> bool:
         if pattern.startswith("!") or any(c in pattern for c in "?[]{}"):
@@ -371,7 +384,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("duplicate/empty upload route paths: " + workflow)
         uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
                              for path in inputs))
-    if len(inputs) < 95 or any(count < 67 for count in uncovered):
+    if len(inputs) < 101 or any(count < 73 for count in uncovered):
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
