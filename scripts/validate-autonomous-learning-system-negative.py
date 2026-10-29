@@ -741,11 +741,12 @@ def reject_unreviewed_upload_route_shell_dispatch(source: str) -> None:
     """Do not silently omit prefixed/chained Python or Go shell invocations."""
     import re
     patterns = (
-        r"(?m)^\s*(?:run:\s*)?(?:env|command|sudo)\s+(?:python(?:3(?:\.\d+)?)?|go)\b",
-        r"(?m)\b(?:bash|sh)\s+-c\b",
+        r"(?m)^\s*(?:run:\s*)?(?:env|command|sudo|exec|nohup|time|timeout|nice|stdbuf|setsid|ionice|chrt|xargs|parallel|eval)\b[^\r\n]*(?:python(?:3(?:\.\d+)?)?|go)\b",
+        r"(?m)\b(?:bash|sh|dash|zsh)\s+(?:-[A-Za-z]*c[A-Za-z]*|--command)\b",
         r"(?m)(?:&&|;|\|)[ \t]*(?:python(?:3(?:\.\d+)?)?|go)\b",
         r"(?m)^\s*(?:run:\s*)?python3(?:\.\d+)?\b",
         r"\$\(\s*(?:python|go)\b",
+        r"(?m)\bfind\b[^\r\n]*\s-exec\s+(?:python(?:3(?:\.\d+)?)?|go)\b",
     )
     if any(re.search(pattern, source) for pattern in patterns):
         raise RuntimeError("unreviewed Upload Route shell dispatch")
@@ -773,6 +774,19 @@ def prove_upload_route_shell_dispatch_negatives() -> None:
         ("python3 minor", "run: python3.12 x.py"),
         ("piped Python", "echo ok | python x.py"),
         ("substitution", "echo $(python x.py)"),
+        ("env with option", "run: env -S python scripts/new.py"),
+        ("command with option", "run: command -p python scripts/new.py"),
+        ("sudo with option", "run: sudo -n go test ./x"),
+        ("exec Python", "run: exec python scripts/new.py"),
+        ("nohup Go", "run: nohup go test ./x"),
+        ("timeout Python", "run: timeout 10s python scripts/new.py"),
+        ("nice Go", "run: nice -n 5 go test ./x"),
+        ("bash login command", "run: bash -lc 'python scripts/new.py'"),
+        ("sh error command", "run: sh -ec 'go test ./x'"),
+        ("dash command", "run: dash -c 'python scripts/new.py'"),
+        ("xargs Python", "run: xargs -n1 python scripts/new.py"),
+        ("eval Python", "run: eval 'python scripts/new.py'"),
+        ("find exec Go", "run: find . -exec go test ./x ;"),
     ):
         try:
             reject_unreviewed_upload_route_shell_dispatch(source)
