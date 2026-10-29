@@ -158,7 +158,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
           for binary in psql pg_dump pg_restore; do
-            "$binary" --version | grep -Eq 'PostgreSQL\\) 16\\.'
+            "$binary" --version | grep -Eq 'PostgreSQL\) 16\.'
           done
           server_version="$(psql -Atqc 'SHOW server_version_num')"
           [[ "$server_version" =~ ^[0-9]+$ ]]

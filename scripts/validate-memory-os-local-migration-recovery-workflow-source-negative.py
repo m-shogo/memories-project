@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/local-migration-recovery-artifact.yml"
 INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
-PUBLISHER_SHA = "823b0f2bcdc2b03ef629e0f4119a35fc29b91c42"
+PUBLISHER_SHA = "c5ca017400a307febbb2143f033454818af1ab7b"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
 
 PUBLISHER_TRIGGER_PATHS = (
@@ -177,6 +177,7 @@ PUBLISHER_REQUIRED = (
     (WRITER_SHA, 1),
     ("    runs-on: ubuntu-24.04\n", 1),
     ("for binary in psql pg_dump pg_restore; do", 1),
+    ("grep -Eq 'PostgreSQL" + chr(92) + ") 16" + chr(92) + ".'", 1),
     ('server_version="$(psql -Atqc \'SHOW server_version_num\')"', 1),
     ("test \"$((server_version / 10000))\" -eq 16", 1),
     ("ref: so", 1),
@@ -530,6 +531,7 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("publisher writer scope", True, WRITER_SCOPE, "    if: always()"),
         ("publisher runner major", True, "    runs-on: ubuntu-24.04\n", "    runs-on: ubuntu-latest\n"),
         ("publisher server major guard", True, 'test "$((server_version / 10000))" -eq 16', "true"),
+        ("publisher client version grep", True, "grep -Eq 'PostgreSQL" + chr(92) + ") 16" + chr(92) + ".'", "grep -Eq 'PostgreSQL'"),
         ("publisher PR SHA", True, PR_SHA, 'test -n "$expected"'),
         ("publisher writer SHA", True, WRITER_SHA, 'test -n "$GITHUB_SHA"'),
         ("publisher checkout pin", True, CHECKOUT, "uses: actions/checkout@v4"),
