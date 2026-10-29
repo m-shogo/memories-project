@@ -31,6 +31,15 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
     source = re.sub(r"""(?m)^  (['"])(push|pull_request)\1:""", r"  \2:", source)
+    # Duplicate YAML mappings and unresolved event aliases can replace a
+    # reviewed path filter. Treat ambiguity as potentially unfiltered.
+    if len(re.findall(r"(?m)^on:", source)) > 1:
+        return True
+    if re.search(r"(?m)^on:[ \t]*[&*|>!]", source):
+        return True
+    if any(len(re.findall(r"(?m)^  " + event + ":", source)) > 1
+           for event in ("push", "pull_request")):
+        return True
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
     if inline and re.search(r"\b(?:push|pull_request)\b", inline.group(1)):
         return True
@@ -54,6 +63,8 @@ def workflow_matches_path(source: str, relative: str) -> bool:
         event_body = match.group(1)
         if "    paths-ignore:" in event_body or "    paths:" not in event_body:
             return True
+        if len(re.findall(r"""(?m)^    (?:paths|['"]paths['"]):""", event_body)) > 1:
+            return True
         paths = re.search(
             r"(?ms)^    paths:\s*\n((?:^      - .*(?:\n|\Z))+)",
             event_body,
@@ -61,14 +72,31 @@ def workflow_matches_path(source: str, relative: str) -> bool:
         if paths is None:
             return True
         for row in paths.group(1).splitlines():
-            pattern = row.strip()[2:].strip()
-            if pattern.startswith(("'", '"')) and pattern.endswith(pattern[0]):
-                pattern = pattern[1:-1]
+            raw = row.strip()[2:].strip()
+            if raw.startswith(("'", '"')):
+                quote = raw[0]
+                quoted = re.fullmatch(
+                    re.escape(quote) + r"([^" + re.escape(quote) + r"]*)"
+                    + re.escape(quote) + r"(?:[ \t]+#.*)?", raw
+                )
+                if quoted is None:
+                    return True
+                pattern = quoted.group(1)
+                if "\\" in pattern:
+                    return True  # YAML escapes may change the actual pattern.
+            else:
+                pattern = re.split(r"[ \t]+#", raw, maxsplit=1)[0].strip()
+                if pattern.startswith(("*", "&", "|", ">")):
+                    return True  # Unquoted YAML alias/scalar ambiguity.
+            if not pattern:
+                return True
+            # GitHub minimatch supports constructs fnmatch does not; never
+            # mistake unsupported grammar for a proven non-match.
+            if any(char in pattern for char in "{}") or re.search(r"[@+?!]\(", pattern):
+                return True
             if pattern.startswith("!"):
-                # Ignoring exclusions overestimates rather than misses risk.
+                # Ignoring ordinary exclusions overestimates direct fanout.
                 continue
-            # fnmatch can match "/" with "*"; this deliberate overestimate
-            # is safer than claiming exact GitHub minimatch equivalence.
             if fnmatch.fnmatchcase(relative, pattern):
                 return True
     return False
@@ -124,6 +152,21 @@ def self_test(repo_root: Path) -> None:
         ("quoted-push-event", "on:\n  'push':\n    paths:\n      - scripts/a.py\n",
          "scripts/a.py", True),
         ("quoted-pr-event", 'on:\n  "pull_request":\n    paths:\n      - scripts/a.py\n',
+         "scripts/a.py", True),
+        ("duplicate on", 'on:\n  push:\n    paths:\n      - "docs/**"\non: push\n',
+         "scripts/a.py", True),
+        ("duplicate push", 'on:\n  push:\n    paths:\n      - "docs/**"\n  push:\n    paths:\n      - "scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("event alias", 'on: *events\n', "scripts/a.py", True),
+        ("quoted inline comment", 'on:\n  push:\n    paths:\n      - "scripts/a.py" # note\n',
+         "scripts/a.py", True),
+        ("plain inline comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n',
+         "scripts/a.py", True),
+        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n',
+         "scripts/a.py", True),
+        ("duplicate paths", 'on:\n  push:\n    paths:\n      - "docs/**"\n    paths:\n      - "scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("extglob", 'on:\n  push:\n    paths:\n      - "scripts/!(b).py"\n',
          "scripts/a.py", True),
     )
     for name, source, path, expected in cases:

@@ -1078,6 +1078,41 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
+def prove_prewrite_fanout_cli(source_root: Path) -> int:
+    """Require the actual fanout CLI to conservatively count ambiguous events."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    cases = (
+        ("duplicate on", 'on:\n  push:\n    paths:\n      - "docs/**"\non: push\n', 1),
+        ("duplicate event", 'on:\n  push:\n    paths:\n      - "docs/**"\n  push:\n    paths:\n      - "scripts/a.py"\n', 1),
+        ("event alias", 'on: *events\n', 1),
+        ("quoted comment", 'on:\n  push:\n    paths:\n      - "scripts/a.py" # note\n', 1),
+        ("plain comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n', 1),
+        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n', 1),
+        ("unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n', 0),
+        ("dispatch only", 'on: workflow_dispatch\n', 0),
+    )
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-cli-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        workflow = directory / "fixture.yml"
+        for label, content, count in cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite fanout CLI timed out: " + label) from exc
+            if (result.returncode != 0 or result.stderr or
+                    "matched workflow count: " + str(count) not in result.stdout):
+                raise RuntimeError("prewrite fanout CLI undercount/misclassification: "
+                                   + label + ": " + result.stderr)
+    return len(cases)
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -1573,8 +1608,9 @@ def main() -> int:
 
     prove_upload_route_go_import_parser()
     prove_upload_route_go_direct_inputs(source_root)
+    fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
     return 0
 
 
