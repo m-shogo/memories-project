@@ -1,0 +1,21 @@
+# Supplemental OPS learning — reject symlinked prewrite input ancestors (2026-10-29)
+
+Append-only supplemental history only. Canonical learning remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` under `contracts/operations/autonomous-learning-system.json`. This record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent review or promotion evidence.
+
+## Material failure / gap
+
+- **Symptom:** The prewrite Python source CLI rejected a symlinked input leaf but accepted an ordinary file reached through a symlinked parent directory. The guard therefore did not prove that the inspected input path was free of aliases. No malicious write or production incident was observed.
+- **Observed evidence:** `validate_prewrite_files` previously used only `path.is_symlink()` and `path.is_file()`. A local isolated fixture confirmed that `alias/source.py` under a symlinked directory reports `is_file()=True` and `is_symlink()=False` at the leaf.
+- **Verified root cause:** Only the leaf path was checked; parent components were not checked. The canonical learning-authority validator already protects parent aliases, but the newer prewrite-file path lacked equivalent coverage.
+- **Failed approach:** Treating leaf-only symlink rejection as sufficient to bind a read-only prewrite candidate to an unaliased file path.
+- **Correction:** [f29361de](https://github.com/m-shogo/memories-project/commit/f29361deb61b2ed4d176b5fe29c71a04d4372724) rejects a symlink in either input leaf or any ancestor. [88d3dbd9](https://github.com/m-shogo/memories-project/commit/88d3dbd9fdcac93b921eb8a1f1a2c76f82cbf602) adds two actual CLI negative cases for aliased baseline and candidate parent directories.
+- **Executable recurrence guard:** The existing CI-bound canonical prewrite validator checks all path components; the negative suite requires exact canonical exit-1 diagnostics for both symlinked-parent cases. CLI negatives increased from 9 to 11, and the total canonical negative suite from 144 to **146**.
+- **Retry condition:** Revisit if path resolution, prewrite input semantics, or CLI fixture topology changes. Keep fresh GitHub HEAD/blob CAS separate from local prewrite checks; do not retry unchanged MinIO 401, canonical learning append transport, workflow permission, or human promotion blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40881892966](https://github.com/m-shogo/memories-project/actions/runs/40881892966) SUCCESS on the parent-check change; [Autonomous Learning Guard #40882091335](https://github.com/m-shogo/memories-project/actions/runs/40882091335) SUCCESS on the exact source with two new CLI negatives. CI logs report 146 learning negatives PASS, canonical learning contract PASS, entrypoint validation PASS, 1186 helper-ancestor negatives PASS, append-only and read-only checks PASS.
+- **Why safe:** Only the existing read-only positive and negative learning validators changed. Disposable files and symlinked directories were used for tests; no workflow YAML, production data, backup/restore evidence, credentials, traffic, generations, objectives, drills, typed non-resurrection, independent review or promotion authority was modified.
+- **Reusable mechanism:** Check each path component for aliases, not only the final leaf, and prove the same behavior through the actual CLI with both baseline and candidate variants.
+- **Protected-authority check:** Production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `NO_GO`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, and OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remain unchanged. Registered/eligible generations, current human-approved objectives, executable reviewed requests, complete typed eight-domain records, final candidates and human promotion remain absent and strictly gated.
+- **Next safe target:** Extend the Upload Route trigger-gap audit to the verified direct operability contract/document/fixture files without touching workflow triggers; independently review the remaining transitive Go/Python dependency graph.
