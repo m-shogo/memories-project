@@ -1,0 +1,23 @@
+# Supplemental OPS learning — eager `operator.methodcaller` execution lookup (2026-10-30)
+
+Append-only supplemental history only. Canonical learning authority: `docs/operations/AUTONOMOUS-OPS-LEARNING.md`; mandatory contract: `contracts/operations/autonomous-learning-system.json`. This history is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material failure — prospective methodcaller bypass
+
+- **Symptom:** `operator.methodcaller("import_module", "math")(importlib)` and directly imported `methodcaller("import_module", "math")(importlib)` can execute a module import through a callable factory without a lexical direct `import_module`, `getattr` or `attrgetter` call.
+- **Observed evidence:** At source `94b934b333114d36c21f16e8b328c97d49a01703`, the two AST visitors rejected eager `attrgetter` but not `methodcaller`. A local AST control showed the nested calls have `ast.Attribute(attr="methodcaller")` or `ast.Name(id="methodcaller")`, not any previously reviewed execution method. No actual malicious or production execution was observed.
+- **Verified root cause:** The bounded eager callable-factory inventory omitted `methodcaller`.
+- **Failed approach:** Treating `attrgetter` rejection as comprehensive coverage for operator-based dynamic method execution.
+- **Correction / executable recurrence guard:** [`b5a25cbf`](https://github.com/m-shogo/memories-project/commit/b5a25cbfc9cdf86fe47f66b8a105d718b8bb1ccc) extends both read-only AST visitors to reject eager direct/qualified `methodcaller` construction; it adds a deferred positive and two nested prewrite negatives. [`7befdac2`](https://github.com/m-shogo/memories-project/commit/7befdac2e61cb501054c28bd39e1ddfef3100728) adds four exact-first-diagnostic CI entrypoint negatives; [`2f571d45`](https://github.com/m-shogo/memories-project/commit/2f571d45c6fab917f804527f36aeef45d75617ac) adds two actual prewrite CLI negatives.
+- **Retry condition:** Legitimate eager methodcaller usage requires independently reviewed method/receiver binding and side-effect proof with positive/negative tests. Arbitrary renamed factories, multi-step alias execution and full import closure remain unproven. Unchanged MinIO HTTP 401, workflow-write permission, canonical large-history transport and human-promotion blockers are not retried.
+
+## Material success
+
+- **Outcome/evidence:** Exact-source [Guard #40973133543](https://github.com/m-shogo/memories-project/actions/runs/40973133543) SUCCESS on visitor/nested controls; [#40973313329](https://github.com/m-shogo/memories-project/actions/runs/40973313329) SUCCESS on CI entrypoint negatives; [#40973501779](https://github.com/m-shogo/memories-project/actions/runs/40973501779) SUCCESS on real CLI controls. Latest log: **262 canonical fail-closed cases**, 74 fanout synthetic cases, 1,186 helper-ancestor negative mutations, append-only, entry-document and read-only validation PASS.
+- **Why safe:** Only the two existing read-only learning validator scripts changed. No workflow YAML, service, production status, generation/objective/drill/evidence/non-resurrection/promotion registry, credential or traffic was modified.
+- **Reusable mechanism:** Treat known eager callable factories that can invoke module methods as conservative uncertainty boundaries. Require deferred-scope positive controls, exact-first-diagnostic CI negatives and real CLI negatives before claiming a bounded guard.
+- **Protected-authority check:** `contracts/` subtree stayed `4f592ff6bd9c7f1af4f671e45304b22984f3ad36` and `docs/` subtree remained unchanged through the three code commits. Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6`, and all six protected registries were unchanged. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations 0/0, approved objective 0, executable reviewed request 0, request-bound evidence 0, complete typed eight-domain record 0, final candidate 0, human promotion 0. Canonical large-history content transport remains limited; its blob identity was checked.
+
+## Next safe target
+
+Add an executable identity guard for the new dynamic-execution negative fixtures so same-count substitution cannot silently remove a reviewed case. Keep independent Go-only pre-MinIO CI trigger coverage and complete Go/Python dependency closure as separate unresolved targets.
