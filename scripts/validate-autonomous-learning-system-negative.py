@@ -672,6 +672,68 @@ def prove_upload_route_snapshot_function_negatives() -> None:
             raise RuntimeError("Upload Route snapshot function negative accepted: " + label)
 
 
+def upload_route_snapshot_inventory(source_root: Path) -> set[str]:
+    """Mirror the reviewed recursive snapshot *paths* without reading their bytes."""
+    roots = ("contracts", "scripts", "services/import-api", ".github/workflows", "docs")
+    suffixes = {".go", ".json", ".py", ".yml", ".yaml", ".md"}
+    result: set[str] = set()
+    for relative_root in roots:
+        directory = source_root / relative_root
+        if not directory.is_dir() or directory.is_symlink():
+            raise RuntimeError("Upload Route snapshot root missing/aliased: " + relative_root)
+        for path in directory.rglob("*"):
+            if not path.is_file() or path.suffix not in suffixes:
+                continue
+            relative = path.relative_to(source_root)
+            if relative.parts[:2] in {("docs", "fixtures"), ("docs", "evidence")}:
+                continue
+            if relative.as_posix() == "scripts/reconcile-memory-os-upload-route-authority.py":
+                continue
+            result.add(relative.as_posix())
+    return result
+
+
+def require_upload_route_snapshot_gap(paths: set[str], patterns: tuple[str, ...],
+                                      matches, min_count: int, min_uncovered: int) -> None:
+    uncovered = {path for path in paths
+                 if not any(matches(path, pattern) for pattern in patterns)}
+    if len(paths) < min_count or len(uncovered) < min_uncovered:
+        raise RuntimeError("Upload Route broad snapshot trigger gap changed; review required")
+
+
+def prove_upload_route_snapshot_inventory_negatives() -> None:
+    with tempfile.TemporaryDirectory(prefix="upload-snapshot-inventory-") as tmp:
+        root = Path(tmp)
+        included = (
+            "contracts/a.json", "scripts/other.py", "services/import-api/a.go",
+            ".github/workflows/a.yml", "docs/a.md",
+        )
+        excluded = (
+            "docs/fixtures/ignored.md", "docs/evidence/ignored.md",
+            "scripts/reconcile-memory-os-upload-route-authority.py",
+        )
+        for relative in included + excluded:
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("fixture", encoding="utf-8")
+        observed = upload_route_snapshot_inventory(root)
+        if observed != set(included):
+            raise RuntimeError("Upload Route snapshot inventory positive/exclusion fixture failed")
+        matcher = lambda path, pattern: path == pattern
+        require_upload_route_snapshot_gap(observed, ("contracts/a.json",), matcher, 5, 4)
+        for label, paths, patterns in (
+            ("missing path", observed - {"docs/a.md"}, ("contracts/a.json",)),
+            ("covered extra path", observed, ("contracts/a.json", "docs/a.md")),
+        ):
+            try:
+                require_upload_route_snapshot_gap(paths, patterns, matcher, 5, 4)
+            except RuntimeError as exc:
+                if str(exc) != "Upload Route broad snapshot trigger gap changed; review required":
+                    raise
+            else:
+                raise RuntimeError("Upload Route snapshot gap negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -684,6 +746,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_python_source_negatives()
     prove_upload_route_event_sequence_negatives()
     prove_upload_route_snapshot_function_negatives()
+    prove_upload_route_snapshot_inventory_negatives()
     reconciler = source_root / "scripts/reconcile-memory-os-upload-route-authority.py"
     require_unaliased_go_path(source_root, reconciler)
     require_reviewed_upload_route_snapshot_functions(
@@ -839,6 +902,9 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         uncovered_sets.append({path for path in inputs
                                if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
+    require_upload_route_snapshot_gap(
+        upload_route_snapshot_inventory(source_root), reviewed_paths[0], matches, 1687, 1620
+    )
     for patterns in reviewed_paths:
         require_reviewed_upload_route_event_sequence(
             patterns, 12, "c8ee443d21a468393cec2d4104c9b47da60f38173edacba213c74f16df478fd8"
