@@ -682,6 +682,9 @@ def upload_route_snapshot_inventory(source_root: Path) -> set[str]:
         if not directory.is_dir() or directory.is_symlink():
             raise RuntimeError("Upload Route snapshot root missing/aliased: " + relative_root)
         for path in directory.rglob("*"):
+            if path.is_symlink():
+                raise RuntimeError("unreviewed Upload Route snapshot symlink: " +
+                                   path.relative_to(source_root).as_posix())
             if not path.is_file() or path.suffix not in suffixes:
                 continue
             relative = path.relative_to(source_root)
@@ -719,6 +722,22 @@ def prove_upload_route_snapshot_inventory_negatives() -> None:
         observed = upload_route_snapshot_inventory(root)
         if observed != set(included):
             raise RuntimeError("Upload Route snapshot inventory positive/exclusion fixture failed")
+        for label, relative, target in (
+            ("file alias", "docs/alias.md", "a.md"),
+            ("directory alias", "docs/linked", "../contracts"),
+            ("broken alias", "docs/broken.md", "missing.md"),
+        ):
+            alias = root / relative
+            alias.symlink_to(target, target_is_directory=(label == "directory alias"))
+            try:
+                upload_route_snapshot_inventory(root)
+            except RuntimeError as exc:
+                if not str(exc).startswith("unreviewed Upload Route snapshot symlink: "):
+                    raise
+            else:
+                raise RuntimeError("Upload Route snapshot symlink negative accepted: " + label)
+            finally:
+                alias.unlink()
         matcher = lambda path, pattern: path == pattern
         require_upload_route_snapshot_gap(observed, ("contracts/a.json",), matcher, 5, 4)
         for label, paths, patterns in (
