@@ -1,0 +1,21 @@
+# Supplemental OPS learning — generation recovery evidence publisher concurrency (2026-10-29)
+
+Append-only supplemental history only; not canonical learning, production/backup/restore/RPO/RTO/skew evidence, registered/semantically eligible environment generation, approved current recovery objective, executable reviewed drill, typed eight-domain non-resurrection coverage, credentials, traffic, readiness, independent review or human promotion.
+
+## Material failure / executable recurrence prevention
+
+- **Symptom:** Existing generation-evidence permission negative validator pinned publication scope, PR read-only behavior, workflow source and trigger paths, but lacked a dedicated exact diagnostic for the publisher concurrency group/cancellation leaves. Static coverage gap, not an observed generation evidence bypass.
+- **Observed evidence:** Reviewed publisher workflow blob `b2c9e1073211d85d3f373fb95ef66c9d263f7a04` declares `backup-restore-generation-evidence-${{ github.event.pull_request.number || 'so' }}` with `cancel-in-progress: false`. Previous permission validator blob `31d71dd28e70cceb0a4dd2922f99fe495e20fd79` had no dedicated concurrency negative cases. Readonly CI workflow blob `4f3974d40145a61176ea4de7f302568cbf6c782f` includes the validator in its push/PR trigger and execution path.
+- **Verified root cause:** Root event/source checks and publication-scope guards do not independently diagnose YAML-equivalent group/cancellation shadow leaves or unreviewed cancellation changes.
+- **Failed approach:** Treating reviewed workflow identity and root-key checks as sufficient semantic proof of noncancelling generation recovery evidence serialization.
+- **Correction / executable recurrence guard:** [Commit `7a917b9b`](https://github.com/m-shogo/memories-project/commit/7a917b9b34ae19e9b70379138f052208d900adfc) adds exact reviewed concurrency-block validation and ten expected-diagnostic negatives: global group, cancellation enabled, duplicate/spaced/quoted group and cancellation, unreviewed leaf and removed cancellation. Each must raise `generation evidence publisher concurrency scope drift`.
+- **Retry condition:** Revisit only for reviewed concurrency policy changes, a demonstrated semantic bypass or exact-source CI failure; do not retry unchanged canonical-learning transport, MinIO 401, scoped permissions or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [Backup Restore Permission Boundary Negative #40811689301](https://github.com/m-shogo/memories-project/actions/runs/40811689301) completed **SUCCESS** at exact code `7a917b9b`; job log confirms 10 concurrency negatives, diagnostic privacy/atomic runtime, PR read-only scope and non-PR publication source binding. [Generation Evidence Readonly #40811689330](https://github.com/m-shogo/memories-project/actions/runs/40811689330) was **IN_PROGRESS** and [Full Admission Chain #40811689274](https://github.com/m-shogo/memories-project/actions/runs/40811689274) was **IN_PROGRESS** at capture; neither is claimed SUCCESS here.
+- **Why safe:** Only an existing CI-reachable read-only permission negative validator changed. No reviewed workflow, generation/objective/drill registry, generation recovery evidence, typed eight-domain record, production status, credential, traffic or promotion authority was edited by this code commit.
+- **Reusable mechanism:** Pin the publisher's effective noncancelling concurrency leaves independently of PR/write permission scope and whole-source identity; verify exact diagnostics in source CI and keep broader admission-chain status separate.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`. Autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered generation, approved objective, executable reviewed request, complete typed eight-domain evidence and human promotion remain separate mandatory gates.
+- **Canonical-learning limitation:** The canonical 4.17 MB learning authority returned empty text through the existing read path; unchanged transport blocker was not retried.
+- **Next safe target:** Confirm terminal readonly/full-chain outcomes and audit additional independent concurrency or CI trigger gaps without modifying production authority.
