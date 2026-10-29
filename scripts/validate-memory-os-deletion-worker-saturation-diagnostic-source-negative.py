@@ -556,6 +556,53 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: saturation publisher/independent nested job authority (24 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed worker saturation cancellation and serialization policy."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = "  group: deletion-worker-saturation-so\n  cancel-in-progress: true\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("worker-saturation publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("worker-saturation publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic saturation cancellation/group shadows."""
+    validate_concurrency_authority(publisher)
+    group = "  group: deletion-worker-saturation-so\n"
+    original = group + "  cancel-in-progress: true\n"
+    cases = (
+        ("global group", "  group: deletion-worker-saturation-global\n  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("worker-saturation concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("worker-saturation unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "worker-saturation publisher concurrency scope drift":
+                raise SystemExit(
+                    "worker-saturation wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("worker-saturation accepted concurrency mutation: " + name)
+    print("PASS: worker-saturation publisher concurrency policy (10 exact-diagnostic negatives)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -577,6 +624,7 @@ def main():
     saturation_trigger_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     validate_job_authority(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
     mutations(publisher)
