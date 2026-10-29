@@ -38,6 +38,25 @@ class AuditFailure(RuntimeError):
     pass
 
 
+def conservative_glob_match(relative: str, pattern: str) -> bool:
+    """Over-approximate GitHub **/ including zero intervening directories."""
+    if fnmatch.fnmatchcase(relative, pattern):
+        return True
+    if "**/" not in pattern:
+        return False
+    chunks = pattern.split("**/")
+    if len(chunks) > 5:
+        return True  # Bounded expansion: unreviewed complexity is risky.
+    candidates = {chunks[0]}
+    for chunk in chunks[1:]:
+        candidates = {
+            prefix + separator + chunk
+            for prefix in candidates
+            for separator in ("", "**/")
+        }
+    return any(fnmatch.fnmatchcase(relative, candidate) for candidate in candidates)
+
+
 def workflow_matches_path(source: str, relative: str) -> bool:
     """Conservatively match direct push/PR events; ambiguous filters are risky."""
     # UTF-8 BOM is legal at the beginning of a YAML stream. Preserve its
@@ -142,7 +161,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
             if pattern.startswith("!"):
                 # Ignoring ordinary exclusions overestimates direct fanout.
                 continue
-            if fnmatch.fnmatchcase(relative, pattern):
+            if conservative_glob_match(relative, pattern):
                 return True
     return False
 
@@ -247,6 +266,14 @@ def self_test(repo_root: Path) -> None:
          "scripts/a.py", True),
         ("optional preceding char", 'on:\n  push:\n    paths:\n      - "scripts/aa?.py"\n',
          "scripts/a.py", True),
+        ("globstar root zero", 'on:\n  push:\n    paths:\n      - "**/scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("globstar nested zero", 'on:\n  push:\n    paths:\n      - "scripts/**/a.py"\n',
+         "scripts/a.py", True),
+        ("globstar double zero", 'on:\n  push:\n    paths:\n      - "**/scripts/**/a.py"\n',
+         "scripts/a.py", True),
+        ("globstar unrelated", 'on:\n  push:\n    paths:\n      - "**/docs/a.py"\n',
+         "scripts/a.py", False),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -275,9 +302,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 42 or hashlib.sha256(
+    if (len(cases) != 46 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "35e5a45a7e8d89ce7f37b6fc50bd7fcb0e2573b946f337670256d3a56461fe82"):
+    ).hexdigest() != "5850e80220e7276e9227f2816445b9fda687616a60d3193db8c6db6082418e8e"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:

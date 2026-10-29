@@ -1219,6 +1219,10 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("optional suffix quantifier", 'on:\n  push:\n    paths:\n      - "scripts/a.py?"\n', 1),
         ("repeat char quantifier", 'on:\n  push:\n    paths:\n      - "scripts/a+.py"\n', 1),
         ("optional preceding char", 'on:\n  push:\n    paths:\n      - "scripts/aa?.py"\n', 1),
+        ("globstar root zero", 'on:\n  push:\n    paths:\n      - "**/scripts/a.py"\n', 1),
+        ("globstar nested zero", 'on:\n  push:\n    paths:\n      - "scripts/**/a.py"\n', 1),
+        ("globstar double zero", 'on:\n  push:\n    paths:\n      - "**/scripts/**/a.py"\n', 1),
+        ("globstar unrelated", 'on:\n  push:\n    paths:\n      - "**/docs/a.py"\n', 0),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n', 1),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n', 1),
 
@@ -1235,9 +1239,9 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     )
     # A generated fixture edit may replace rather than append a prior case.
     # Pin exact ordered labels, not only the total number of tests.
-    if (len(cases) != 25 or hashlib.sha256(
+    if (len(cases) != 29 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "b416cfd731f994207ea68b0f9b2c4f7fba80a29f9b4f50ae0f2e7a2de442b292"):
+    ).hexdigest() != "11d88e0ae58aac5997cb10367e03fb8524b6182dd87e70e3ec4a9ad2fb72d5fd"):
         raise RuntimeError("prewrite fanout CLI fixture identity drift")
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:
