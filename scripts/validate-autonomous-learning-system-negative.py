@@ -21,6 +21,55 @@ NEGATIVE_VALIDATOR = Path("scripts/validate-autonomous-learning-system-negative.
 CI_ENTRYPOINT = Path("scripts/validate-memory-os-entry-docs.py")
 
 
+# Exact reviewed mutation payloads, not merely a count of negative cases.
+REVIEWED_REFLECTIVE_EXECUTION = (
+    ("eager-reflective-import-module", 'getattr(importlib, "import_module")("math")'),
+    ("eager-reflective-builtin-import", 'getattr(builtins, "__import__")("math")'),
+    ("eager-reflective-computed-import", 'getattr(importlib, "import_" + "module")("math")'),
+    ("eager-reflective-dynamic-loader", 'getattr(loader, method)(None)'),
+    ("eager-qualified-reflective-import", 'builtins.getattr(importlib, "import_module")("math")'),
+    ("eager-qualified-dynamic-loader", 'builtins.getattr(loader, method)(None)'),
+    ("eager-operator-attrgetter", 'operator.attrgetter("import_module")(importlib)("math")'),
+    ("eager-direct-attrgetter", 'attrgetter("import_module")(importlib)("math")'),
+    ("eager-operator-methodcaller", 'operator.methodcaller("import_module", "math")(importlib)'),
+    ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
+)
+
+
+def require_reviewed_reflective_inventory(observed: list[tuple[str, str, str]]) -> None:
+    expected = [
+        (label, kind, mutation)
+        for label in ("main", "learning guard")
+        for kind, mutation in REVIEWED_REFLECTIVE_EXECUTION
+    ]
+    if len(observed) != len(expected) or set(observed) != set(expected):
+        raise RuntimeError("reviewed reflective CI negative inventory drift")
+
+
+def prove_reviewed_reflective_inventory_negatives() -> None:
+    good = [
+        (label, kind, mutation)
+        for label in ("main", "learning guard")
+        for kind, mutation in REVIEWED_REFLECTIVE_EXECUTION
+    ]
+    require_reviewed_reflective_inventory(good)
+    for label, bad in (
+        ("removed", good[:-1]),
+        ("duplicated", good + good[:1]),
+        ("payload substitution", good[:-1] + [
+            (good[-1][0], good[-1][1], good[-1][2] + " # changed")
+        ]),
+    ):
+        try:
+            require_reviewed_reflective_inventory(bad)
+        except RuntimeError as exc:
+            if str(exc) != "reviewed reflective CI negative inventory drift":
+                raise
+        else:
+            raise RuntimeError("reflective inventory negative accepted: " + label)
+
+
+
 def seed(source_root: Path, root: Path) -> None:
     # The positive validator verifies both executable guard bindings and their
     # CI reachability. Seed the complete canonical authority set so the
@@ -3527,6 +3576,7 @@ def main() -> int:
                 root, before, injected + before
             ),
         ))
+    reviewed_reflective: list[tuple[str, str, str]] = []
     # Dynamic module namespace mutation must not replace a verified guard
     # after the AST sees its original function definition.
     for label, symbol, anchor in (
@@ -3587,12 +3637,17 @@ def main() -> int:
             ("eager-operator-methodcaller", 'operator.methodcaller("import_module", "math")(importlib)'),
             ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
         ):
+            if (kind.startswith(("eager-reflective-", "eager-qualified-"))
+                    or kind.endswith(("attrgetter", "methodcaller"))):
+                reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",
                 lambda root, before=anchor, injected=mutation: replace_in_entrypoint(
                     root, before, injected + chr(10) + before
                 ),
             ))
+    require_reviewed_reflective_inventory(reviewed_reflective)
+    prove_reviewed_reflective_inventory_negatives()
     for label, relative in (
         ("contract", CONTRACT),
         ("learning history", LEARNING),
