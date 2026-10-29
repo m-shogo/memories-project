@@ -432,6 +432,50 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import parser accepted invalid import fixture")
 
 
+def require_reviewed_upload_route_go_build_constraints(relative: str, source: str) -> None:
+    """Pin compile-time Go build constraints independently of path/import identity."""
+    stems = ("reconcile", "records", "seal", "storage", "verifier", "writer")
+    reviewed = {
+        "services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go": "linux",
+    }
+    for stem in stems:
+        reviewed[f"services/import-api/internal/previewspool/{stem}_linux.go"] = "linux"
+        reviewed[f"services/import-api/internal/previewspool/{stem}_unsupported.go"] = "!linux"
+    expected = reviewed.get(relative)
+    directives = [line.strip() for line in source.splitlines()
+                  if line.lstrip().startswith(("//go:build", "// +build"))]
+    if expected is None:
+        if directives:
+            raise RuntimeError("unreviewed Go build constraint")
+    elif (directives != [f"//go:build {expected}"] or
+          not source.startswith(f"//go:build {expected}\n\n")):
+        raise RuntimeError("unreviewed Go build constraint")
+
+
+def prove_upload_route_go_build_constraint_negatives() -> None:
+    tagged = "services/import-api/internal/previewspool/seal_linux.go"
+    untagged = "services/import-api/internal/metrics/labels.go"
+    baseline = "//go:build linux\n\npackage previewspool\n"
+    require_reviewed_upload_route_go_build_constraints(tagged, baseline)
+    require_reviewed_upload_route_go_build_constraints(untagged, "package metrics\n")
+    for label, path, candidate in (
+        ("changed expression", tagged, baseline.replace("linux", "windows")),
+        ("missing directive", tagged, "package previewspool\n"),
+        ("late directive", tagged, "package previewspool\n//go:build linux\n"),
+        ("legacy shadow", tagged, "// +build windows\n" + baseline),
+        ("new tag on unreviewed file", untagged, baseline),
+        ("duplicate directive", tagged, baseline.replace("package", "//go:build linux\npackage")),
+        ("whitespace drift", tagged, baseline.replace("//go:build linux", "//go:build  linux")),
+    ):
+        try:
+            require_reviewed_upload_route_go_build_constraints(path, candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go build constraint":
+                raise
+        else:
+            raise RuntimeError("Go build constraint negative accepted: " + label)
+
+
 def upload_route_event_paths(source: str, event: str) -> tuple[str, ...]:
     """Require one unshadowed event path list; never infer closure from YAML aliases."""
     import re
@@ -1237,6 +1281,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
+    prove_upload_route_go_build_constraint_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
     prove_go_linkname_negatives()
@@ -1330,6 +1375,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     for file in go_files:
         require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
+        require_reviewed_upload_route_go_build_constraints(file.relative_to(source_root).as_posix(), source)
         reject_unreviewed_go_embeds(source)
         reject_unreviewed_go_linknames(source)
         if 'import "C"' in source:
@@ -1363,6 +1409,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             require_unaliased_go_path(source_root, file)
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
+            require_reviewed_upload_route_go_build_constraints(file.relative_to(source_root).as_posix(), source)
             reject_unreviewed_go_embeds(source)
             reject_unreviewed_go_linknames(source)
             if 'import "C"' in source:
