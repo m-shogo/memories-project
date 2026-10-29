@@ -120,8 +120,12 @@ def self_test(repo_root: Path) -> None:
     rate = matching_workflows(
         repo_root, "scripts/validate-memory-os-rate-limit-operations-source-negative.py"
     )
-    if classify(high) != "BLOCKED_HIGH_FANOUT":
+    # A high-fanout path can also match the known MinIO-blocked workflow.
+    # Preserve the higher-priority external blocker without hiding fanout.
+    if len(high) <= MAX_REVIEWED_DIRECT_FANOUT:
         raise AuditFailure("known operability validator fanout not detected")
+    if classify(high) not in ("BLOCKED_HIGH_FANOUT", "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"):
+        raise AuditFailure("known operability validator risk classification missing")
     if not (set(rate) & KNOWN_EXTERNAL_BLOCKED_WORKFLOWS):
         raise AuditFailure("known upload-route MinIO trigger coupling not detected")
     print(
