@@ -601,6 +601,32 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id in {"__import__", "eval", "exec"}):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        # A split repository root bypasses the fingerprint of complete
+        # "contracts/..." / "docs/..." literals. Refuse unreviewed joins.
+        roots = {"contracts", "docs", "scripts", "services"}
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"Path", "PurePath"} and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value in roots):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
+                and isinstance(node.right, ast.Constant)
+                and node.right.value in roots):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "joinpath"
+                and any(isinstance(arg, ast.Constant) and arg.value in roots
+                        for arg in node.args)):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "join"
+                and isinstance(node.func.value, ast.Attribute)
+                and node.func.value.attr == "path"
+                and isinstance(node.func.value.value, ast.Name)
+                and node.func.value.value.id == "os"
+                and any(isinstance(arg, ast.Constant) and arg.value in roots
+                        for arg in node.args)):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
     literals = set(re.findall(r"""["']((?:contracts|docs|scripts|services)/[^"'\s]+)["']""", source))
     require_reviewed_upload_route_input_set(literals, count, expected_sha256)
 
@@ -611,6 +637,10 @@ def prove_upload_route_python_source_negatives() -> None:
     require_reviewed_upload_route_python_source(base, 1, digest)
     require_reviewed_upload_route_python_source(
         base + 'import os\nY = os.path.basename("x")\n', 1, digest
+    )
+    require_reviewed_upload_route_python_source(
+        base + 'from pathlib import Path\nY = Path("tmp") / "local.txt"\n',
+        1, digest,
     )
     for label, candidate in (
         ("same-count literal swap", base.replace("a.json", "b.json")),
@@ -624,6 +654,10 @@ def prove_upload_route_python_source_negatives() -> None:
         ("os getattr launcher", base + 'import os\nY = getattr(os, "system")("echo")\n'),
         ("os vars launcher", base + 'import os\nY = vars(os)["system"]("echo")\n'),
         ("os dict launcher", base + 'import os\nY = os.__dict__["system"]("echo")\n'),
+        ("Path root join", base + 'from pathlib import Path\nY = Path("contracts") / "operations/new.json"\n'),
+        ("operator root join", base + 'Y = ROOT / "docs" / "fixtures/new.json"\n'),
+        ("joinpath root", base + 'Y = ROOT.joinpath("services", "import-api")\n'),
+        ("os.path root join", base + 'import os\nY = os.path.join("scripts", "new.py")\n'),
         ("from os system", base + 'from os import system\nY = system("echo")\n'),
         ("runpy loader", base + "import runpy\n"),
         ("ctypes loader", base + "import ctypes\n"),
