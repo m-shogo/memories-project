@@ -527,6 +527,28 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                  and node.name == "main"]
         if len(mains) != 1 or not isinstance(mains[0], ast.FunctionDef):
             raise ValidationFailure("prewrite " + label + " must have one sync main")
+        # A syntactically valid main() definition can be replaced before the
+        # reviewed __main__ invocation by a direct module-level binding.
+        # This is a bounded direct-binding check, not a complete Python
+        # control-flow or reflective-mutation proof.
+        for node in tree.body:
+            targets = (
+                node.targets if isinstance(node, (ast.Assign, ast.Delete))
+                else [node.target] if isinstance(node, (ast.AnnAssign, ast.AugAssign))
+                else []
+            )
+            bound = any(
+                isinstance(child, ast.Name) and child.id == "main"
+                and isinstance(child.ctx, (ast.Store, ast.Del))
+                for target in targets for child in ast.walk(target)
+            )
+            imported = isinstance(node, (ast.Import, ast.ImportFrom)) and any(
+                (alias.asname or (alias.name.split(".")[0]
+                                  if isinstance(node, ast.Import) else alias.name)) == "main"
+                for alias in node.names
+            )
+            if bound or imported or (isinstance(node, ast.ClassDef) and node.name == "main"):
+                raise ValidationFailure("prewrite " + label + " main binding shadowed")
         entry_guard = ast.dump(ast.parse(
             'if __name__ == "__main__":\n    raise SystemExit(main())\n'
         ).body[0], include_attributes=False)
@@ -568,6 +590,21 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("assigned main shadow", baseline.replace(
+            'if __name__', 'main = lambda: 1\nif __name__'), sha, 40, 20,
+         "main binding shadowed", baseline),
+        ("destructured main shadow", baseline.replace(
+            'if __name__', '(other, main) = (1, 2)\nif __name__'), sha, 40, 20,
+         "main binding shadowed", baseline),
+        ("imported main shadow", baseline.replace(
+            'if __name__', 'import os as main\nif __name__'), sha, 40, 20,
+         "main binding shadowed", baseline),
+        ("class main shadow", baseline.replace(
+            'if __name__', 'class main: pass\nif __name__'), sha, 40, 20,
+         "main binding shadowed", baseline),
+        ("deleted main shadow", baseline.replace(
+            'if __name__', 'del main\nif __name__'), sha, 40, 20,
+         "main binding shadowed", baseline),
     )
     for label, changed, expected, add, remove, diagnostic, original in cases:
         try:
