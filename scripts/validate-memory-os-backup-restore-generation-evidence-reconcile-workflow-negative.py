@@ -373,10 +373,18 @@ def main() -> int:
         if old not in source:
             raise SystemExit(f"generation evidence reconcile negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        required_label = {
+            "persist credentials": "no credentials",
+            "PR source checkout": "PR checkout",
+            "PR event admission": "PR event",
+            "PR head SHA": "PR head",
+            "push/dispatch branch": "branch",
+            "unreviewed event rejection": "unreviewed event",
+        }.get(label, label)
         expected = (
             "generation evidence reconcile CI pull_request exact trigger inventory drift"
             if label in {"self-trigger", "material delta review trigger"}
-            else "generation evidence reconcile workflow source boundary drift: " + label
+            else "generation evidence reconcile workflow source boundary drift: " + required_label
         )
         try:
             validate(mutated, check_blob=False)
