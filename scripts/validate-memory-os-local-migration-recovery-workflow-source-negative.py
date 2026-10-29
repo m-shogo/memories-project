@@ -288,11 +288,165 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: local recovery publisher/independent YAML event/root/permission (14 exact-diagnostic negatives)")
 
 
+
+def validate_job_authority(publisher: str, independent: str) -> None:
+    """Bind reviewed job identities, multi-line writer scope and nested permissions."""
+    reviewed = (
+        ("publisher", publisher, (
+            ("validate-pr", "    if: github.event_name == 'pull_request'\n",
+             "read", 10, ("if", "permissions", "runs-on", "timeout-minutes", "steps")),
+            ("rehearse", WRITER_SCOPE + "\n",
+             "write", 20, ("if", "permissions", "runs-on", "timeout-minutes",
+                           "services", "env", "steps")),
+        )),
+        ("independent", independent, (
+            ("source-negative",
+             "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n",
+             "read", 5, ("if", "permissions", "runs-on", "timeout-minutes", "steps")),
+        )),
+    )
+    for label, content, jobs in reviewed:
+        prefix = "local recovery " + label + " "
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        body = content.split("\njobs:\n", 1)[1]
+        sections: dict[str, list[str]] = {}
+        mappings: list[str] = []
+        current: str | None = None
+        for line in body.splitlines():
+            if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                    and not line.lstrip().startswith("#")):
+                current = line
+                mappings.append(line)
+                sections[current] = []
+            elif current is not None:
+                sections[current].append(line)
+        if mappings != ["  " + name + ":" for name, *_ in jobs]:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        for name, condition, scope, timeout, keys in jobs:
+            lines = sections["  " + name + ":"]
+            actual_keys = [
+                line for line in lines
+                if line.startswith("    ") and len(line) > 4 and line[4] != " "
+                and not line.lstrip().startswith("#")
+            ]
+            expected_keys = [
+                "    " + key + ":"
+                + ((" >-" if name == "rehearse" else
+                    " " + condition.splitlines()[0].split(": ", 1)[1]) if key == "if" else
+                   (" ubuntu-latest" if key == "runs-on" else
+                    " " + str(timeout) if key == "timeout-minutes" else ""))
+                for key in keys
+            ]
+            if actual_keys != expected_keys:
+                raise SystemExit(prefix + name + " job key shadow drift")
+            section = "\n".join(lines) + "\n"
+            if section.split("    permissions:\n", 1)[0] != condition:
+                raise SystemExit(prefix + name + " job condition drift")
+            leaves = []
+            for line in section.split("    permissions:\n", 1)[1].splitlines():
+                if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                    break
+                if line.strip() and not line.lstrip().startswith("#"):
+                    leaves.append(line)
+            if leaves != ["      contents: " + scope]:
+                raise SystemExit(prefix + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(publisher: str, independent: str) -> None:
+    """Reject 38 job shadows with exact diagnostics, independently of Git blob checks."""
+    validate_job_authority(publisher, independent)
+    reviewed = (
+        ("publisher", publisher, independent, (
+            ("validate-pr", "    if: github.event_name == 'pull_request'\n", "read", 10),
+            ("rehearse", WRITER_SCOPE + "\n", "write", 20),
+        ), True),
+        ("independent", independent, publisher, (
+            ("source-negative",
+             "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n",
+             "read", 5),
+        ), False),
+    )
+    total = 0
+    for label, content, other, jobs, is_publisher in reviewed:
+        for name, condition, scope, timeout in jobs:
+            header = "  " + name + ":\n"
+            if content.count(header) != 1:
+                raise SystemExit("local recovery job mutation header drift: " + label + "/" + name)
+
+            def in_job(before: str, after: str) -> str:
+                prefix, suffix = content.split(header, 1)
+                if before not in suffix:
+                    raise SystemExit("local recovery job mutation anchor drift: " + name)
+                return prefix + header + suffix.replace(before, after, 1)
+
+            permission = "    permissions:\n      contents: " + scope + "\n"
+            runner = "    runs-on: ubuntu-latest\n"
+            time_limit = "    timeout-minutes: " + str(timeout) + "\n"
+            steps = "    steps:\n"
+            cases = [
+                ("duplicate mapping", content + "\n" + header + "    runs-on: ubuntu-latest\n",
+                 "job mapping shadow drift"),
+                ("quoted mapping", content.replace(header, "  '" + name + "':\n", 1),
+                 "job mapping shadow drift"),
+                ("spaced mapping", content.replace(header, "  " + name + " :\n", 1),
+                 "job mapping shadow drift"),
+                ("condition shadow", in_job(condition, condition + "    if : true\n"),
+                 name + " job key shadow drift"),
+                ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"),
+                 name + " job key shadow drift"),
+                ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"),
+                 name + " job key shadow drift"),
+                ("timeout shadow", in_job(time_limit, time_limit + "    timeout-minutes : 1\n"),
+                 name + " job key shadow drift"),
+                ("steps shadow", in_job(steps, "    steps : []\n" + steps),
+                 name + " job key shadow drift"),
+                ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps),
+                 name + " job key shadow drift"),
+                ("direct permission change", in_job(permission, permission.replace(
+                    "contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))),
+                 name + " job permission leaf shadow drift"),
+                ("spaced permission leaf", in_job(permission, permission + "      contents : write\n"),
+                 name + " job permission leaf shadow drift"),
+                ("quoted permission leaf", in_job(permission, permission + "      'contents': write\n"),
+                 name + " job permission leaf shadow drift"),
+            ]
+            if name == "rehearse":
+                cases.extend([
+                    ("services shadow", in_job("    services:\n",
+                                               "    services : {}\n    services:\n"),
+                     name + " job key shadow drift"),
+                    ("env shadow", in_job("    env:\n", "    env : {}\n    env:\n"),
+                     name + " job key shadow drift"),
+                ])
+            for mutation, changed, diagnostic in cases:
+                if changed == content:
+                    raise SystemExit("local recovery unchanged job mutation: " + mutation)
+                try:
+                    if is_publisher:
+                        validate_job_authority(changed, other)
+                    else:
+                        validate_job_authority(other, changed)
+                except SystemExit as exc:
+                    expected = "local recovery " + label + " " + diagnostic
+                    if str(exc) != expected:
+                        raise SystemExit("local recovery wrong job diagnostic: "
+                                         + label + "/" + name + "/" + mutation + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("local recovery accepted job shadow: "
+                                     + label + "/" + name + "/" + mutation)
+                total += 1
+    if total != 38:
+        raise SystemExit("local recovery job negative inventory drift")
+    print("PASS: local recovery publisher/independent nested job authority (38 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     validate_trigger_reachability(publisher, publisher=True)
     validate_trigger_reachability(independent, publisher=False)
     validate_yaml_authority(publisher, publisher=True)
     validate_yaml_authority(independent, publisher=False)
+    validate_job_authority(publisher, independent)
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
     check_source("local reconcile negative", read(LOCAL_NEGATIVE), LOCAL_NEGATIVE_SHA, ())
@@ -558,6 +712,7 @@ def main() -> int:
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_job_authority_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
