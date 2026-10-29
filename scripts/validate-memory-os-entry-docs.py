@@ -2497,6 +2497,103 @@ def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
 
 
 
+
+# A second independent upload-route over-trigger is the rate-limit contract
+# glob. Bound it separately: a new contract must not silently pull in the
+# unrelated MinIO-dependent workflow merely by sharing the filename prefix.
+UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE = "contracts/operations/rate-limit-policy-contract.v1.json"
+UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD = "contracts/operations/rate-limit*.json"
+UPLOAD_ROUTE_REVIEWED_CONTRACT_MATCHES = frozenset((
+    "contracts/operations/rate-limit-distributed-runtime-admission-contract.v1.json",
+    "contracts/operations/rate-limit-distributed-runtime-admission-registry.v1.json",
+    "contracts/operations/rate-limit-emergency-drill-contract.v1.json",
+    "contracts/operations/rate-limit-local-multiprocess-shared-store-contract.v1.json",
+    "contracts/operations/rate-limit-operation-evidence-contract.v1.json",
+    "contracts/operations/rate-limit-operations-contract.v1.json",
+    "contracts/operations/rate-limit-policy-contract.v1.json",
+))
+
+
+def upload_route_rate_limit_contract_scope_issue(source: str, matches: set[str]) -> str | None:
+    rows = [row for row in source.splitlines() if row.startswith("      - ")]
+    contract_rows = [
+        row for row in rows
+        if (lambda value: value.startswith("contracts/operations/") and
+            ("rate-limit" in value or any(char in value for char in "*?[")))(
+                row[8:].strip().strip(chr(34) + chr(39))
+            )
+    ]
+    allowed = {
+        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + '"',
+        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE + '"',
+    }
+    if len(contract_rows) != 1 or contract_rows[0] not in allowed:
+        return "upload-route rate-limit contract trigger drift"
+    if source.count("    paths:\n") != 1:
+        return "upload-route rate-limit contract trigger drift"
+    if UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE not in matches:
+        return "upload-route core rate-limit contract missing"
+    if contract_rows[0] == '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + '"':
+        if not matches.issubset(UPLOAD_ROUTE_REVIEWED_CONTRACT_MATCHES):
+            return "upload-route new wildcard-coupled rate-limit contract"
+    return None
+
+
+def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None:
+    directory = REPO_ROOT / "contracts/operations"
+    paths = list(directory.glob("rate-limit*.json"))
+    if any(path.is_symlink() or not path.is_file() for path in paths):
+        failures.append("upload-route rate-limit contract path missing or symlinked")
+        return
+    matches = {path.relative_to(REPO_ROOT).as_posix() for path in paths}
+    original = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + '"\n'
+    narrowed = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE + '"\n'
+    for relative in UPLOAD_ROUTE_WORKFLOWS:
+        workflow = REPO_ROOT / relative
+        if workflow.is_symlink() or not workflow.is_file():
+            failures.append("upload-route contract workflow missing or symlinked: " + relative)
+            continue
+        source = workflow.read_text(encoding="utf-8")
+        issue = upload_route_rate_limit_contract_scope_issue(source, matches)
+        if issue:
+            failures.append(relative + ": " + issue)
+            continue
+        if source.count(original) != 1:
+            failures.append(relative + ": upload-route contract fixture anchor drift")
+            continue
+        cases = (
+            ("removed", source.replace(original, "", 1), matches,
+             "upload-route rate-limit contract trigger drift"),
+            ("duplicate", source.replace(original, original + original, 1), matches,
+             "upload-route rate-limit contract trigger drift"),
+            ("unquoted", source.replace(original,
+             "      - " + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + "\n", 1), matches,
+             "upload-route rate-limit contract trigger drift"),
+            ("broadened", source.replace(original,
+             '      - "contracts/operations/**"\n', 1), matches,
+             "upload-route rate-limit contract trigger drift"),
+            ("extra broad", source.replace(original,
+             original + '      - "contracts/operations/**"\n', 1), matches,
+             "upload-route rate-limit contract trigger drift"),
+            ("new matching contract", source,
+             matches | {"contracts/operations/rate-limit-unreviewed.json"},
+             "upload-route new wildcard-coupled rate-limit contract"),
+            ("core missing", source,
+             matches - {UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE},
+             "upload-route core rate-limit contract missing"),
+        )
+        for name, changed, observed, expected in cases:
+            if upload_route_rate_limit_contract_scope_issue(changed, observed) != expected:
+                failures.append(relative + ": upload-route contract negative failed: " + name)
+        if upload_route_rate_limit_contract_scope_issue(
+                source.replace(original, narrowed, 1), matches):
+            failures.append(relative + ": reviewed exact-contract narrowing rejected")
+    if not any("upload-route" in failure for failure in failures):
+        print("upload-route rate-limit contract wildcard bounded: "
+              + str(len(matches)) + " current matches, 14 exact-diagnostic negatives")
+
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -2522,6 +2619,7 @@ def main() -> int:
     validate_learning_workflow_reachability(failures)
     validate_source_negative_ci_reachability(failures)
     validate_upload_route_rate_limit_trigger_scope(failures)
+    validate_upload_route_rate_limit_contract_scope(failures)
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
