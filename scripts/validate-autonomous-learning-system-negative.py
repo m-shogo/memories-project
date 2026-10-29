@@ -827,6 +827,10 @@ def require_reviewed_upload_route_python_imports(source: str, count: int,
             isinstance(node, ast.arg) and node.arg in bindings
         ) or (
             isinstance(node, ast.ExceptHandler) and node.name in bindings
+        ) or (
+            isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name in bindings
+        ) or (
+            isinstance(node, ast.MatchMapping) and node.rest in bindings
         )
         if shadow:
             raise RuntimeError("unreviewed Upload Route Python import binding shadow")
@@ -838,6 +842,9 @@ def prove_upload_route_python_import_negatives() -> None:
     digest = "ee6d40ba2610714dbaad1dec375a82cad8405e8358959b1dabd45a97a413e900"
     require_reviewed_upload_route_python_imports(base, 2, digest)
     require_reviewed_upload_route_python_imports("import json\nfrom pathlib import Path\n", 2, digest)
+    require_reviewed_upload_route_python_imports(
+        base + "match value:\n    case local_capture:\n        pass\n", 2, digest
+    )
     for label, candidate in (
         ("added local module", base + "import scripts.helper\n"),
         ("same-count replacement", base.replace("import json", "import scripts.helper")),
@@ -859,6 +866,10 @@ def prove_upload_route_python_import_negatives() -> None:
         ("delete imported json", base + "del json\n"),
         ("loop target shadows Path", base + "for Path in (1,):\n    pass\n"),
         ("exception alias shadows json", base + "try:\n    raise RuntimeError()\nexcept RuntimeError as json:\n    pass\n"),
+        ("match capture shadows Path", base + "match value:\n    case Path:\n        pass\n"),
+        ("match as capture shadows Path", base + "match value:\n    case [1] as Path:\n        pass\n"),
+        ("match star shadows json", base + "match value:\n    case [*json]:\n        pass\n"),
+        ("match mapping rest shadows Path", base + "match value:\n    case {**Path}:\n        pass\n"),
     ):
         try:
             require_reviewed_upload_route_python_imports(candidate, 2, digest)
