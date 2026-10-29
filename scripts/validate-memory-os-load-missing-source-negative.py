@@ -263,6 +263,170 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
     print("PASS: load-missing root/permission YAML authority (12 exact-diagnostic negatives)")
 
 
+def load_missing_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed event-scoped noncancelling publisher serialization."""
+    marker = "\nconcurrency:\n"
+    if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
+        raise SystemExit("load-missing publisher concurrency authority drift")
+    observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = ("  group: reconcile-load-missing-diagnostics-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    if observed != expected:
+        raise SystemExit("load-missing publisher concurrency authority drift")
+
+
+def load_missing_concurrency_negatives(publisher: str) -> None:
+    """Prove twelve exact-diagnostic effective YAML concurrency mutations."""
+    marker = "\nconcurrency:\n"
+    original = ("  group: reconcile-load-missing-diagnostics-" + chr(36)
+                + "{{ github.event_name }}-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    anchor = marker + original + "\njobs:\n"
+    if publisher.count(anchor) != 1:
+        raise SystemExit("load-missing concurrency fixture anchor drift")
+    group = original.splitlines(keepends=True)[0]
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+        ("missing group", original.replace(group, "", 1)),
+        ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+        ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+        ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+        ("extra group leaf", original.replace(group, group + "  unreviewed: true\n", 1)),
+        ("enabled cancellation", original.replace(cancel, "  cancel-in-progress: true\n", 1)),
+        ("missing cancellation", original.replace(cancel, "", 1)),
+        ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: true\n", 1)),
+        ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': true\n", 1)),
+        ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : true\n", 1)),
+        ("extra cancellation leaf", original.replace(cancel, cancel + "  unreviewed: true\n", 1)),
+    )
+    if len(cases) != 12:
+        raise SystemExit("load-missing concurrency fixture inventory drift")
+    load_missing_concurrency_authority(publisher)
+    for name, replacement in cases:
+        altered = publisher.replace(anchor, marker + replacement + "\njobs:\n", 1)
+        if altered == publisher:
+            raise SystemExit("load-missing unchanged concurrency fixture: " + name)
+        try:
+            load_missing_concurrency_authority(altered)
+        except SystemExit as exc:
+            if str(exc) != "load-missing publisher concurrency authority drift":
+                raise SystemExit("load-missing wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("load-missing accepted concurrency mutation: " + name)
+    print("PASS: load-missing publisher concurrency (12 exact-diagnostic negatives)")
+
+
+LOAD_MISSING_JOB_HEADERS = [{"label":"publisher","name":"validate-pr","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"publisher","name":"reconcile","header":"    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+
+
+def load_missing_job_authority(publisher: str, independent: str) -> None:
+    """Pin reviewed effective job mapping and pre-step permission/execution authority."""
+    for label, content, names in (
+        ("publisher", publisher, ("validate-pr", "reconcile")),
+        ("independent", independent, ("source-negative",)),
+    ):
+        diagnostic = "load-missing " + label + " job authority drift"
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(diagnostic)
+        section = content.split("\njobs:\n", 1)[1]
+        mappings = [line for line in section.splitlines()
+                    if line.startswith("  ") and not line.startswith("    ")
+                    and line.strip() and not line.lstrip().startswith("#")]
+        if mappings != ["  " + name + ":" for name in names]:
+            raise SystemExit(diagnostic)
+        for item in LOAD_MISSING_JOB_HEADERS:
+            if item["label"] != label:
+                continue
+            anchor = "\n  " + item["name"] + ":\n"
+            if content.count(anchor) != 1:
+                raise SystemExit(diagnostic)
+            actual = content.split(anchor, 1)[1].split("\n    steps:\n", 1)[0]
+            if actual != item["header"]:
+                raise SystemExit(diagnostic)
+
+
+def load_missing_job_negatives(publisher: str, independent: str) -> None:
+    """Prove 40 exact-diagnostic job mapping, condition and permission negatives."""
+    load_missing_job_authority(publisher, independent)
+    total = 0
+    for item in LOAD_MISSING_JOB_HEADERS:
+        label, name, original = item["label"], item["name"], item["header"]
+        content = publisher if label == "publisher" else independent
+        anchor = "\n  " + name + ":\n" + original + "\n    steps:\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("load-missing job fixture anchor drift: " + name)
+        leaf = "write" if name == "reconcile" else "read"
+        opposite = "read" if leaf == "write" else "write"
+        first_if = original.splitlines(keepends=True)[0]
+        cases = (
+            ("condition bypass", original.replace(first_if, "    if: always()\n", 1)),
+            ("permission change", original.replace("      contents: " + leaf,
+                                                    "      contents: " + opposite, 1)),
+            ("runner change", original.replace("    runs-on: ubuntu-latest",
+                                               "    runs-on: ubuntu-24.04", 1)),
+            ("timeout change", original.replace("    timeout-minutes: ",
+                                                "    timeout-minutes: 1 # ", 1)),
+            ("continuation override", original + "\n    continue-on-error: true"),
+            ("duplicate permission", original + "\n    permissions:\n      contents: write"),
+            ("quoted permission", original.replace("      contents: " + leaf,
+                                                  "      'contents': " + opposite, 1)),
+            ("spaced permission", original.replace("      contents: " + leaf,
+                                                  "      contents : " + opposite, 1)),
+            ("duplicate condition", original + "\n    if: always()"),
+            ("spaced condition", original.replace(first_if, "    if : always()\n", 1)),
+        )
+        for name_case, changed in cases:
+            altered = content.replace(anchor, "\n  " + name + ":\n"
+                                      + changed + "\n    steps:\n", 1)
+            if altered == content:
+                raise SystemExit("load-missing unchanged job fixture: " + name + "/" + name_case)
+            try:
+                if label == "publisher":
+                    load_missing_job_authority(altered, independent)
+                else:
+                    load_missing_job_authority(publisher, altered)
+            except SystemExit as exc:
+                expected = "load-missing " + label + " job authority drift"
+                if str(exc) != expected:
+                    raise SystemExit("load-missing wrong job diagnostic: "
+                                     + name + "/" + name_case + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("load-missing accepted job mutation: " + name + "/" + name_case)
+            total += 1
+    for label, content, name in (
+        ("publisher", publisher, "validate-pr"),
+        ("independent", independent, "source-negative"),
+    ):
+        for name_case, changed in (
+            ("duplicate mapping", content + "\n  " + name + ":\n"),
+            ("quoted mapping", content + "\n  '" + name + "':\n"),
+            ("spaced mapping", content + "\n  " + name + " :\n"),
+            ("extra mapping", content + "\n  unreviewed:\n"),
+            ("missing mapping", content.replace("\n  " + name + ":\n",
+                                                "\n  missing-job:\n", 1)),
+        ):
+            if changed == content:
+                raise SystemExit("load-missing unchanged mapping fixture: " + name_case)
+            try:
+                if label == "publisher":
+                    load_missing_job_authority(changed, independent)
+                else:
+                    load_missing_job_authority(publisher, changed)
+            except SystemExit as exc:
+                if str(exc) != "load-missing " + label + " job authority drift":
+                    raise SystemExit("load-missing wrong mapping diagnostic: " + name_case) from exc
+            else:
+                raise SystemExit("load-missing accepted job mapping: " + name_case)
+            total += 1
+    if total != 40:
+        raise SystemExit("load-missing job negative inventory drift")
+    print("PASS: load-missing publisher/independent job authority (40 exact-diagnostic negatives)")
+
 def policy(s: str) -> None:
     if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
         raise AssertionError("missing-evidence immutable Actions drift")
@@ -400,6 +564,10 @@ def main() -> None:
     load_missing_trigger_matrix_negatives(source, independent)
     validate_yaml_root_permission(source, independent)
     yaml_root_permission_negatives(source, independent)
+    load_missing_concurrency_authority(source)
+    load_missing_concurrency_negatives(source)
+    load_missing_job_authority(source, independent)
+    load_missing_job_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
