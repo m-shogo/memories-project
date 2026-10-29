@@ -1,0 +1,20 @@
+# Supplemental OPS learning — Go module/native-input closure guard (2026-10-29)
+
+Append-only supplemental learning only. Canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` under `contracts/operations/autonomous-learning-system.json`. This record never satisfies production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent review or human promotion gates.
+
+## Material failure / blocker
+
+- **Symptom:** The static local Go import closure could appear complete even if future Go module replacement directives, CGo imports or native build inputs introduced additional compilation dependencies not represented by `*.go` package imports. This is a potential false-closure gap, not an observed production incident.
+- **Observed evidence:** Current `services/import-api/go.mod` declares the expected module without `replace`; the reviewed internal package tree contains no `.c`, `.h`, `.s`, `.cc`, `.cpp`, `.syso`, `.swig` or `.swigcxx` source files. The prior audit enumerated `*.go` files only and did not reject a future addition of such inputs.
+- **Verified root cause:** Local Go import traversal does not by itself model module replacement, CGo or native toolchain input semantics.
+- **Failed approach:** Treating static Go import reachability as sufficient evidence of the complete compilation-input closure without checking unsupported native/module mechanisms.
+- **Correction / executable recurrence guard:** [9de06493](https://github.com/m-shogo/memories-project/commit/9de06493d668dccae612e0ed1961e242601cb6d3) extends the CI-bound read-only audit to require the reviewed Go module declaration, reject any `replace` directive, reject CGo `import "C"` in target or local closure sources, and reject native-source extensions in the target and visited package directories. An executable `replace`-directive negative fixture verifies the detection pattern. No module, workflow or source authority was modified.
+- **Retry condition:** Re-review any legitimate module path, replacement, CGo or native build change with complete dependency evidence and updated negative fixtures before relaxing the guard. Do not retry unchanged Quay MinIO 401, workflow-write permission, canonical learning append or human promotion blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40883558902](https://github.com/m-shogo/memories-project/actions/runs/40883558902) completed SUCCESS on exact source `9de06493d668dccae612e0ed1961e242601cb6d3`. Logs show 146 canonical learning negatives PASS, learning contract PASS, entrypoint validation PASS, 1186 helper-ancestor negatives PASS, append-only and read-only checks PASS. The new module/native guard executes in the CI-bound negative suite.
+- **Why safe:** Only the existing read-only learning negative validator changed (+22/-2 lines). No Go module file, workflow YAML, MinIO image, production data, credentials, traffic, backup/restore evidence, generation, objective, drill, typed non-resurrection, independent review or promotion authority was modified or executed.
+- **Reusable mechanism:** Treat static local import closure as conditional on unchanged module/native build semantics; fail closed when unsupported toolchain inputs appear instead of silently claiming complete CI trigger coverage.
+- **Protected-authority check:** Production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, and OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` are unchanged. OPS-P0-007 remains PREREQUISITES_BLOCKED with zero registered/eligible generations, approved objectives, executable reviewed requests, typed eight-domain records, final candidates or human promotion.
+- **Next safe target:** Verify publisher push branch and PR event-filter semantics with independent negative fixtures; keep transitive Python dynamic-import and external-module closure explicitly unproven.
