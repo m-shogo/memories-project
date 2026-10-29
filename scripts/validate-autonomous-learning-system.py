@@ -278,7 +278,7 @@ def validate(repo_root: Path) -> None:
                         and node.func.id in {"__import__", "import_module", "run_module", "run_path", "reload", "find_spec", "resolve_name"}):
                     return True
                 if (isinstance(node.func, ast.Attribute)
-                        and node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload", "find_spec", "resolve_name"}):
+                        and node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload", "find_spec", "resolve_name", "__import__", "exec", "eval"}):
                     return True
                 # Eager reflective lookup of module execution callables is
                 # unreviewed even when the function is invoked indirectly.
@@ -295,7 +295,7 @@ def validate(repo_root: Path) -> None:
                         and (not isinstance(node.args[1], ast.Constant)
                              or node.args[1].value in {"__import__", "import_module",
                                                        "run_module", "run_path", "exec_module", "reload",
-                                                       "find_spec", "resolve_name"})):
+                                                       "find_spec", "resolve_name", "exec", "eval"})):
                     return True
                 # An immediately invoked lambda executes its body now, unlike
                 # a bare lambda expression or a deferred generator body.
@@ -303,11 +303,10 @@ def validate(repo_root: Path) -> None:
                     node.func.body, class_local=class_local
                 ):
                     return True
+                # Even a harmless-looking literal may execute imports or
+                # mutate globals indirectly. Eager dynamic code is unreviewed.
                 if isinstance(node.func, ast.Name) and node.func.id in {"exec", "eval"}:
-                    if not node.args or not isinstance(node.args[0], ast.Constant):
-                        return True
-                    if not isinstance(node.args[0].value, str) or name in node.args[0].value:
-                        return True
+                    return True
                 if (isinstance(node.func, ast.Name)
                         and node.func.id in {"setattr", "delattr"}
                         and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
@@ -676,7 +675,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         node.func.id in {"__import__", "import_module", "run_module", "run_path", "reload", "find_spec", "resolve_name"}):
                     return True
                 if (isinstance(node.func, ast.Attribute) and
-                        node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload", "find_spec", "resolve_name"}):
+                        node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload", "find_spec", "resolve_name", "__import__", "exec", "eval"}):
                     return True
                 # Eager attrgetter/methodcaller construction can hide module
                 # execution behind a returned callable; alias closure is unknown.
@@ -691,7 +690,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         and (not isinstance(node.args[1], ast.Constant)
                              or node.args[1].value in {"__import__", "import_module",
                                                        "run_module", "run_path", "exec_module", "reload",
-                                                       "find_spec", "resolve_name"})):
+                                                       "find_spec", "resolve_name", "exec", "eval"})):
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
@@ -776,6 +775,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
+        ("deferred builtins exec", 'def helper():\n    builtins.exec("pass")\n', (2, 0)),
+        ("deferred builtins eval", 'def helper():\n    builtins.eval("1")\n', (2, 0)),
         ("deferred find_spec", 'def helper():\n    importlib.util.find_spec("samplepkg.child")\n', (2, 0)),
         ("deferred resolve_name", 'def helper():\n    pkgutil.resolve_name("samplepkg")\n', (2, 0)),
         ("deferred direct reload", 'def helper():\n    reload(importlib)\n', (2, 0)),
@@ -848,6 +849,27 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct-name runpy path", baseline.replace(
             'if __name__', 'run_path("fixture.py")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("qualified import", baseline.replace(
+            'if __name__', 'builtins.__import__("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("qualified exec", baseline.replace(
+            'if __name__', 'builtins.exec("pass")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("qualified eval", baseline.replace(
+            'if __name__', 'builtins.eval("1")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("direct exec", baseline.replace(
+            'if __name__', 'exec("pass")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("direct eval", baseline.replace(
+            'if __name__', 'eval("1")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("reflective exec", baseline.replace(
+            'if __name__', 'getattr(builtins, "exec")("pass")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("reflective eval", baseline.replace(
+            'if __name__', 'getattr(builtins, "eval")("1")\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct find_spec", baseline.replace(
             'if __name__', 'find_spec("samplepkg.child")\nif __name__'),

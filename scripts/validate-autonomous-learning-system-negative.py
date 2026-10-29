@@ -33,6 +33,13 @@ REVIEWED_REFLECTIVE_EXECUTION = (
     ("eager-direct-attrgetter", 'attrgetter("import_module")(importlib)("math")'),
     ("eager-operator-methodcaller", 'operator.methodcaller("import_module", "math")(importlib)'),
     ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
+    ("eager-qualified-import", 'builtins.__import__("math")'),
+    ("eager-qualified-exec", 'builtins.exec("pass")'),
+    ("eager-qualified-eval", 'builtins.eval("1")'),
+    ("eager-direct-exec", 'exec("pass")'),
+    ("eager-direct-eval", 'eval("1")'),
+    ("eager-reflective-exec", 'getattr(builtins, "exec")("pass")'),
+    ("eager-reflective-eval", 'getattr(builtins, "eval")("1")'),
     ("eager-direct-find-spec", 'find_spec("samplepkg.child")'),
     ("eager-attribute-find-spec", 'importlib.util.find_spec("samplepkg.child")'),
     ("eager-reflective-find-spec", 'getattr(importlib.util, "find_spec")("samplepkg.child")'),
@@ -54,6 +61,13 @@ REVIEWED_REFLECTIVE_CLI_LABELS = (
     ("direct attrgetter execution", "eager-direct-attrgetter"),
     ("operator methodcaller execution", "eager-operator-methodcaller"),
     ("direct methodcaller execution", "eager-direct-methodcaller"),
+    ("qualified import execution", "eager-qualified-import"),
+    ("qualified exec execution", "eager-qualified-exec"),
+    ("qualified eval execution", "eager-qualified-eval"),
+    ("direct exec execution", "eager-direct-exec"),
+    ("direct eval execution", "eager-direct-eval"),
+    ("reflective exec execution", "eager-reflective-exec"),
+    ("reflective eval execution", "eager-reflective-eval"),
     ("direct find spec execution", "eager-direct-find-spec"),
     ("attribute find spec execution", "eager-attribute-find-spec"),
     ("reflective find spec execution", "eager-reflective-find-spec"),
@@ -3200,6 +3214,27 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("direct methodcaller execution", baseline.replace(
                 'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
+            ("qualified import execution", baseline.replace(
+                'if __name__', 'builtins.__import__("math")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("qualified exec execution", baseline.replace(
+                'if __name__', 'builtins.exec("pass")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("qualified eval execution", baseline.replace(
+                'if __name__', 'builtins.eval("1")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("direct exec execution", baseline.replace(
+                'if __name__', 'exec("pass")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("direct eval execution", baseline.replace(
+                'if __name__', 'eval("1")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("reflective exec execution", baseline.replace(
+                'if __name__', 'getattr(builtins, "exec")("pass")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("reflective eval execution", baseline.replace(
+                'if __name__', 'getattr(builtins, "eval")("1")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
             ("direct find spec execution", baseline.replace(
                 'if __name__', 'find_spec("samplepkg.child")\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
@@ -3712,6 +3747,13 @@ def main() -> int:
             ("eager-direct-import-module", 'import_module("math")'),
             ("eager-direct-run-module", 'run_module("math")'),
             ("eager-direct-run-path", 'run_path("fixture.py")'),
+            ("eager-qualified-import", 'builtins.__import__("math")'),
+            ("eager-qualified-exec", 'builtins.exec("pass")'),
+            ("eager-qualified-eval", 'builtins.eval("1")'),
+            ("eager-direct-exec", 'exec("pass")'),
+            ("eager-direct-eval", 'eval("1")'),
+            ("eager-reflective-exec", 'getattr(builtins, "exec")("pass")'),
+            ("eager-reflective-eval", 'getattr(builtins, "eval")("1")'),
             ("eager-direct-find-spec", 'find_spec("samplepkg.child")'),
             ("eager-attribute-find-spec", 'importlib.util.find_spec("samplepkg.child")'),
             ("eager-reflective-find-spec", 'getattr(importlib.util, "find_spec")("samplepkg.child")'),
@@ -3736,7 +3778,8 @@ def main() -> int:
             if (kind.startswith(("eager-reflective-", "eager-qualified-"))
                     or kind.endswith(("attrgetter", "methodcaller"))
                     or kind.endswith("-reload")
-                    or kind.endswith(("-find-spec", "-resolve-name"))):
+                    or kind.endswith(("-find-spec", "-resolve-name"))
+                    or kind.endswith(("-exec", "-eval", "-import"))):
                 reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",
