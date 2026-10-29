@@ -327,6 +327,52 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: backup authority publisher/independent YAML event/root/job/permission (44 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind the reviewed backup-authority reconcile serialization policy."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = "  group: reconcile-backup-authority-" + chr(36) + "{{ github.ref }}\n"
+    expected = group + "  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("backup authority publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("backup authority publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove serialized backup reconcile cannot be shadowed or cancelled."""
+    validate_concurrency_authority(publisher)
+    group = "  group: reconcile-backup-authority-" + chr(36) + "{{ github.ref }}\n"
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: reconcile-backup-authority-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("backup authority concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("backup authority unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "backup authority publisher concurrency scope drift":
+                raise SystemExit("backup authority wrong concurrency diagnostic: " + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("backup authority accepted concurrency mutation: " + name)
+    print("PASS: backup authority publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
@@ -460,6 +506,7 @@ def main() -> int:
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     predicate_runtime(publisher, independent)
     source_negatives(publisher, independent)
     print("production evidence generated: false")
