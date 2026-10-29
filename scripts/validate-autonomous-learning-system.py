@@ -251,6 +251,17 @@ def validate(repo_root: Path) -> None:
             if isinstance(node, ast.Name):
                 return (not class_local and node.id == name
                         and isinstance(node.ctx, (ast.Store, ast.Del)))
+            # Attribute and module-dict stores can mutate the bound guard
+            # through aliases without any lexical Name(Store) for it.
+            if (isinstance(node, ast.Attribute) and node.attr == name
+                    and isinstance(node.ctx, (ast.Store, ast.Del))):
+                return True
+            if (isinstance(node, ast.Subscript)
+                    and isinstance(node.ctx, (ast.Store, ast.Del))
+                    and isinstance(node.slice, ast.Constant) and node.slice.value == name
+                    and isinstance(node.value, ast.Attribute)
+                    and node.value.attr == "__dict__"):
+                return True
             if (isinstance(node, ast.Subscript)
                     and isinstance(node.ctx, (ast.Store, ast.Del))
                     and isinstance(node.slice, ast.Constant) and node.slice.value == name
