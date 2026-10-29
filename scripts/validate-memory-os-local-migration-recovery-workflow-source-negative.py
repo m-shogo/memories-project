@@ -177,7 +177,7 @@ PUBLISHER_REQUIRED = (
     (WRITER_SHA, 1),
     ("    runs-on: ubuntu-24.04\n", 1),
     ("for binary in psql pg_dump pg_restore; do", 1),
-    ("server_version=\\"$(psql -Atqc 'SHOW server_version_num')\\"", 1),
+    ('server_version="$(psql -Atqc \'SHOW server_version_num\')"', 1),
     ("test \"$((server_version / 10000))\" -eq 16", 1),
     ("ref: so", 1),
     ("'output': 'REDACTED: local migration recovery failed; raw output withheld'", 1),
