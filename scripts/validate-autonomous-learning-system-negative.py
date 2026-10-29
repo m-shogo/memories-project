@@ -264,6 +264,76 @@ def symlink_parent_directory(root: Path, relative: Path) -> None:
     directory.symlink_to(target.name, target_is_directory=True)
 
 
+def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
+    """Exercise the real prewrite CLI, not just its in-process validator."""
+    baseline = ('def main() -> int:\n    return 0\n\n'
+                'if __name__ == "__main__":\n    raise SystemExit(main())\n')
+    candidate = baseline.replace('    return 0\n', '    # safe edit\n    return 0\n')
+    with tempfile.TemporaryDirectory(prefix="learning-prewrite-cli-") as tmp:
+        before = Path(tmp) / "before.py"
+        after = Path(tmp) / "after.py"
+        before.write_text(baseline, encoding="utf-8")
+        after.write_text(candidate, encoding="utf-8")
+        sha = hashlib.sha256(before.read_bytes()).hexdigest()
+        args = [sys.executable, str(source_root / VALIDATOR),
+                "--prewrite-baseline", str(before),
+                "--prewrite-candidate", str(after),
+                "--prewrite-baseline-sha256", sha]
+
+        def execute(arguments: list[str]) -> subprocess.CompletedProcess[str]:
+            try:
+                return subprocess.run(arguments, capture_output=True, text=True,
+                                      check=False, timeout=15)
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite CLI fixture timed out") from exc
+
+        def accept(label: str, arguments: list[str], expected: str) -> None:
+            result = execute(arguments)
+            if (result.returncode != 1 or result.stdout or
+                    result.stderr != "AUTONOMOUS LEARNING VALIDATION FAILED: " + expected + "\n"):
+                raise RuntimeError(f"prewrite CLI negative misclassified: {label}: "
+                                   f"exit={result.returncode} stderr={result.stderr!r}")
+
+        positive = execute(args)
+        if (positive.returncode != 0 or positive.stderr or
+                positive.stdout != "Prewrite Python AST and diff-budget validation PASS: +1 -0\n"):
+            raise RuntimeError("prewrite CLI positive control failed")
+        # Real large entrypoint positive: check CLI parsing, full AST, and diff budget.
+        actual = (source_root / CI_ENTRYPOINT).read_bytes()
+        before.write_bytes(actual)
+        after.write_bytes(actual + (b"" if actual.endswith(b"\n") else b"\n") +
+                          b"# isolated prewrite CLI fixture\n")
+        large_args = args[:-1] + [hashlib.sha256(actual).hexdigest()]
+        large = execute(large_args)
+        if (large.returncode != 0 or large.stderr or
+                large.stdout != "Prewrite Python AST and diff-budget validation PASS: +1 -0\n"):
+            raise RuntimeError("prewrite CLI real-entrypoint positive control failed")
+        before.write_text(baseline, encoding="utf-8")
+        cases = (
+            ("invalid syntax", b"def main(:\n", "prewrite candidate Python syntax invalid", []),
+            ("duplicate main", (baseline + "\ndef main():\n    pass\n").encode(),
+             "prewrite candidate must have one sync main", []),
+            ("unchanged", baseline.encode(), "prewrite candidate has no changes", []),
+            ("invalid UTF-8", b"\xff", "prewrite input unreadable or invalid UTF-8", []),
+            ("diff budget", candidate.replace("    # safe edit\n", "    # a\n    # b\n").encode(),
+             "prewrite diff exceeds reviewed line budget", ["--max-added-lines", "1"]),
+        )
+        for label, payload, diagnostic, extra in cases:
+            after.write_bytes(payload)
+            accept(label, args + extra, diagnostic)
+        after.write_text(candidate, encoding="utf-8")
+        accept("stale baseline digest", args[:-1] + ["0" * 64],
+               "prewrite baseline SHA-256 mismatch")
+        after.unlink()
+        after.symlink_to(before.name)
+        accept("symlink", args, "prewrite input missing or symlinked")
+        after.unlink()
+        accept("missing candidate", args, "prewrite input missing or symlinked")
+        accept("incomplete CLI arguments", args[:4],
+               "prewrite requires baseline, candidate and SHA-256")
+    return len(cases) + 4
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -678,7 +748,8 @@ def main() -> int:
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
-    print(f"Autonomous learning negative validation PASS ({len(cases)} fail-closed cases)")
+    prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases} fail-closed cases)")
     return 0
 
 
