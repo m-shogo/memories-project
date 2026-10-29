@@ -52,6 +52,10 @@ def validate_trigger_reachability(
     source: str, *, trigger_paths: tuple[str, ...] = TRIGGER_PATHS
 ) -> None:
     """Admit only the exact reviewed, ordered PR and push path inventories."""
+    # The optional fixture inventory is not authority: never admit a caller-
+    # supplied shortened, substituted, duplicated or reordered path list.
+    if trigger_paths != TRIGGER_PATHS:
+        raise SystemExit("recovery objective reconcile CI trigger inventory authority drift")
     if any(source.count(marker) != 1 for marker in (PR_MARKER, PUSH_MARKER, DISPATCH_MARKER)):
         raise SystemExit("recovery objective reconcile CI event marker drift")
     if not (source.index(PR_MARKER) < source.index(PUSH_MARKER) < source.index(DISPATCH_MARKER)):
@@ -204,8 +208,11 @@ def prove_trigger_reachability_negatives(source: str) -> None:
                 raise SystemExit(f"recovery objective reconcile CI removal fixture missing: {event} {path}")
             try:
                 validate(mutated, check_blob=False)
-            except SystemExit:
-                pass
+            except SystemExit as exc:
+                expected = f"recovery objective reconcile CI {event} trigger inventory drift"
+                if str(exc) != expected:
+                    raise SystemExit("recovery objective reconcile wrong removal diagnostic: "
+                                     + event + "/" + path + ": " + str(exc)) from exc
             else:
                 raise SystemExit(f"recovery objective reconcile CI accepted {event} trigger removal: {path}")
         for label, injected in (
@@ -223,17 +230,31 @@ def prove_trigger_reachability_negatives(source: str) -> None:
                 raise SystemExit(f"recovery objective reconcile CI addition fixture missing: {event} {label}")
             try:
                 validate(mutated, check_blob=False)
-            except SystemExit:
-                pass
+            except SystemExit as exc:
+                expected = f"recovery objective reconcile CI {event} trigger inventory drift"
+                if str(exc) != expected:
+                    raise SystemExit("recovery objective reconcile wrong addition diagnostic: "
+                                     + event + "/" + label + ": " + str(exc)) from exc
             else:
                 raise SystemExit(f"recovery objective reconcile CI accepted {event} trigger addition: {label}")
-    try:
-        validate(source, check_blob=False, trigger_paths=TRIGGER_PATHS[:-1])
-    except SystemExit:
-        pass
-    else:
-        raise SystemExit("recovery objective reconcile CI shortened trigger inventory accepted")
-    print("PASS: recovery objective reconcile CI event triggers (22 removals; 8 additions; 1 shortened inventory)")
+    # A same-length unreviewed list must fail just as a shortened one does.
+    for label, fixture_paths in (
+        ("shortened", TRIGGER_PATHS[:-1]),
+        ("substituted", TRIGGER_PATHS[:-1] + ("unreviewed/**",)),
+        ("duplicate", TRIGGER_PATHS[:-1] + (TRIGGER_PATHS[0],)),
+        ("reordered", TRIGGER_PATHS[1:2] + TRIGGER_PATHS[:1] + TRIGGER_PATHS[2:]),
+    ):
+        if fixture_paths == TRIGGER_PATHS:
+            raise SystemExit("recovery objective reconcile CI inert inventory fixture: " + label)
+        try:
+            validate(source, check_blob=False, trigger_paths=fixture_paths)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective reconcile CI trigger inventory authority drift":
+                raise SystemExit("recovery objective reconcile wrong inventory diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("recovery objective reconcile CI accepted " + label + " trigger inventory")
+    print("PASS: recovery objective reconcile CI exact-diagnostic event triggers (22 removals; 8 additions; 4 authority inventory negatives)")
 
 
 def prove_branch_guards_runtime() -> None:
