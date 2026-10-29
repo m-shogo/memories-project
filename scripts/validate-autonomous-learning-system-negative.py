@@ -1320,6 +1320,8 @@ def prove_upload_route_test_environment_negatives(source_root: Path) -> None:
 
 REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256 = "5f1334748c3ac7088d02a976fd4dfa781a08a6ad6a6e34a035dd98da339472fb"
 REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS = {
+    "Install validation dependencies": "f6e4c89f14f774cd64c6c6b626f457a54448e9fe5cdcd4c194c82e4d7a44c15a",
+    "Run focused route and live upload regressions": "e473f70c921f0c6490d3a4d445957c70fd06f5d3d3a00bca1a59b8b95cc89208",
     "Format and verify source diff": "0df62db20de9cdd9fc079ec3212a2afdb85fba17939bacf10e5017775427d52c",
     "Confirm reconcile is idempotent": "4c1fe3a742bdc8a99cb34fb2e882b10cc2d139927671118a7bd0bd463ce32e75",
     "Validate reconcile rollback boundary": "4b627dcae963062ebf4f7bb1abae852e4646696df58696502df1b0653e89a59f",
@@ -1331,6 +1333,7 @@ REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS = {
 REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS = {
     "push": {
         **REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS,
+        "Capture validation source": "a9d41a746b8e008141a77b43ce5bfa19552849910e7ecaa543576ecbb864c374",
         "Start local MinIO": REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256,
         "Confirm exact clean source": "ef005ca7e8a13416a66b7101565a9cd738cca2b2b3a40d1340ec4c4da09bbed1",
         "Commit reconciled route authority": "eff8b093bc5e626f2005493cd37cf71c36969ecfdcd45e4e5a753dac3a30658e",
@@ -1370,6 +1373,8 @@ def prove_upload_route_critical_step_negatives(source_root: Path) -> None:
             ("MinIO wait", "for attempt in $(seq 1 60)", "for attempt in $(seq 1 1)"),
             ("MinIO endpoint", "/minio/health/live", "/other"),
             ("MinIO failure exit", "          exit 1\n", "          exit 0\n"),
+            ("pip installation", "pip install --disable-pip-version-check", "pip uninstall --disable-pip-version-check"),
+            ("Go regression timeout", "-timeout=10m", "-timeout=1m"),
             ("format write", "gofmt -w internal/httpserver/observability.go", "gofmt -w other.go"),
             ("format check", 'test -z "$(gofmt -l internal/httpserver/observability.go',
              'test -z "$(echo internal/httpserver/observability.go'),
@@ -1387,6 +1392,8 @@ def prove_upload_route_critical_step_negatives(source_root: Path) -> None:
                 ("writer CAS fetch", "git fetch origin so", "git fetch origin main"),
                 ("writer destination", "git push origin HEAD:so", "git push origin HEAD:main"),
                 ("stale CAS exit", "exit 75", "exit 0"),
+                ("source capture", 'run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"',
+                 'run: echo "sha=wrong" >> "$GITHUB_OUTPUT"'),
             ]
         else:
             cases += [
