@@ -80,6 +80,19 @@ def validate_trigger_reachability(source: str, *, trigger_paths: tuple[str, ...]
 def prove_trigger_reachability_negatives(source: str) -> None:
     """Delete one path in one event and demand semantic rejection."""
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+
+    def expect_trigger_rejected(mutated: str, expected: str, case: str) -> None:
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "review-source-order readonly wrong trigger diagnostic: "
+                    + case + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("review-source-order readonly accepted " + case)
+
     for event in ("push", "pull_request"):
         for path in TRIGGER_PATHS:
             token = "      - '" + path + "'\n"
@@ -90,11 +103,10 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             else:
                 prefix, suffix = source.split(pr_marker, 1)
                 mutated = prefix + pr_marker + suffix.replace(token, "", 1)
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("review-source-order readonly trigger negative accepted: " + event + " " + path)
+            expect_trigger_rejected(
+                mutated, "review-source-order readonly " + event + " exact trigger inventory drift",
+                event + " missing " + path,
+            )
     # Reject extra or duplicate event paths independently of the workflow blob.
     for event, marker in (
         ("push", "  push:\n    branches: [so]\n    paths:\n"),
@@ -109,15 +121,18 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             if source.count(marker) != 1:
                 raise SystemExit("review-source-order readonly addition fixture marker drift")
             mutated = source.replace(marker, marker + injected, 1)
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("review-source-order readonly extra trigger accepted: " + event + " " + label)
+            expect_trigger_rejected(
+                mutated, "review-source-order readonly " + event + " exact trigger inventory drift",
+                event + " addition " + label,
+            )
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if str(exc) != "review-source-order readonly trigger inventory drift":
+            raise SystemExit(
+                "review-source-order readonly wrong shortened-inventory diagnostic: "
+                + str(exc)
+            ) from exc
     else:
         raise SystemExit("review-source-order readonly shortened trigger inventory accepted")
     print(f"PASS: review-source-order readonly PR/push trigger reachability ({len(TRIGGER_PATHS) * 2} semantic removal negatives; 8 event-specific addition negatives; 1 shortened inventory negative)")
