@@ -548,9 +548,24 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return not top_level and node.name == "main"
             if isinstance(node, ast.ClassDef):
                 return node.name == "main"
-            if isinstance(node, (ast.Lambda, ast.ListComp, ast.SetComp,
-                                 ast.DictComp, ast.GeneratorExp)):
+            if isinstance(node, ast.Lambda):
                 return False
+            # List/set/dict comprehensions evaluate their elements and filters
+            # now, but keep iteration targets local. Generator expressions
+            # defer their body and evaluate only the first iterable eagerly.
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
+                values = ([node.key, node.value] if isinstance(node, ast.DictComp)
+                          else [node.elt])
+                return (any(module_shadows_main(value, top_level=False)
+                            for value in values)
+                        or any(module_shadows_main(gen.iter, top_level=False)
+                               or any(module_shadows_main(cond, top_level=False)
+                                      for cond in gen.ifs)
+                               for gen in node.generators))
+            if isinstance(node, ast.GeneratorExp):
+                return bool(node.generators) and module_shadows_main(
+                    node.generators[0].iter, top_level=False
+                )
             if (isinstance(node, ast.Name) and node.id == "main"
                     and isinstance(node.ctx, (ast.Store, ast.Del))):
                 return True
@@ -634,6 +649,7 @@ def prove_prewrite_python_negatives() -> None:
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
         ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
+        ("deferred generator reflection", 'items = (globals().__setitem__("main", None) for _ in (1,))\n', (1, 0)),
         ("function-local attribute", 'def helper():\n    module.main = 1\n', (2, 0)),
         ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
@@ -678,6 +694,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("list comprehension reflection", baseline.replace(
+            'if __name__', 'items = [globals().__setitem__("main", None) for _ in (1,)]\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("set comprehension reflection", baseline.replace(
+            'if __name__', 'items = {vars().__setitem__("main", None) for _ in (1,)}\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("dict comprehension reflection", baseline.replace(
+            'if __name__', 'items = {x: globals().__setitem__("main", None) for x in (1,)}\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("generator eager iterable reflection", baseline.replace(
+            'if __name__', 'items = (x for x in globals().__setitem__("main", None) or (1,))\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("module attribute main shadow", baseline.replace(
             'if __name__', 'module.main = lambda: 1\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
