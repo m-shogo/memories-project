@@ -230,6 +230,58 @@ def prove_yaml_authority_negatives(main: str, guard: str) -> None:
     print("PASS: transactional publisher/independent YAML event/root/permission authority (39 exact-diagnostic negatives)")
 
 
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the transactional inventory writer's reviewed serialization policy."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: operability-admission-inventory-transactional-so\n"
+        "  cancel-in-progress: false\n"
+    )
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("transactional publisher concurrency scope drift")
+    if publisher.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("transactional publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Ten expected-diagnostic concurrency YAML shadow and cancellation negatives."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: operability-admission-inventory-transactional-so\n"
+        "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: unreviewed-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("transactional concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = publisher.replace(original, changed_block, 1)
+        if changed == publisher:
+            raise SystemExit("transactional unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "transactional publisher concurrency scope drift":
+                raise SystemExit("transactional wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("transactional accepted concurrency mutation: " + name)
+    print("PASS: transactional inventory publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def runtime(main: str, guard: str) -> None:
     for label, content in (("publisher", main), ("independent", guard)):
         if content.count(REF) != 1:
@@ -296,6 +348,7 @@ def main() -> int:
     main_content, guard_content = source(MAIN), source(GUARD)
     validate(main_content, guard_content)
     prove_yaml_authority_negatives(main_content, guard_content)
+    prove_concurrency_authority_negatives(main_content)
     runtime(main_content, guard_content)
     negatives(main_content, guard_content)
     return 0
