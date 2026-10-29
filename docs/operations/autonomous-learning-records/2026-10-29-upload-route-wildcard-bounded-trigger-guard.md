@@ -1,0 +1,20 @@
+# Supplemental OPS learning — upload-route wildcard coupling guard (2026-10-29)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md`. Not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, recovery evidence, independent review or promotion authority.
+
+## Material failure: symptom, evidence, cause, failed approach, correction, guard, retry
+
+- **Symptom/evidence:** [Autonomous Learning Guard #40848260554](https://github.com/m-shogo/memories-project/actions/runs/40848260554) FAILED on [4a3bd58b](https://github.com/m-shogo/memories-project/commit/4a3bd58b8483bbd0d202f7286bde66f074d7da77), reporting `upload-route rate-limit trigger pattern drift` for both unmodified upload-route workflows. Its canonical 128 learning negatives and 52-workflow/63-command/204-fixture source-negative audit passed before that failure.
+- **Verified root cause:** The generated read-only guard used six over-escaped Python newline literals (runtime backslash+n), so its `paths:` and trigger-anchor comparisons never matched. No reviewed workflow or production evidence changed.
+- **Failed approach:** Committing generated Python string fixtures without comparing runtime semantics to actual workflow text.
+- **Correction:** [0fde9b03](https://github.com/m-shogo/memories-project/commit/0fde9b0383b5316dfd4b3cbf8c682c497412fb36) corrected six literals. Independent synthetic tests exercised positive, narrowed, removed, duplicate, unquoted, broadened, extra-glob, new-matching-file and missing-core cases.
+- **Executable recurrence guard:** The existing CI-reachable entrypoint now tests both workflows with 14 exact-diagnostic negatives and an exact-core narrowing positive. Future source generation must verify newline escaping against real workflow text before writing.
+- **Retry condition:** Revisit only on a reviewed trigger topology change, a new matching script, or a demonstrated validator/transport change. Do not retry unchanged Quay MinIO 401 or canonical-learning 4.17 MB upload blocker.
+
+## Material success: observed outcome, safety, reusable mechanism, protected authority
+
+- **Outcome/evidence:** [Autonomous Learning Guard #40848293233](https://github.com/m-shogo/memories-project/actions/runs/40848293233) completed SUCCESS on exact source `0fde9b0383b5316dfd4b3cbf8c682c497412fb36`. Logs confirm 25 current wildcard matches, 14 exact-diagnostic negatives, 128 canonical learning negatives, 52 source-negative workflows, 63 direct Python commands and 204 existing reachability fixtures.
+- **Why safe:** Two code commits changed only `scripts/validate-memory-os-entry-docs.py`; the upload-route publisher/PR workflows were not modified or retried, and the read-only guard does not pull MinIO, create evidence or promote readiness.
+- **Reusable mechanism:** Enumerate checkout matches for `scripts/validate-memory-os-rate-limit*.py`; require the core `validate-memory-os-rate-limit.py`; reject new wildcard-coupled files beyond the observed 25 and reject additional/broader script globs. A future reviewed exact-core narrowing remains accepted. The upload-route workflows directly compile/run only the core validator among these 25 filenames; transitive dependency completeness is not yet established.
+- **Protected-authority check:** Production Status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` remain unchanged. OPS-P0-007 registered versus eligible generations, human-approved current objective, current executable reviewed request, generation evidence, complete typed eight-domain non-resurrection, independent review and human promotion remain distinct unsatisfied gates. Learning cannot satisfy any gate.
+- **Next safe target:** Audit transitive Python/Go dependency closure and reviewed PR/push path inventories before requesting authorized workflow-trigger narrowing; do not retry unchanged external-image or human-approval blockers.
