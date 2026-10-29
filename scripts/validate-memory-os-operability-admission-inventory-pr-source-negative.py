@@ -346,6 +346,7 @@ def source(relative: str) -> str:
 def validate(pr: str, guard: str) -> None:
     validate_trigger_reachability(pr, guard)
     validate_job_authority(pr, guard)
+    validate_pr_concurrency_authority(pr)
     checks = (
         ("PR", pr, PR_BLOB, (
             (CHECKOUT, 1), (SETUP, 1), ("  pull_request:\n    branches:\n      - so\n", 1),
@@ -442,12 +443,60 @@ def negatives(pr: str, guard: str) -> None:
     print("PASS: inventory PR source negative mutations (20 cases)")
 
 
+def validate_pr_concurrency_authority(source: str) -> None:
+    """Pin the reviewed PR-only inventory cancellation policy separately from its blob."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = ("  group: operability-admission-inventory-pr-"
+             + chr(36) + "{{ github.event.pull_request.number }}\n")
+    expected = group + "  cancel-in-progress: true\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("inventory PR concurrency scope drift")
+    if source.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("inventory PR concurrency scope drift")
+
+
+def prove_pr_concurrency_authority_negatives(source: str) -> None:
+    """Reject ten YAML-equivalent PR concurrency mutations by exact diagnostic."""
+    validate_pr_concurrency_authority(source)
+    group = ("  group: operability-admission-inventory-pr-"
+             + chr(36) + "{{ github.event.pull_request.number }}\n")
+    original = group + "  cancel-in-progress: true\n"
+    cases = (
+        ("global group", "  group: operability-admission-inventory-pr-global\n  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if source.count(original) != 1 or len(cases) != 10:
+        raise SystemExit("inventory PR concurrency fixture anchor drift")
+    for label, replacement in cases:
+        mutated = source.replace(original, replacement, 1)
+        if mutated == source:
+            raise SystemExit("inventory PR inert concurrency fixture: " + label)
+        try:
+            validate_pr_concurrency_authority(mutated)
+        except SystemExit as exc:
+            if str(exc) != "inventory PR concurrency scope drift":
+                raise SystemExit("inventory PR wrong concurrency diagnostic: " + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("inventory PR accepted concurrency mutation: " + label)
+    print("PASS: inventory PR concurrency scope (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     pr, guard = source(PR), source(GUARD)
     validate(pr, guard)
     trigger_negatives(pr, guard)
     prove_job_authority_negatives(pr, guard)
     runtime()
+    prove_pr_concurrency_authority_negatives(pr)
     negatives(pr, guard)
     return 0
 
