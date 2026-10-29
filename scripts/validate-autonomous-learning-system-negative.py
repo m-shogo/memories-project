@@ -227,6 +227,10 @@ def expected_diagnostic(name: str) -> str:
         return "learning CI entrypoint guard call follows unconditional return or raise"
     if name.startswith("dynamic main "):
         return "learning CI entrypoint main binding is shadowed by module control flow"
+    # A wildcard import has an unbounded export set, so the canonical
+    # validator rejects the main binding first even in the guard-labelled case.
+    if name == "dynamic learning guard wildcard-import":
+        return "learning CI entrypoint main binding is shadowed by module control flow"
     if name.startswith("dynamic learning guard "):
         return "learning CI entrypoint learning guard binding is shadowed by module control flow"
     if name.startswith("disable mandatory "):
