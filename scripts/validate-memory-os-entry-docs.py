@@ -2368,6 +2368,135 @@ def validate_learning_workflow_reachability(failures: list[str]) -> None:
 
 
 
+
+# The upload-route publisher/PR still have an overbroad rate-limit trigger.
+# This is a bounded, read-only regression guard, not permission to edit their
+# reviewed workflows or to retry the unchanged external MinIO image blocker.
+UPLOAD_ROUTE_RATE_LIMIT_CORE = "scripts/validate-memory-os-rate-limit.py"
+UPLOAD_ROUTE_RATE_LIMIT_WILDCARD = "scripts/validate-memory-os-rate-limit*.py"
+UPLOAD_ROUTE_REVIEWED_WILDCARD_MATCHES = frozenset((
+    "scripts/validate-memory-os-rate-limit-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-evidence-binding-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-generation-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-registry-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-validator-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-workflow-source-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime-writer-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-distributed-runtime.py",
+    "scripts/validate-memory-os-rate-limit-emergency-drill-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-emergency-drill.py",
+    "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store-transport-negative.py",
+    "scripts/validate-memory-os-rate-limit-local-multiprocess-shared-store.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-evidence.py",
+    "scripts/validate-memory-os-rate-limit-operation-reconcile-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-writer-authority-negative.py",
+    "scripts/validate-memory-os-rate-limit-operation-writer-negative.py",
+    "scripts/validate-memory-os-rate-limit-operations-reconcile-negative.py",
+    "scripts/validate-memory-os-rate-limit-operations-source-negative.py",
+    "scripts/validate-memory-os-rate-limit-operations.py",
+    "scripts/validate-memory-os-rate-limit.py",
+))
+UPLOAD_ROUTE_WORKFLOWS = (
+    ".github/workflows/reconcile-upload-route-authority.yml",
+    ".github/workflows/reconcile-upload-route-authority-pr.yml",
+)
+
+
+def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str | None:
+    """Allow a reviewed narrowing, but fail on newly coupled rate-limit scripts."""
+    path_rows = [
+        row for row in source.splitlines() if row.startswith("      - ")
+    ]
+    script_globs = [
+        row for row in path_rows
+        if (lambda value: value.startswith("scripts/") and
+            ("rate-limit" in value or any(char in value for char in "*?[")))(
+                row[8:].strip().strip("\\\"'")
+            )
+    ]
+    allowed = {
+        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"',
+        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"',
+    }
+    if len(script_globs) != 1 or script_globs[0] not in allowed:
+        return "upload-route rate-limit trigger pattern drift"
+    if source.count("    paths:\\n") != 1:
+        return "upload-route rate-limit trigger pattern drift"
+    if UPLOAD_ROUTE_RATE_LIMIT_CORE not in matches:
+        return "upload-route rate-limit core source missing"
+    if script_globs[0] == '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"':
+        if not matches.issubset(UPLOAD_ROUTE_REVIEWED_WILDCARD_MATCHES):
+            return "upload-route new wildcard-coupled rate-limit source"
+    return None
+
+
+def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
+    """Bound known CI over-trigger without treating MinIO failure as readiness."""
+    directory = REPO_ROOT / "scripts"
+    paths = list(directory.glob("validate-memory-os-rate-limit*.py"))
+    if any(path.is_symlink() or not path.is_file() for path in paths):
+        failures.append("upload-route rate-limit script path is missing or symlinked")
+        return
+    matches = {path.relative_to(REPO_ROOT).as_posix() for path in paths}
+    if len(matches) != len(paths):
+        failures.append("upload-route rate-limit script path inventory ambiguous")
+        return
+    original = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"\\n'
+    narrowed = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"\\n'
+    for relative in UPLOAD_ROUTE_WORKFLOWS:
+        workflow = REPO_ROOT / relative
+        if workflow.is_symlink() or not workflow.is_file():
+            failures.append("upload-route workflow missing or symlinked: " + relative)
+            continue
+        source = workflow.read_text(encoding="utf-8")
+        issue = upload_route_rate_limit_scope_issue(source, matches)
+        if issue:
+            failures.append(relative + ": " + issue)
+            continue
+        if source.count(original) != 1:
+            failures.append(relative + ": upload-route trigger fixture anchor drift")
+            continue
+        # Every mutation is rejected for its intended semantic reason, not
+        # merely because the whole workflow source digest changed.
+        cases = (
+            ("removed", source.replace(original, "", 1), matches,
+             "upload-route rate-limit trigger pattern drift"),
+            ("duplicate", source.replace(original, original + original, 1), matches,
+             "upload-route rate-limit trigger pattern drift"),
+            ("unquoted", source.replace(original,
+             "      - " + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + "\\n", 1), matches,
+             "upload-route rate-limit trigger pattern drift"),
+            ("broadened", source.replace(original, '      - "scripts/**"\\n', 1),
+             matches, "upload-route rate-limit trigger pattern drift"),
+            ("extra broad", source.replace(original,
+             original + '      - "scripts/**"\\n', 1), matches,
+             "upload-route rate-limit trigger pattern drift"),
+            ("new matching script", source,
+             matches | {"scripts/validate-memory-os-rate-limit-unreviewed.py"},
+             "upload-route new wildcard-coupled rate-limit source"),
+            ("core missing", source,
+             matches - {UPLOAD_ROUTE_RATE_LIMIT_CORE},
+             "upload-route rate-limit core source missing"),
+        )
+        for name, changed, observed, expected in cases:
+            if upload_route_rate_limit_scope_issue(changed, observed) != expected:
+                failures.append(relative + ": upload-route scope negative failed: " + name)
+        if upload_route_rate_limit_scope_issue(
+                source.replace(original, narrowed, 1), matches):
+            failures.append(relative + ": reviewed exact-core narrowing rejected")
+    if not any("upload-route" in failure for failure in failures):
+        print("upload-route rate-limit wildcard scope bounded: "
+              + str(len(matches)) + " current matches, "
+              + str(7 * len(UPLOAD_ROUTE_WORKFLOWS))
+              + " exact-diagnostic negatives; no MinIO retry")
+
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -2392,6 +2521,7 @@ def main() -> int:
     validate_learning_guards(failures)
     validate_learning_workflow_reachability(failures)
     validate_source_negative_ci_reachability(failures)
+    validate_upload_route_rate_limit_trigger_scope(failures)
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
