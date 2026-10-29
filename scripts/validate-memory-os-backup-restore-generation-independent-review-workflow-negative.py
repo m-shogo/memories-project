@@ -784,11 +784,50 @@ def main() -> int:
         if old not in source:
             raise SystemExit(f"generation independent review negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        required_label = {
+            "persist credentials": "no credentials",
+            "PR source checkout": "PR checkout",
+            "PR event admission": "PR event",
+            "PR head SHA": "PR head",
+            "push/dispatch branch": "branch",
+            "unreviewed event rejection": "unreviewed event",
+            "fixture helper compile continuation": "fixture helper compile",
+        }.get(label, label)
+        expected = (
+            "generation independent review pull_request exact trigger inventory drift"
+            if label in {"self-trigger", "material delta review trigger"}
+            else "generation independent review workflow source boundary drift: " + required_label
+        )
         try:
             validate(mutated, check_blob=False)
-        except SystemExit:
-            continue
-        raise SystemExit(f"generation independent review accepted forbidden mutation: {label}")
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation independent review wrong source negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit(f"generation independent review accepted forbidden mutation: {label}")
+    # Exercise push reachability independently; first-occurrence replacements
+    # otherwise remove only the PR path for a two-event trigger.
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    if source.count(push_marker) != 1:
+        raise SystemExit("generation independent review push mutation marker drift")
+    for label, token in (
+        ("push self-trigger", REQUIRED[12][1]),
+        ("push material delta review trigger", REQUIRED[17][1]),
+    ):
+        prefix, push_block = source.split(push_marker, 1)
+        if push_block.count(token) != 1:
+            raise SystemExit("generation independent review push negative anchor drift: " + label)
+        mutated = prefix + push_marker + push_block.replace(token, "", 1)
+        try:
+            validate(mutated, check_blob=False)
+        except SystemExit as exc:
+            expected = "generation independent review push exact trigger inventory drift"
+            if str(exc) != expected:
+                raise SystemExit("generation independent review wrong push negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation independent review accepted missing " + label)
     for label, old, replacement in (
         ("PR base ref", REQUIRED[14][1], ""),
         ("PR target filter", REQUIRED[15][1], "  pull_request:\n    paths:\n"),
@@ -796,11 +835,17 @@ def main() -> int:
         if old not in source:
             raise SystemExit("generation independent review PR branch negative anchor missing: " + label)
         mutated = source.replace(old, replacement, 1)
+        expected = ("generation independent review trigger marker drift"
+                    if label == "PR target filter"
+                    else "generation independent review workflow source boundary drift: " + label)
         try:
             validate(mutated, check_blob=False)
-        except SystemExit:
-            continue
-        raise SystemExit("generation independent review accepted forbidden PR branch mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation independent review wrong PR negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation independent review accepted forbidden PR branch mutation: " + label)
     # Whole-source binding rejects otherwise anchor-preserving workflow changes.
     for label, mutated in (
         ("extra executable step", source.replace(
@@ -811,10 +856,13 @@ def main() -> int:
             raise SystemExit("generation independent review source digest negative anchor missing: " + label)
         try:
             validate(mutated)
-        except SystemExit:
-            continue
-        raise SystemExit("generation independent review accepted whole-source mutation: " + label)
-    print(f"PASS: generation independent review workflow source admission ({len(cases) + 2} semantic negatives; 1 whole-source binding negative)")
+        except SystemExit as exc:
+            if str(exc) != "generation independent review workflow complete source blob drift":
+                raise SystemExit("generation independent review wrong whole-source diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation independent review accepted whole-source mutation: " + label)
+    print(f"PASS: generation independent review workflow source admission ({len(cases) + 4} semantic negatives including 2 push-only removals; 1 whole-source binding negative)")
     return 0
 
 
