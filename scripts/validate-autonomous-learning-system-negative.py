@@ -1282,7 +1282,8 @@ def prove_upload_route_test_environment_negatives(source_root: Path) -> None:
         require_reviewed_upload_route_test_environment(source, event)
         cases = [
             ("database endpoint", "127.0.0.1:5432", "db.example.invalid:5432"),
-            ("S3 endpoint", "http://127.0.0.1:9000", "https://s3.example.invalid"),
+            ("S3 endpoint", "MEMORY_OS_TEST_S3_ENDPOINT: http://127.0.0.1:9000",
+             "MEMORY_OS_TEST_S3_ENDPOINT: https://s3.example.invalid"),
             ("S3 secret", "MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin", "MEMORY_OS_TEST_S3_SECRET_KEY: other"),
             ("Postgres port", "5432:5432", "5433:5432"),
             ("Postgres DB", "POSTGRES_DB: memory_os_security", "POSTGRES_DB: other"),
