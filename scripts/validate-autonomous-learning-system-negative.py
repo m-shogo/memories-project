@@ -1498,6 +1498,17 @@ def prove_unaliased_go_path_negatives() -> None:
                 raise
         else:
             raise RuntimeError("Go symlinked parent negative accepted")
+        data = root / "data.json"
+        data.write_text("{}\n", encoding="utf-8")
+        alias = root / "linked.json"
+        alias.symlink_to(data.name)
+        try:
+            require_unaliased_go_path(root, alias)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go source path alias/missing":
+                raise
+        else:
+            raise RuntimeError("JSON data alias negative accepted")
 
 
 def reject_unreviewed_go_embeds(source: str) -> None:
@@ -2410,8 +2421,10 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         "docs/fixtures/memory-os-operability/observability-events.valid.v1.json",
         "docs/fixtures/memory-os-operability/observability-events.negative.v1.json",
     ):
-        if not (source_root / path).is_file():
+        input_path = source_root / path
+        if not input_path.is_file():
             raise RuntimeError("missing direct Python validator input: " + path)
+        require_unaliased_go_path(source_root, input_path)
         inputs.add(path)
     # Directly loaded by validate-memory-os-operability.py during Upload Route.
     for path in (
@@ -2422,8 +2435,10 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         "contracts/operations/sustained-local-soak-contract.v1.json",
         "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json",
     ):
-        if not (source_root / path).is_file():
+        input_path = source_root / path
+        if not input_path.is_file():
             raise RuntimeError("missing direct operability validator input: " + path)
+        require_unaliased_go_path(source_root, input_path)
         inputs.add(path)
 
     require_reviewed_upload_route_input_set(
@@ -2455,7 +2470,9 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         ("reconcile-upload-route-authority.yml", "push"),
         ("reconcile-upload-route-authority-pr.yml", "pull_request"),
     ):
-        source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
+        workflow_path = source_root / ".github/workflows" / workflow
+        require_unaliased_go_path(source_root, workflow_path)
+        source = workflow_path.read_text(encoding="utf-8")
         require_reviewed_upload_route_toolchain_environment(source)
         require_reviewed_upload_route_actions(source)
         require_reviewed_upload_route_runtime_commands(source)
@@ -2477,7 +2494,9 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     require_upload_route_event_path_parity(*reviewed_paths)
     snapshot_paths = upload_route_snapshot_inventory(source_root)
     require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1687, 1620)
-    guard_source = (source_root / ".github/workflows/autonomous-learning-guard.yml").read_text(encoding="utf-8")
+    guard_path = source_root / ".github/workflows/autonomous-learning-guard.yml"
+    require_unaliased_go_path(source_root, guard_path)
+    guard_source = guard_path.read_text(encoding="utf-8")
     critical = {
         ".github/workflows/reconcile-upload-route-authority.yml": False,
         ".github/workflows/reconcile-upload-route-authority-pr.yml": False,
