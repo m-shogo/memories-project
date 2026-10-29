@@ -284,9 +284,9 @@ def validate(repo_root: Path) -> None:
                 # unreviewed even when the function is invoked indirectly.
                 if (isinstance(node.func, ast.Name) and node.func.id == "getattr"
                         and len(node.args) >= 2
-                        and isinstance(node.args[1], ast.Constant)
-                        and node.args[1].value in {"__import__", "import_module",
-                                                   "run_module", "run_path", "exec_module"}):
+                        and (not isinstance(node.args[1], ast.Constant)
+                             or node.args[1].value in {"__import__", "import_module",
+                                                       "run_module", "run_path", "exec_module"})):
                     return True
                 # An immediately invoked lambda executes its body now, unlike
                 # a bare lambda expression or a deferred generator body.
@@ -671,9 +671,9 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     return True
                 if (isinstance(node.func, ast.Name) and node.func.id == "getattr"
                         and len(node.args) >= 2
-                        and isinstance(node.args[1], ast.Constant)
-                        and node.args[1].value in {"__import__", "import_module",
-                                                   "run_module", "run_path", "exec_module"}):
+                        and (not isinstance(node.args[1], ast.Constant)
+                             or node.args[1].value in {"__import__", "import_module",
+                                                       "run_module", "run_path", "exec_module"})):
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
@@ -760,6 +760,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
         ("deferred loader execution", 'def helper():\n    loader.exec_module(None)\n', (2, 0)),
         ("deferred reflective import", 'def helper():\n    getattr(importlib, "import_module")("math")\n', (2, 0)),
+        ("deferred computed reflective import", 'def helper():\n    getattr(importlib, "import_" + "module")("math")\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -831,6 +832,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager reflective builtin import", baseline.replace(
             'if __name__', 'getattr(builtins, "__import__")("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager computed reflective import", baseline.replace(
+            'if __name__', 'getattr(importlib, "import_" + "module")("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager dynamic reflective loader", baseline.replace(
+            'if __name__', 'getattr(loader, method)(None)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
