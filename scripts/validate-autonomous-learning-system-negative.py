@@ -734,6 +734,32 @@ def prove_upload_route_snapshot_inventory_negatives() -> None:
                 raise RuntimeError("Upload Route snapshot gap negative accepted: " + label)
 
 
+def require_reviewed_upload_route_dependency_blob(raw: bytes, expected: str) -> None:
+    """Pin exact dependency bytes with the repository's Git blob SHA-1."""
+    header = b"blob " + str(len(raw)).encode("ascii") + b"\0"
+    if hashlib.sha1(header + raw).hexdigest() != expected:
+        raise RuntimeError("Upload Route dependency manifest changed; review required")
+
+
+def prove_upload_route_dependency_blob_negatives() -> None:
+    original = b"module example.com/test\n"
+    header = b"blob " + str(len(original)).encode("ascii") + b"\0"
+    digest = hashlib.sha1(header + original).hexdigest()
+    require_reviewed_upload_route_dependency_blob(original, digest)
+    for label, candidate in (
+        ("same-length mutation", original.replace(b"test", b"risk")),
+        ("truncated manifest", original[:-1]),
+        ("extra dependency", original + b"require example.com/x v1.0.0\n"),
+    ):
+        try:
+            require_reviewed_upload_route_dependency_blob(candidate, digest)
+        except RuntimeError as exc:
+            if str(exc) != "Upload Route dependency manifest changed; review required":
+                raise
+        else:
+            raise RuntimeError("Upload Route dependency manifest negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -747,6 +773,15 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_event_sequence_negatives()
     prove_upload_route_snapshot_function_negatives()
     prove_upload_route_snapshot_inventory_negatives()
+    prove_upload_route_dependency_blob_negatives()
+    for relative, expected in (
+        ("requirements-security-validation.txt", "8790ebe281089c679686d0689ecd59080899c3cb"),
+        ("services/import-api/go.mod", "ae1c51f23619581ac073fbb6e8f030c"),
+        ("services/import-api/go.sum", "7600ae8d6d9cb772cba6b733c77ef95152bc1cf0"),
+    ):
+        path = source_root / relative
+        require_unaliased_go_path(source_root, path)
+        require_reviewed_upload_route_dependency_blob(path.read_bytes(), expected)
     reconciler = source_root / "scripts/reconcile-memory-os-upload-route-authority.py"
     require_unaliased_go_path(source_root, reconciler)
     require_reviewed_upload_route_snapshot_functions(
