@@ -799,14 +799,19 @@ def autonomous_learning_guard_event_paths(source: str, event: str,
                                           expected_count: int) -> tuple[str, ...]:
     """Parse only the reviewed literal trigger grammar; never infer wildcard reach."""
     lines = source.splitlines()
-    if lines.count("on:") != 1 or lines.count("  " + event + ":") != 1:
+    on_keys = ("on:", '"on":', "'on':")
+    event_keys = ("  " + event + ":", '  "' + event + '":', "  '" + event + "':")
+    if (sum(line in on_keys for line in lines) != 1 or
+            sum(line in event_keys for line in lines) != 1 or
+            lines.count("on:") != 1 or lines.count("  " + event + ":") != 1):
         raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
     start = lines.index("  " + event + ":")
     end = next((i for i in range(start + 1, len(lines))
                 if lines[i] and (not lines[i].startswith(" ") or
                                  (lines[i].startswith("  ") and not lines[i].startswith("   ")))), len(lines))
     block = lines[start + 1:end]
-    if block.count("    paths:") != 1:
+    if (block.count("    paths:") != 1 or
+            block[:block.index("    paths:")] != ["    branches: [so]"]):
         raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
     paths = block[block.index("    paths:") + 1:]
     if (len(paths) != expected_count or
@@ -826,8 +831,8 @@ def require_autonomous_learning_trigger_claims(paths: tuple[str, ...],
 
 
 def prove_autonomous_learning_trigger_negatives() -> None:
-    sample = ('on:\n  push:\n    paths:\n      - "scripts/guard.py"\n'
-              '      - "docs/authority.md"\n  pull_request:\n    paths:\n'
+    sample = ('on:\n  push:\n    branches: [so]\n    paths:\n      - "scripts/guard.py"\n'
+              '      - "docs/authority.md"\n  pull_request:\n    branches: [so]\n    paths:\n'
               '      - "scripts/guard.py"\n      - "docs/authority.md"\n')
     paths = autonomous_learning_guard_event_paths(sample, "push", 2)
     require_autonomous_learning_trigger_claims(paths, {"scripts/guard.py": True, "go.mod": False})
@@ -842,12 +847,20 @@ def prove_autonomous_learning_trigger_negatives() -> None:
                 raise
         else:
             raise RuntimeError("Autonomous Learning Guard coverage negative accepted: " + label)
-    for label, changed in (
-        ("missing PR event", sample.replace("  pull_request:", "  other:")),
-        ("wildcard path", sample.replace('"docs/authority.md"', '"docs/*.md"')),
+    for label, changed, event in (
+        ("missing PR event", sample.replace("  pull_request:", "  other:"), "pull_request"),
+        ("wildcard path", sample.replace('"docs/authority.md"', '"docs/*.md"'), "push"),
+        ("quoted on shadow", sample + "'on':\n  push:\n", "push"),
+        ("double-quoted on shadow", sample + '"on":\n  push:\n', "push"),
+        ("quoted push shadow", sample + "  'push':\n    paths:\n      - \"scripts/evil.py\"\n", "push"),
+        ("quoted PR shadow", sample + '  "pull_request":\n    paths:\n      - "scripts/evil.py"\n', "pull_request"),
+        ("wrong push branch", sample.replace("    branches: [so]", "    branches: [main]", 1), "push"),
+        ("missing PR branch", sample.replace("  pull_request:\n    branches: [so]\n",
+                                              "  pull_request:\n"), "pull_request"),
+        ("shadowed branch", sample.replace("    paths:\n", "    branches: [main]\n    paths:\n", 1), "push"),
     ):
         try:
-            autonomous_learning_guard_event_paths(changed, "pull_request" if label == "missing PR event" else "push", 2)
+            autonomous_learning_guard_event_paths(changed, event, 2)
         except RuntimeError as exc:
             if str(exc) != "Autonomous Learning Guard event trigger authority changed":
                 raise
