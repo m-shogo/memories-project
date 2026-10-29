@@ -611,6 +611,45 @@ def prove_upload_route_input_set_negatives() -> None:
             raise RuntimeError("Upload Route input identity negative accepted: " + label)
 
 
+def require_reviewed_upload_route_python_imports(source: str, count: int,
+                                                 expected_sha256: str) -> None:
+    """Pin imported module names, aliases and relative levels, not just path literals."""
+    import ast
+    entries = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            entries.extend(f"import:{alias.name}:{alias.asname or ''}" for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            entries.extend(f"from:{node.level}:{node.module or ''}:{alias.name}:{alias.asname or ''}"
+                           for alias in node.names)
+    if len(entries) != len(set(entries)):
+        raise RuntimeError("unreviewed Upload Route Python duplicate import")
+    require_reviewed_upload_route_input_set(set(entries), count, expected_sha256)
+
+
+def prove_upload_route_python_import_negatives() -> None:
+    base = "from pathlib import Path\nimport json\n"
+    digest = "ee6d40ba2610714dbaad1dec375a82cad8405e8358959b1dabd45a97a413e900"
+    require_reviewed_upload_route_python_imports(base, 2, digest)
+    require_reviewed_upload_route_python_imports("import json\nfrom pathlib import Path\n", 2, digest)
+    for label, candidate in (
+        ("added local module", base + "import scripts.helper\n"),
+        ("same-count replacement", base.replace("import json", "import scripts.helper")),
+        ("import alias", base.replace("import json", "import json as j")),
+        ("relative import", base + "from . import helper\n"),
+        ("wildcard import", base.replace("from pathlib import Path", "from pathlib import *")),
+        ("duplicate import", base + "import json\n"),
+    ):
+        try:
+            require_reviewed_upload_route_python_imports(candidate, 2, digest)
+        except RuntimeError as exc:
+            if str(exc) not in {"unreviewed Upload Route Python duplicate import",
+                                "upload route reviewed input identity changed; review required"}:
+                raise
+        else:
+            raise RuntimeError("Upload Route Python import negative accepted: " + label)
+
+
 def require_reviewed_upload_route_python_source(source: str, count: int,
                                                 expected_sha256: str) -> None:
     """Fail closed on changed static path literals or dynamic loader mechanisms."""
@@ -1094,6 +1133,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_path_parity_negatives()
     prove_upload_route_input_set_negatives()
     prove_upload_route_python_source_negatives()
+    prove_upload_route_python_import_negatives()
     prove_upload_route_event_sequence_negatives()
     prove_upload_route_snapshot_function_negatives()
     prove_upload_route_snapshot_inventory_negatives()
@@ -1116,6 +1156,12 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             "snapshot_authority_files": "6a11c9e680ca9f9499cd145b10ee81d90f9f59ffb2385ef068c36a8e81c7515d",
         },
     )
+    reviewed_imports = {
+        "scripts/validate-memory-os-metrics.py": (6, "a403f426fc984eafa9d76d30e179da7b162cadc55292e5f273ab87807bc1a1af"),
+        "scripts/validate-memory-os-rate-limit.py": (6, "a403f426fc984eafa9d76d30e179da7b162cadc55292e5f273ab87807bc1a1af"),
+        "scripts/validate-memory-os-observability.py": (5, "d95b254a5b523994df03223a178867922566bf3d3d34755b29466cf693a0360a"),
+        "scripts/validate-memory-os-operability.py": (9, "faa8cb7cc62bfa675d883b30492e5993b5c48146c920a43e7e66cb6c569bbd5f"),
+    }
     for relative, count, digest in (
         ("scripts/validate-memory-os-metrics.py", 4,
          "28b4778ad36ea2548201518eae8e53483bf2a1165bafea185b3dc03519ea277f"),
@@ -1129,6 +1175,9 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_unaliased_go_path(source_root, source_root / relative)
         require_reviewed_upload_route_python_source(
             (source_root / relative).read_text(encoding="utf-8"), count, digest
+        )
+        require_reviewed_upload_route_python_imports(
+            (source_root / relative).read_text(encoding="utf-8"), *reviewed_imports[relative]
         )
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
