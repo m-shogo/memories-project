@@ -1,0 +1,18 @@
+# Supplemental OPS learning — human recovery-objective admission concurrency serialization (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, a human-approved recovery objective, production/backup/restore/RPO/RTO/skew evidence, an environment generation, executable reviewed drill, typed eight-domain non-resurrection evidence, credentials, traffic, readiness, independent recovery review or human promotion.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** Recovery-objective admission source-negative CI pinned reviewed Git blobs, event/root YAML and scoped publisher/independent job permissions but lacked an independent concurrency group/cancellation diagnostic. Static coverage gap, not observed human approval bypass.
+- **Observed evidence:** Publisher blob `dadbedca0f7464489638781118b993e571b50648` declares PR/so-scoped `recovery-objectives-admission` grouping and `cancel-in-progress: false`. Previous validator blob `6b76b1ff3ad48efa654bdd68dcfedcffef0c6cbc` checked root `concurrency:` but not nested leaves.
+- **Verified root cause:** Full-source SHA and root YAML checks reject changed bytes without independently classifying effective serialization/cancellation semantics or YAML shadows.
+- **Failed approach:** Treating generic digest mismatch and a root concurrency key as complete proof of noncancelling recovery-objective admission.
+- **Correction / executable recurrence guard:** [`6737ff05`](https://github.com/m-shogo/memories-project/commit/6737ff054209d2a2f1e105e16f0f03a53d6e47e6) pins the reviewed PR/so group and noncancellation, adding ten exact-diagnostic negatives for global group, cancellation enabled, duplicate/spaced/quoted leaves, unreviewed leaf and missing cancellation.
+- **Retry condition:** Revisit only on reviewed concurrency-policy change or demonstrated YAML shadow bypass; do not retry unchanged MinIO HTTP 401, canonical-learning transport, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Recovery Objectives Admission Source Negative #40807660455](https://github.com/m-shogo/memories-project/actions/runs/40807660455) completed **SUCCESS** at exact code `6737ff05`; log confirms ten concurrency negatives and 48 existing YAML event/root/job/permission negatives. [Recovery Objectives Admission #40807660496](https://github.com/m-shogo/memories-project/actions/runs/40807660496) also completed **SUCCESS** for the same source. Full Admission Chain #40807660508 was QUEUED at this observation, not claimed successful.
+- **Why safe:** Only the CI-reachable read-only Python validator changed (+55 lines, no deletions). Reviewed workflows, objective approval registry, production status, environment generations, recovery evidence, typed eight-domain records, credentials, traffic and promotion authority were untouched.
+- **Reusable mechanism:** Pin reviewed admission concurrency independently of SHA/root/job authority while preserving explicitly human-approved current recovery objective requirements. Source CI or learning cannot create an approval or satisfy RPO/RTO/skew/recovery gates.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No registered generation, approved objective, executable reviewed request, generation evidence, complete typed eight-domain record, final candidate or human promotion.
+- **Next safe target:** Audit generation binding/evidence publisher concurrency without changing production authority or human approval.
