@@ -1017,6 +1017,15 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
                         for arg in node.args)):
             raise RuntimeError("unreviewed Upload Route Python composed input path")
     literals = set(re.findall(r"""["']((?:contracts|docs|scripts|services)/[^"'\s]+)["']""", source))
+    # Python merges adjacent string tokens and decodes escapes before a path
+    # reaches Path/open. Compare AST values against the reviewed raw literals.
+    ast_paths = {
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        and re.match(r"^(?:contracts|docs|scripts|services)/", node.value)
+    }
+    if not ast_paths.issubset(literals):
+        raise RuntimeError("unreviewed Upload Route Python composed input path")
     require_reviewed_upload_route_input_set(literals, count, expected_sha256)
 
 
@@ -1073,6 +1082,10 @@ def prove_upload_route_python_source_negatives() -> None:
         ("f-string joinpath", base + 'Y = ROOT.joinpath(f"{kind}.json")\n'),
         ("format root segment", base + 'Y = "{}/docs/fixtures/new.json".format(ROOT)\n'),
         ("Path concatenated root", base + 'Y = Path("con" + "tracts/operations/new.json")\n'),
+        ("adjacent string Path", base + 'Y = Path("con" "tracts/operations/new.json")\n'),
+        ("adjacent string division", base + 'Y = ROOT / ("do" "cs/fixtures/new.json")\n'),
+        ("escaped Unicode root", base + 'Y = Path("\\u0063ontracts/operations/new.json")\n'),
+        ("escaped hex root", base + 'Y = Path("\\x63ontracts/operations/new.json")\n'),
         ("division concatenated root", base + 'Y = ROOT / ("con" + "tracts") / "operations/new.json"\n'),
         ("Path indirect format", base + 'Y = Path("{}/{}".format(ROOT, name))\n'),
         ("division indirect format", base + 'Y = ROOT / "{}".format(name)\n'),
