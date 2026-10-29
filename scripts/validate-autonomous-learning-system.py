@@ -643,6 +643,15 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Lambda):
                     return True
+                # Eager dynamic imports or runpy can execute unreviewed module
+                # code with namespace side effects. This is a bounded lexical
+                # rejection, not a complete alias or import-graph proof.
+                if (isinstance(node.func, ast.Name) and
+                        node.func.id in {"__import__"}):
+                    return True
+                if (isinstance(node.func, ast.Attribute) and
+                        node.func.attr in {"import_module", "run_module", "run_path"}):
+                    return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
                     return True
@@ -723,6 +732,7 @@ def prove_prewrite_python_negatives() -> None:
         ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
         ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
+        ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -765,6 +775,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("eager builtin dynamic import", baseline.replace(
+            'if __name__', '__import__("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager importlib dynamic import", baseline.replace(
+            'if __name__', 'importlib.import_module("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager runpy path", baseline.replace(
+            'if __name__', 'runpy.run_path("fixture.py")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager runpy module", baseline.replace(
+            'if __name__', 'runpy.run_module("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
