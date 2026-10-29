@@ -3117,6 +3117,52 @@ def prove_publisher_stage_runtime(publish: str) -> None:
 
 
 
+def require_snapshot_readonly_concurrency(source: str) -> None:
+    """Pin strict OPS-P0-007 readonly cancellation separately from the publisher."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = ("  group: ops-p0-007-admission-snapshot-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    expected = group + "  cancel-in-progress: true\n"
+    require(source.count(marker) == 1 and source.count(end) == 1,
+            "strict snapshot readonly concurrency scope drift")
+    require(source.split(marker, 1)[1].split(end, 1)[0] == expected,
+            "strict snapshot readonly concurrency scope drift")
+
+
+def prove_snapshot_readonly_concurrency_negatives(source: str) -> None:
+    """Reject ten exact-diagnostic readonly group/cancellation YAML shadows."""
+    require_snapshot_readonly_concurrency(source)
+    group = ("  group: ops-p0-007-admission-snapshot-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    original = group + "  cancel-in-progress: true\n"
+    variants = (
+        ("global group", "  group: ops-p0-007-admission-snapshot-readonly-global\n  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", group),
+    )
+    require(source.count(original) == 1 and len(variants) == 10,
+            "strict snapshot readonly concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = source.replace(original, changed_block, 1)
+        require(changed != source, "strict snapshot readonly unchanged concurrency fixture: " + name)
+        try:
+            require_snapshot_readonly_concurrency(changed)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot readonly concurrency scope drift",
+                    "strict snapshot readonly wrong concurrency diagnostic: " + name + ": " + str(exc))
+        else:
+            raise Fail("strict snapshot readonly accepted concurrency mutation: " + name)
+    print("PASS: strict snapshot readonly concurrency scope (10 exact-diagnostic negatives)")
+
+
 def require_snapshot_publisher_concurrency(publish: str) -> None:
     """Bind strict snapshot publisher serialization without changing promotion gates."""
     marker = "\nconcurrency:\n"
@@ -3173,6 +3219,7 @@ def main() -> int:
     require_canonical_workflow(READONLY_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-readonly.yml"))
     prove_readonly_workflow_negative(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     prove_readonly_trigger_negative(READONLY_WORKFLOW.read_text(encoding="utf-8"))
+    prove_snapshot_readonly_concurrency_negatives(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     prove_symlink_rejected()
     prove_comment_only_commands_rejected()
     prove_pr_shell_fail_closed_negative(PR_WORKFLOW.read_text(encoding="utf-8"))
