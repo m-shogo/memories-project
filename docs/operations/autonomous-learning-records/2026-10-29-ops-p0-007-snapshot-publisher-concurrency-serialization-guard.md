@@ -1,0 +1,21 @@
+# Supplemental OPS learning — strict OPS-P0-007 snapshot publisher concurrency (2026-10-29)
+
+Append-only supplemental history only; not canonical learning, production/backup/restore/RPO/RTO/skew evidence, registered/semantically preflight-eligible generation, approved current recovery objective, executable reviewed drill, typed eight-domain non-resurrection coverage, credentials, traffic, readiness, independent review or human promotion.
+
+## Material failure / executable recurrence prevention
+
+- **Symptom:** The strict snapshot permission-negative validator covered source, read-only PR, publisher event/ref, full admission revalidation, diagnostic safety and CAS, but did not independently classify the publisher concurrency group/cancellation YAML leaves. Static coverage gap, not an observed OPS-P0-007 admission bypass.
+- **Observed evidence:** Reviewed publisher workflow blob `7dace62ae671283a64ff691a420d789d38f086d1` declares `ops-p0-007-admission-snapshot-so` with `cancel-in-progress: false`. Previous permission-negative validator blob `ff5bb2be4b56c4fc898e01158e8a63ccacbe65c1` had no dedicated concurrency semantic guard. The read-only permission boundary workflow includes this validator in its push trigger and execution path.
+- **Verified root cause:** Whole-source identity and publication-scope checks do not provide a distinct diagnostic for YAML-equivalent concurrency group/cancellation shadow leaves.
+- **Failed approach:** Treating complete source/permission validation as sufficient proof of noncancelling strict snapshot serialization.
+- **Correction / executable recurrence guard:** [Commit `d9011dfb`](https://github.com/m-shogo/memories-project/commit/d9011dfb5093ebc579f3e97d3be1a1201dc8a83c) adds an exact reviewed concurrency-block check and ten expected-diagnostic negatives: global group, enabled cancellation, duplicate/spaced/quoted group and cancellation, extra leaf and removed cancellation. Every mutation must raise `strict snapshot publisher concurrency scope drift`.
+- **Retry condition:** Revisit only on an explicitly reviewed concurrency policy change, demonstrated YAML bypass or exact-source CI failure; do not retry unchanged canonical-learning transfer, MinIO 401, scoped write permissions or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [OPS P0 007 Snapshot Permission Boundary #40811901660](https://github.com/m-shogo/memories-project/actions/runs/40811901660) completed **SUCCESS** on exact code `d9011dfb`; job log confirms ten concurrency negatives and strict snapshot workflow permission-negative PASS. [Snapshot Readonly #40811901619](https://github.com/m-shogo/memories-project/actions/runs/40811901619) was **IN_PROGRESS** at capture; [Full Admission Chain #40811689274](https://github.com/m-shogo/memories-project/actions/runs/40811689274) was **IN_PROGRESS** on earlier code `7a917b9b`. Neither is claimed SUCCESS here.
+- **Why safe:** Only the CI-reachable read-only Python permission-negative validator changed. Reviewed workflows, production status, recovery registries, backup/restore evidence, generation/objective/drill gates, typed eight-domain coverage, credentials, traffic and promotion authority were not edited.
+- **Reusable mechanism:** Independently pin noncancelling publisher concurrency semantics while preserving the separate full recovery admission chain and human promotion gate; require expected diagnostics, not generic digest failure.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`. Autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Registered generations remain distinct from semantically eligible unsuperseded distinct-environment generations; reviewed drill requests are planning-only and human approval remains separate.
+- **Canonical-learning limitation:** Canonical 4.17 MB learning authority returned empty content through the existing read path; unchanged transport blocker was not retried.
+- **Next safe target:** Check terminal snapshot readonly/full admission CI and audit remaining CI-reachable source-negative concurrency guards without modifying promotion or evidence authority.
