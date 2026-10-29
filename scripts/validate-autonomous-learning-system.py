@@ -558,6 +558,15 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 eager = [*node.decorator_list, *node.args.defaults,
                          *(value for value in node.args.kw_defaults
                            if value is not None)]
+                # Without postponed annotations these expressions also
+                # execute at definition time. Conservatively inspect them
+                # even when a future import postpones their evaluation.
+                eager.extend(arg.annotation for arg in
+                             [*node.args.posonlyargs, *node.args.args,
+                              *node.args.kwonlyargs, node.args.vararg, node.args.kwarg]
+                             if arg is not None and arg.annotation is not None)
+                if node.returns is not None:
+                    eager.append(node.returns)
                 return ((not top_level and not class_local and node.name == "main")
                         or any(module_shadows_main(value, top_level=False, class_local=class_local)
                                for value in eager))
@@ -677,6 +686,7 @@ def prove_prewrite_python_negatives() -> None:
     # Module-scope checks must not reject deferred or local main bindings.
     local_controls = (
         ("function default benign", 'def helper(x=1):\n    pass\n', (2, 0)),
+        ("function annotations benign", 'def helper(x: int) -> str:\n    return str(x)\n', (2, 0)),
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("safe explicit import", 'from math import sqrt\n', (1, 0)),
@@ -750,6 +760,18 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("class method decorator reflection", baseline.replace(
             'if __name__', 'class Helper:\n    @globals().__setitem__("main", None)\n    def method(self):\n        pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function parameter annotation reflection", baseline.replace(
+            'if __name__', 'def helper(x: globals().__setitem__("main", None)):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function return annotation reflection", baseline.replace(
+            'if __name__', 'def helper() -> globals().__setitem__("main", None):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function kwonly annotation reflection", baseline.replace(
+            'if __name__', 'def helper(*, x: globals().__setitem__("main", None)):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("async parameter annotation reflection", baseline.replace(
+            'if __name__', 'async def helper(x: globals().__setitem__("main", None)):\n    pass\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("function lambda decorator reflection", baseline.replace(
             'if __name__', '@(lambda fn: globals().__setitem__("main", None))\ndef helper():\n    pass\nif __name__'),
