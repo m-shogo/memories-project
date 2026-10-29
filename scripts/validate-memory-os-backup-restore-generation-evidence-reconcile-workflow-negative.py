@@ -373,17 +373,48 @@ def main() -> int:
         if old not in source:
             raise SystemExit(f"generation evidence reconcile negative anchor missing: {label}")
         mutated = source.replace(old, replacement, 1)
+        expected = (
+            "generation evidence reconcile CI pull_request exact trigger inventory drift"
+            if label in {"self-trigger", "material delta review trigger"}
+            else "generation evidence reconcile workflow source boundary drift: " + label
+        )
         try:
             validate(mutated, check_blob=False)
-        except SystemExit:
-            continue
-        raise SystemExit(f"generation evidence reconcile accepted forbidden mutation: {label}")
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation evidence reconcile wrong source negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit(f"generation evidence reconcile accepted forbidden mutation: {label}")
+    # A path occurring in both events must be removed from push independently;
+    # replacing the first occurrence alone exercises PR twice.
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    if source.count(push_marker) != 1:
+        raise SystemExit("generation evidence reconcile push negative marker drift")
+    for label, token in (
+        ("push self-trigger", REQUIRED[12][1]),
+        ("push material delta review trigger", REQUIRED[16][1]),
+    ):
+        prefix, push_block = source.split(push_marker, 1)
+        if push_block.count(token) != 1:
+            raise SystemExit("generation evidence reconcile push negative anchor drift: " + label)
+        mutated = prefix + push_marker + push_block.replace(token, "", 1)
+        try:
+            validate(mutated, check_blob=False)
+        except SystemExit as exc:
+            expected = "generation evidence reconcile CI push exact trigger inventory drift"
+            if str(exc) != expected:
+                raise SystemExit("generation evidence reconcile wrong push negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence reconcile accepted missing " + label)
     # The canonical workflow may or may not end in a newline; both are valid.
     validate(source.rstrip("\n") + "\n", check_blob=False)
     try:
         validate(source + '\n          echo "unreviewed final command"\n')
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if str(exc) != "generation evidence reconcile workflow source boundary drift: final read-only terminator":
+            raise SystemExit("generation evidence reconcile wrong appended command diagnostic: " + str(exc)) from exc
     else:
         raise SystemExit("generation evidence reconcile accepted appended final command")
     for label, old, replacement in (
@@ -393,11 +424,17 @@ def main() -> int:
         if old not in source:
             raise SystemExit("generation evidence reconcile PR branch negative anchor missing: " + label)
         mutated = source.replace(old, replacement, 1)
+        expected = ("generation evidence reconcile CI trigger marker drift"
+                    if label == "PR target filter"
+                    else "generation evidence reconcile workflow source boundary drift: " + label)
         try:
             validate(mutated, check_blob=False)
-        except SystemExit:
-            continue
-        raise SystemExit("generation evidence reconcile accepted forbidden PR branch mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation evidence reconcile wrong PR negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence reconcile accepted forbidden PR branch mutation: " + label)
     # Whole-source binding rejects otherwise anchor-preserving workflow changes.
     for label, mutated in (
         ("extra executable step", source.replace(
@@ -408,10 +445,13 @@ def main() -> int:
             raise SystemExit("generation evidence reconcile source digest negative anchor missing: " + label)
         try:
             validate(mutated)
-        except SystemExit:
-            continue
-        raise SystemExit("generation evidence reconcile accepted whole-source mutation: " + label)
-    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 2} semantic anchor negatives; 2 complete-source/terminator negatives)")
+        except SystemExit as exc:
+            if str(exc) != "generation evidence reconcile workflow complete source blob drift":
+                raise SystemExit("generation evidence reconcile wrong whole-source diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence reconcile accepted whole-source mutation: " + label)
+    print(f"PASS: generation evidence reconcile workflow source admission ({len(cases) + 4} semantic anchor negatives including 2 push-only removals; 2 complete-source/terminator negatives)")
     return 0
 
 
