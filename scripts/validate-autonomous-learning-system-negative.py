@@ -602,6 +602,34 @@ def prove_upload_route_python_source_negatives() -> None:
             raise RuntimeError("Upload Route Python source negative accepted: " + label)
 
 
+def require_reviewed_upload_route_event_sequence(paths: tuple[str, ...],
+                                                 count: int, expected_sha256: str) -> None:
+    """Pin the ordered event filter, including patterns matching no current inputs."""
+    canonical = "".join(path + "\n" for path in paths)
+    if (len(paths) != count or
+            hashlib.sha256(canonical.encode("utf-8")).hexdigest() != expected_sha256):
+        raise RuntimeError("Upload Route event path sequence changed; review required")
+
+
+def prove_upload_route_event_sequence_negatives() -> None:
+    baseline = ("a/**", "b/**")
+    digest = hashlib.sha256(b"a/**\nb/**\n").hexdigest()
+    require_reviewed_upload_route_event_sequence(baseline, 2, digest)
+    for label, candidate in (
+        ("same count different pattern", ("a/**", "c/**")),
+        ("same set reordered", ("b/**", "a/**")),
+        ("added no-match pattern", baseline + ("unused/**",)),
+        ("removed pattern", ("a/**",)),
+    ):
+        try:
+            require_reviewed_upload_route_event_sequence(candidate, 2, digest)
+        except RuntimeError as exc:
+            if str(exc) != "Upload Route event path sequence changed; review required":
+                raise
+        else:
+            raise RuntimeError("Upload Route event sequence negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -612,6 +640,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_path_parity_negatives()
     prove_upload_route_input_set_negatives()
     prove_upload_route_python_source_negatives()
+    prove_upload_route_event_sequence_negatives()
     for relative, count, digest in (
         ("scripts/validate-memory-os-metrics.py", 4,
          "28b4778ad36ea2548201518eae8e53483bf2a1165bafea185b3dc03519ea277f"),
@@ -758,6 +787,10 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         uncovered_sets.append({path for path in inputs
                                if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
+    for patterns in reviewed_paths:
+        require_reviewed_upload_route_event_sequence(
+            patterns, 12, "c8ee443d21a468393cec2d4104c9b47da60f38173edacba213c74f16df478fd8"
+        )
     for missing in uncovered_sets:
         require_reviewed_upload_route_input_set(
             missing, 81, "ecdb964e00dc346c1e8fefe730c18f01996c3512fe4c0dc3339387ef8f73024c"
