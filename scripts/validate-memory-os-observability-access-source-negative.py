@@ -325,6 +325,161 @@ def observability_concurrency_negatives(source: str) -> None:
 
 
 
+
+def observability_job_authority(publisher: str, independent: str) -> None:
+    """Bind PR read, publisher reconcile write, and independent read scopes."""
+    configurations = (
+        ("publisher", publisher, (
+            ("validate-pr", (
+                "    if: github.event_name == 'pull_request' && github.base_ref == 'so'",
+                "    runs-on: ubuntu-latest", "    timeout-minutes: 5", "    steps:",
+            ), None),
+            ("reconcile", (
+                "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'",
+                "    permissions:", "    runs-on: ubuntu-latest",
+                "    timeout-minutes: 5", "    steps:",
+            ), "write"),
+        )),
+        ("independent", independent, (
+            ("source-negative", (
+                "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')",
+                "    permissions:", "    runs-on: ubuntu-latest",
+                "    timeout-minutes: 5", "    steps:",
+            ), "read"),
+        )),
+    )
+    for label, content, jobs_expected in configurations:
+        if content.count("\njobs:\n") != 1:
+            raise AssertionError("observability-access " + label + " job authority drift")
+        body = content.split("\njobs:\n", 1)[1]
+        job_rows = [row for row in body.splitlines()
+                    if row.startswith("  ") and not row.startswith("   ")
+                    and row.strip() and not row.lstrip().startswith("#")]
+        if job_rows != ["  " + name + ":" for name, _, _ in jobs_expected]:
+            raise AssertionError("observability-access " + label + " job authority drift")
+        for position, (name, expected_keys, permission) in enumerate(jobs_expected):
+            marker = "  " + name + ":\n"
+            if body.count(marker) != 1:
+                raise AssertionError("observability-access " + label + " job authority drift")
+            start = body.index(marker) + len(marker)
+            if position + 1 < len(jobs_expected):
+                next_marker = "\n  " + jobs_expected[position + 1][0] + ":\n"
+                end = body.find(next_marker, start)
+                if end < 0:
+                    raise AssertionError("observability-access " + label + " job authority drift")
+            else:
+                end = len(body)
+            section = body[start:end]
+            keys = [row for row in section.splitlines()
+                    if row.startswith("    ") and not row.startswith("     ")
+                    and row.strip() and not row.lstrip().startswith("#")]
+            if keys != list(expected_keys):
+                raise AssertionError("observability-access " + label + " job authority drift")
+            if permission is not None:
+                anchor = "    permissions:\n"
+                if section.count(anchor) != 1:
+                    raise AssertionError("observability-access " + label + " job authority drift")
+                actual = section.split(anchor, 1)[1].split("    runs-on:", 1)[0]
+                if actual != "      contents: " + permission + "\n":
+                    raise AssertionError("observability-access " + label + " job permission leaf drift")
+
+
+def observability_job_negatives(publisher: str, independent: str) -> None:
+    """Exercise effective YAML job overrides without touching real workflows."""
+    def mutate(source: str, job: str, old: str, replacement: str) -> str:
+        marker = "  " + job + ":\n"
+        if source.count(marker) != 1:
+            raise AssertionError("observability-access job fixture mapping drift: " + job)
+        start = source.index(marker)
+        next_marker = "\n  reconcile:\n" if job == "validate-pr" else ""
+        end = source.find(next_marker, start + len(marker)) if next_marker else len(source)
+        if end < 0:
+            raise AssertionError("observability-access job fixture boundary drift: " + job)
+        section = source[start:end]
+        if section.count(old) != 1:
+            raise AssertionError("observability-access job fixture anchor drift: " + job)
+        return source[:start] + section.replace(old, replacement, 1) + source[end:]
+
+    count = 0
+    for label, original, job, condition in (
+        ("publisher", publisher, "validate-pr",
+         "    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n"),
+        ("publisher", publisher, "reconcile",
+         "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n"),
+        ("independent", independent, "source-negative",
+         "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n"),
+    ):
+        job_row = "  " + job + ":\n"
+        runner = "    runs-on: ubuntu-latest\n"
+        cases = (
+            ("duplicate job", job_row, job_row + job_row),
+            ("quoted job", job_row, "  '" + job + "':\n"),
+            ("spaced job", job_row, "  " + job + " :\n"),
+            ("extra job", job_row, "  unreviewed:\n    runs-on: ubuntu-latest\n" + job_row),
+            ("condition changed", condition, "    if: true\n"),
+            ("condition removed", condition, ""),
+            ("runner changed", runner, "    runs-on: self-hosted\n"),
+            ("timeout changed", "    timeout-minutes: 5\n", "    timeout-minutes: 60\n"),
+            ("steps removed", "    steps:\n", ""),
+            ("continue on error", runner, "    continue-on-error: true\n" + runner),
+        )
+        for name, old, replacement in cases:
+            changed = mutate(original, job, old, replacement)
+            sources = (changed, independent) if label == "publisher" else (publisher, changed)
+            try:
+                observability_job_authority(*sources)
+            except AssertionError as exc:
+                expected = "observability-access " + label + " job authority drift"
+                if str(exc) != expected:
+                    raise AssertionError("observability-access job wrong diagnostic: "
+                                         + job + " " + name + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("observability-access accepted job mutation: " + job + " " + name)
+            count += 1
+
+    # A PR validation job must not silently gain write privileges.
+    changed = mutate(publisher, "validate-pr",
+                     "    runs-on: ubuntu-latest\n",
+                     "    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n")
+    try:
+        observability_job_authority(changed, independent)
+    except AssertionError as exc:
+        if str(exc) != "observability-access publisher job authority drift":
+            raise AssertionError("observability-access PR privilege wrong diagnostic") from exc
+    else:
+        raise AssertionError("observability-access accepted PR write permission")
+    count += 1
+
+    for label, original, job, leaf in (
+        ("publisher", publisher, "reconcile", "write"),
+        ("independent", independent, "source-negative", "read"),
+    ):
+        row = "      contents: " + leaf + "\n"
+        for name, replacement in (
+            ("privilege changed", "      contents: " + ("read" if leaf == "write" else "write") + "\n"),
+            ("quoted", "      'contents': " + leaf + "\n"),
+            ("spaced", "      contents : " + leaf + "\n"),
+            ("duplicate", row + row),
+            ("unknown", row + "      actions: write\n"),
+        ):
+            changed = mutate(original, job, row, replacement)
+            sources = (changed, independent) if label == "publisher" else (publisher, changed)
+            try:
+                observability_job_authority(*sources)
+            except AssertionError as exc:
+                expected = "observability-access " + label + " job permission leaf drift"
+                if str(exc) != expected:
+                    raise AssertionError("observability-access permission wrong diagnostic: "
+                                         + job + " " + name + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("observability-access accepted job permission: " + job + " " + name)
+            count += 1
+    if count != 41:
+        raise AssertionError("observability-access job negative inventory drift")
+    print("PASS: observability-access job and permission scopes (41 exact-diagnostic negatives)")
+
+
+
 def policy(s: str) -> None:
     if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
         raise AssertionError("observability-access immutable Actions drift")
@@ -452,6 +607,8 @@ def main() -> None:
     observability_yaml_shadow_negatives(source, independent)
     observability_concurrency_authority(source)
     observability_concurrency_negatives(source)
+    observability_job_authority(source, independent)
+    observability_job_negatives(source, independent)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
