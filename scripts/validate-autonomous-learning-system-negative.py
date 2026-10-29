@@ -436,6 +436,7 @@ def require_reviewed_upload_route_go_build_constraints(relative: str, source: st
     """Pin compile-time Go build constraints independently of path/import identity."""
     stems = ("reconcile", "records", "seal", "storage", "verifier", "writer")
     reviewed = {
+        "services/import-api/internal/httpserver/apple_live_test.go": "linux",
         "services/import-api/internal/httpserver/deletion_worker_sigkill_recovery_linux_test.go": "linux",
     }
     for stem in stems:
@@ -457,6 +458,10 @@ def prove_upload_route_go_build_constraint_negatives() -> None:
     untagged = "services/import-api/internal/metrics/labels.go"
     baseline = "//go:build linux\n\npackage previewspool\n"
     require_reviewed_upload_route_go_build_constraints(tagged, baseline)
+    require_reviewed_upload_route_go_build_constraints(
+        "services/import-api/internal/httpserver/apple_live_test.go",
+        "//go:build linux\n\npackage httpserver\n"
+    )
     require_reviewed_upload_route_go_build_constraints(untagged, "package metrics\n")
     for label, path, candidate in (
         ("changed expression", tagged, baseline.replace("linux", "windows")),
