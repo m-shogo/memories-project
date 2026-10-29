@@ -1,0 +1,20 @@
+# Supplemental OPS learning — deletion pre-fence diagnostic nested job authority (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, production deletion/recovery evidence, backup/restore, RPO/RTO/skew, reviewed drill, credentials, traffic, readiness or human promotion.
+
+## Material static gap / executable recurrence prevention
+
+- **Symptom:** The pre-fence diagnostic source-negative validator checked reviewed Git blobs, exact event/root permissions and runtime diagnostics but had no independently tested nested job mapping, service or permission shadow negatives. Static source-admission gap only; no observed unauthorized production deletion.
+- **Observed evidence:** Publisher blob `fdcc951be6c589518f1f48bcb363b5dcd0b88602` has `prove` (inherited root write, timeout 20, PostgreSQL service); independent blob `7245af8ba2a4433f3b4283c7dceaa9123ff522fd` has `source-negative` (explicit read, PR/push so, timeout 5). Prior validator lacked nested job semantic fixtures.
+- **Verified root cause:** Root permissions and whole-source Git blob equality cannot independently demonstrate unique effective nested jobs, inherited write authority, independent read-only scope or fail-closed YAML shadow handling.
+- **Failed approach:** Relying on root permission and blob equality as a substitute for nested job semantic negatives, or assuming a 25-minute publisher timeout without checking this reviewed 20-minute workflow.
+- **Correction / executable recurrence guard:** [Code `10fd7aba`](https://github.com/m-shogo/memories-project/commit/10fd7abaa1f5445aed5e45ab3c9bdef7fffdb160) reuses the CI-proven guard with the reviewed 20-minute publisher timeout, adding **24 in-memory exact-diagnostic negatives** for duplicate/quoted/spaced mappings, runner/timeout/steps/services shadows, continuation override, inherited permission overrides and independent condition/permission shadows.
+- **Retry condition:** Revisit only if reviewed job topology, timeout, inherited permission or a demonstrated bypass changes. Do not retry unchanged PostgreSQL client-major, MinIO HTTP 401, canonical-learning transfer or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [Pre-Fence Diagnostic Source Negative #40793988289](https://github.com/m-shogo/memories-project/actions/runs/40793988289) completed **SUCCESS** on exact source `10fd7aba`. Logs confirm 24 new exact-diagnostic nested job negatives, 14 root/permission negatives, 30 trigger omissions, 12 additions, three shortened inventories, three event topology negatives, 25 policy source negatives, seven diagnostic writer cases, six result CAS, seven reconcile CAS, 20 strict result and 90 typed contract/result negatives passing. Output explicitly states `production evidence generated: false; production decision changed: false`.
+- **Why safe:** Only the CI-reachable read-only Python source validator changed. All fixture mutations were in-memory; reviewed workflows, production contracts, registries, evidence, credentials, traffic, readiness and promotion were not modified.
+- **Reusable mechanism:** Verify exact job topology and timeout before reusing semantic job guards, preserve the whole-source Git blob as a separate seal, and require expected diagnostic rejection.
+- **Protected-authority check:** Current production status blob `3ab8092c7e3fec2b48d62fb2728f024151f610c5` has `productionDecision=NO_GO`; canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` and learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. The earlier parser CI changed status `asOf` only; no readiness gate changed. No production-equivalent generation, approved objective, executable reviewed drill, typed eight-domain non-resurrection evidence, independent final review or human promotion is asserted.
+- **Next safe target:** Audit deletion lease-recovery diagnostic nested job authority while keeping the unchanged PostgreSQL client-major blocker isolated.
