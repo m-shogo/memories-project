@@ -569,7 +569,18 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
             modules = [(node.module or "").split(".")[0]]
         else:
             modules = []
-        if any(module in {"importlib", "subprocess"} for module in modules):
+        if any(module in {"importlib", "subprocess", "runpy", "ctypes", "builtins"}
+               for module in modules):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.ImportFrom) and node.module == "os"
+                and any(alias.name in {"system", "popen"} or
+                        alias.name.startswith(("spawn", "exec")) for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "os"
+                and (node.func.attr in {"system", "popen"} or
+                     node.func.attr.startswith(("spawn", "exec")))):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id in {"__import__", "eval", "exec"}):
@@ -589,6 +600,11 @@ def prove_upload_route_python_source_negatives() -> None:
         ("subprocess import", base + "from subprocess import run\n"),
         ("builtin loader", base + 'Y = __import__("os")\n'),
         ("builtin eval", base + 'Y = eval("1")\n'),
+        ("os system", base + 'import os\nY = os.system("echo")\n'),
+        ("from os system", base + 'from os import system\nY = system("echo")\n'),
+        ("runpy loader", base + "import runpy\n"),
+        ("ctypes loader", base + "import ctypes\n"),
+        ("builtins loader", base + 'import builtins\nY = builtins.eval("1")\n'),
     ):
         try:
             require_reviewed_upload_route_python_source(candidate, 1, digest)
