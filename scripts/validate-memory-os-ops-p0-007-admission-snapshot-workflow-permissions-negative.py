@@ -3116,6 +3116,56 @@ def prove_publisher_stage_runtime(publish: str) -> None:
     print("PASS: strict OPS-P0-007 bounded stage runtime (16 synthetic cases)")
 
 
+
+def require_snapshot_publisher_concurrency(publish: str) -> None:
+    """Bind strict snapshot publisher serialization without changing promotion gates."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: ops-p0-007-admission-snapshot-so\n"
+        "  cancel-in-progress: false\n"
+    )
+    require(publish.count(marker) == 1 and publish.count(end) == 1,
+            "strict snapshot publisher concurrency scope drift")
+    require(publish.split(marker, 1)[1].split(end, 1)[0] == expected,
+            "strict snapshot publisher concurrency scope drift")
+
+
+def prove_snapshot_publisher_concurrency_negatives(publish: str) -> None:
+    """Ten exact-diagnostic negatives for cancellation and YAML leaf shadows."""
+    require_snapshot_publisher_concurrency(publish)
+    original = (
+        "  group: ops-p0-007-admission-snapshot-so\n"
+        "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: unreviewed-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    require(publish.count(original) == 1,
+            "strict snapshot concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = publish.replace(original, changed_block, 1)
+        require(changed != publish, "strict snapshot unchanged concurrency fixture: " + name)
+        try:
+            require_snapshot_publisher_concurrency(changed)
+        except Fail as exc:
+            require(str(exc) == "strict snapshot publisher concurrency scope drift",
+                    "strict snapshot wrong concurrency diagnostic: " + name + ": " + str(exc))
+        else:
+            raise Fail("strict snapshot accepted concurrency mutation: " + name)
+    print("PASS: strict snapshot publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     prove_snapshot_permission_gate_source_negatives()
     require_canonical_workflow(PR_WORKFLOW, Path(".github/workflows/ops-p0-007-admission-snapshot-pr.yml"))
@@ -3138,6 +3188,7 @@ def main() -> int:
     prove_pr_step_allowlist_negative(pr)
     prove_pr_trigger_negative(pr)
     prove_publisher_trigger_negative(publish)
+    prove_snapshot_publisher_concurrency_negatives(publish)
     prove_publisher_source_capture_negative(publish)
     prove_publisher_job_execution_policy_negative(publish)
     prove_publisher_step_allowlist_negative(publish)
