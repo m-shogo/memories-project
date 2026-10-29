@@ -2349,12 +2349,68 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
 
 
+def require_reviewed_upload_route_live_skip_boundary(source: str) -> None:
+    """Bind the live helper's conditional skip to the two required CI inputs."""
+    import re
+    failure = "unreviewed Upload Route live test skip boundary"
+    prefix = (
+        'func newLiveServer(t *testing.T) *liveServer {\n'
+        '\tt.Helper()\n'
+        '\tdatabaseURL := os.Getenv("MEMORY_OS_TEST_DATABASE_URL")\n'
+        '\tendpoint := os.Getenv("MEMORY_OS_TEST_S3_ENDPOINT")\n'
+        '\tif databaseURL == "" || endpoint == "" {\n'
+        '\t\tt.Skip("MEMORY_OS_TEST_DATABASE_URL and MEMORY_OS_TEST_S3_ENDPOINT are required; skipping HTTP server tests")\n'
+        '\t}\n'
+        '\tctx := context.Background()\n'
+    )
+    if source.count(prefix) != 1:
+        raise RuntimeError(failure)
+    start = source.index(prefix)
+    end = source.find("\nfunc ", start + len(prefix))
+    helper = source[start:end if end >= 0 else len(source)]
+    if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", helper)) != 1:
+        raise RuntimeError(failure)
+    for name in ("TestUploadLifecycleOverHTTP", "TestAccountDeletionFencesAndErasesOverHTTP"):
+        match = re.search(rf"(?m)^func {name}\(t \*testing\.T\) \{{", source)
+        if match is None:
+            raise RuntimeError(failure)
+        following = re.search(r"(?m)^func[ \t]+", source[match.end():])
+        body = source[match.end():(
+            match.end() + following.start() if following else len(source))]
+        if body.count("server := newLiveServer(t)") != 1:
+            raise RuntimeError(failure)
+
+
+def prove_upload_route_live_skip_boundary_negatives(source_root: Path) -> None:
+    path = source_root / "services/import-api/internal/httpserver/server_live_test.go"
+    source = path.read_text(encoding="utf-8")
+    require_reviewed_upload_route_live_skip_boundary(source)
+    for label, old, new in (
+        ("unconditional skip", 'if databaseURL == "" || endpoint == "" {', 'if true {'),
+        ("skip erased", '\t\tt.Skip("MEMORY_OS_TEST_DATABASE_URL', '\t\tt.Log("MEMORY_OS_TEST_DATABASE_URL'),
+        ("wrong env", 'os.Getenv("MEMORY_OS_TEST_S3_ENDPOINT")', 'os.Getenv("OTHER_S3_ENDPOINT")'),
+        ("extra skip", '\t}\n\tctx := context.Background()', '\t}\n\tt.SkipNow()\n\tctx := context.Background()'),
+        ("missing upload setup", 'func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tserver := newLiveServer(t)', 'func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tserver := &liveServer{}'),
+    ):
+        if source.count(old) != 1:
+            raise RuntimeError("live skip boundary fixture anchor drift: " + label)
+        changed = source.replace(old, new, 1)
+        try:
+            require_reviewed_upload_route_live_skip_boundary(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route live test skip boundary":
+                raise
+        else:
+            raise RuntimeError("live skip boundary negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
     prove_upload_route_focused_go_test_negatives(source_root)
+    prove_upload_route_live_skip_boundary_negatives(source_root)
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
