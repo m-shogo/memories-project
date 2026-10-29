@@ -392,6 +392,108 @@ def live_load_concurrency_negatives(writer: str, pr: str) -> None:
         raise AssertionError("live-load concurrency fixture inventory drift")
     print("PASS: live-load writer/PR concurrency (24 exact-diagnostic negatives)")
 
+
+LIVE_LOAD_JOB_HEADERS = [{"label":"writer","name":"reconcile","header":"    if: >-\n      (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&\n      github.ref == 'refs/heads/so' &&\n      (github.event_name != 'push' ||\n      !contains(github.event.head_commit.message, 'docs(load): reconcile live dependency evidence'))\n    runs-on: ubuntu-latest\n    timeout-minutes: 10"},{"label":"PR","name":"validate","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 10"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+
+
+def live_load_job_authority(writer: str, pr: str, independent: str) -> None:
+    """Pin three reviewed effective job mappings and distinct permission inheritance."""
+    for label, content in (("writer", writer), ("PR", pr), ("independent", independent)):
+        diagnostic = "live-load " + label + " job authority drift"
+        item = next(item for item in LIVE_LOAD_JOB_HEADERS if item["label"] == label)
+        if content.count("\njobs:\n") != 1:
+            raise AssertionError(diagnostic)
+        section = content.split("\njobs:\n", 1)[1]
+        mappings = [line for line in section.splitlines()
+                    if line.startswith("  ") and not line.startswith("    ")
+                    and line.strip() and not line.lstrip().startswith("#")]
+        if mappings != ["  " + item["name"] + ":"]:
+            raise AssertionError(diagnostic)
+        anchor = "\n  " + item["name"] + ":\n"
+        if content.count(anchor) != 1:
+            raise AssertionError(diagnostic)
+        actual = content.split(anchor, 1)[1].split("\n    steps:\n", 1)[0]
+        if actual != item["header"]:
+            raise AssertionError(diagnostic)
+
+
+def live_load_job_negatives(writer: str, pr: str, independent: str) -> None:
+    """Prove 47 exact-diagnostic effective job and permission shadow mutations."""
+    live_load_job_authority(writer, pr, independent)
+    sources = {"writer": writer, "PR": pr, "independent": independent}
+    total = 0
+
+    def reject(label: str, name: str, changed: str, case: str) -> None:
+        if changed == sources[label]:
+            raise AssertionError("live-load unchanged job fixture: " + label + "/" + case)
+        mutated = dict(sources)
+        mutated[label] = changed
+        try:
+            live_load_job_authority(mutated["writer"], mutated["PR"], mutated["independent"])
+        except AssertionError as exc:
+            expected = "live-load " + label + " job authority drift"
+            if str(exc) != expected:
+                raise AssertionError("live-load wrong job diagnostic: "
+                                     + label + "/" + case + ": " + str(exc)) from exc
+        else:
+            raise AssertionError("live-load accepted job mutation: " + label + "/" + case)
+
+    for item in LIVE_LOAD_JOB_HEADERS:
+        label, name, original = item["label"], item["name"], item["header"]
+        content = sources[label]
+        anchor = "\n  " + name + ":\n" + original + "\n    steps:\n"
+        if content.count(anchor) != 1:
+            raise AssertionError("live-load job fixture anchor drift: " + label)
+        first_if = original.splitlines(keepends=True)[0]
+        cases = [
+            ("condition bypass", original.replace(first_if, "    if: always()\n", 1)),
+            ("runner change", original.replace("    runs-on: ubuntu-latest",
+                                               "    runs-on: ubuntu-24.04", 1)),
+            ("timeout change", original.replace("    timeout-minutes: ",
+                                                "    timeout-minutes: 1 # ", 1)),
+            ("continuation override", original + "\n    continue-on-error: true"),
+            ("duplicate condition", original + "\n    if: always()"),
+            ("spaced condition", original.replace(first_if, "    if : always()\n", 1)),
+        ]
+        if label == "writer":
+            # The writer inherits root contents:write; no job permission override is authorized.
+            cases.extend((
+                ("read override", original + "\n    permissions:\n      contents: read"),
+                ("write override", original + "\n    permissions:\n      contents: write"),
+                ("quoted permission block", original + "\n    'permissions':\n      contents: read"),
+                ("spaced permission block", original + "\n    permissions :\n      contents: read"),
+                ("quoted contents override", original + "\n    permissions:\n      'contents': read"),
+                ("spaced contents override", original + "\n    permissions:\n      contents : read"),
+            ))
+        else:
+            cases.extend((
+                ("permission escalation", original.replace("      contents: read",
+                                                           "      contents: write", 1)),
+                ("duplicate permission", original + "\n    permissions:\n      contents: write"),
+                ("quoted permission", original.replace("      contents: read",
+                                                       "      'contents': write", 1)),
+                ("spaced permission", original.replace("      contents: read",
+                                                       "      contents : write", 1)),
+            ))
+        for case, replacement in cases:
+            changed = content.replace(anchor, "\n  " + name + ":\n"
+                                      + replacement + "\n    steps:\n", 1)
+            reject(label, name, changed, case)
+            total += 1
+        for case, changed in (
+            ("duplicate mapping", content + "\n  " + name + ":\n"),
+            ("quoted mapping", content + "\n  '" + name + "':\n"),
+            ("spaced mapping", content + "\n  " + name + " :\n"),
+            ("extra mapping", content + "\n  unreviewed:\n"),
+            ("missing mapping", content.replace("\n  " + name + ":\n",
+                                                "\n  missing-job:\n", 1)),
+        ):
+            reject(label, name, changed, case)
+            total += 1
+    if total != 47:
+        raise AssertionError("live-load job fixture inventory drift")
+    print("PASS: live-load writer/PR/independent job authority (47 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -620,6 +722,8 @@ def main() -> None:
     live_load_yaml_shadow_negatives(publisher, pr, independent)
     live_load_concurrency_authority(publisher, pr)
     live_load_concurrency_negatives(publisher, pr)
+    live_load_job_authority(publisher, pr, independent)
+    live_load_job_negatives(publisher, pr, independent)
     mutations(publisher)
     writer_runtime(publisher)
     validator_shell_runtime(publisher)
