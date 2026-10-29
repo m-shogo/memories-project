@@ -46,6 +46,56 @@ def require_publication_scope(header: str) -> None:
 
 
 
+
+def require_reviewed_concurrency(source: str) -> None:
+    """Pin noncancelling generation-evidence publisher concurrency semantics."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: backup-restore-generation-evidence-${{ github.event.pull_request.number || 'so' }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    require(source.count(marker) == 1 and source.count(end) == 1,
+            "generation evidence publisher concurrency scope drift")
+    require(source.split(marker, 1)[1].split(end, 1)[0] == expected,
+            "generation evidence publisher concurrency scope drift")
+
+
+def require_concurrency_negatives(source: str) -> None:
+    """Ten expected-diagnostic YAML shadow and cancellation negative fixtures."""
+    require_reviewed_concurrency(source)
+    original = (
+        "  group: backup-restore-generation-evidence-${{ github.event.pull_request.number || 'so' }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: backup-restore-generation-evidence-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    require(source.count(original) == 1,
+            "generation evidence concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = source.replace(original, changed_block, 1)
+        require(changed != source, "generation evidence unchanged concurrency fixture: " + name)
+        try:
+            require_reviewed_concurrency(changed)
+        except Fail as exc:
+            require(str(exc) == "generation evidence publisher concurrency scope drift",
+                    "generation evidence wrong concurrency diagnostic: " + name + ": " + str(exc))
+        else:
+            raise Fail("generation evidence accepted concurrency mutation: " + name)
+    print("PASS: generation evidence publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def require_reviewed_bootstrap(job: str, *, pr: bool) -> tuple[str, str]:
     """Bind immutable actions, exact checkout source, and PR credential isolation."""
     source = "ref: ${{ github.event.pull_request.head.sha }}" if pr else "ref: ${{ github.sha }}"
@@ -509,6 +559,7 @@ def main() -> int:
     require_readonly_workflow_source_negatives(READONLY_WORKFLOW.read_text(encoding="utf-8"))
     text = WORKFLOW.read_text(encoding="utf-8")
     require_root_event_negatives(text)
+    require_concurrency_negatives(text)
     require_trigger_path_negatives(text)
     require_run_body_negatives(text)
     require_diagnostic_privacy_negatives(text)
