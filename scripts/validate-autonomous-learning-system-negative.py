@@ -331,8 +331,10 @@ def upload_route_event_paths(source: str, event: str) -> tuple[str, ...]:
         raise RuntimeError("Upload Route PR branch filter unreviewed")
     patterns = []
     for line in block[positions[0] + 1:]:
-        if not line.startswith("      - "):
-            break
+        if not line.strip():
+            continue
+        # Every nonblank row after paths belongs to this reviewed path list.
+        # Never silently stop at a shadowing paths/branches/types mapping.
         match = re.fullmatch(r'      - "([^"]+)"', line)
         if match is None or match.group(1).startswith("!"):
             raise RuntimeError("unreviewed Upload Route path pattern")
@@ -358,6 +360,10 @@ def prove_upload_route_event_parser_negatives() -> None:
         base.replace("      - so\n", "      - main\n"),
         base.replace("    branches:\n      - so\n", ""),
         base.replace("      - so\n", "      - so\n      - main\n"),
+        base + "    types:\n      - closed\n",
+        base + '    paths:\n      - "b/**"\n',
+        base + "    branches:\n      - main\n",
+        base + '    "paths":\n      - "b/**"\n',
     )
     try:
         upload_route_event_paths(pr.replace("    paths:\n",
@@ -366,6 +372,16 @@ def prove_upload_route_event_parser_negatives() -> None:
         pass
     else:
         raise RuntimeError("Upload Route PR branch negative accepted")
+    for label, injected in (
+        ("PR types", "    types:\n      - closed\n"),
+        ("PR duplicate paths", '    paths:\n      - "b/**"\n'),
+    ):
+        try:
+            upload_route_event_paths(pr + injected, "pull_request")
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("Upload Route PR trailing filter accepted: " + label)
     for index, source in enumerate(mutations):
         try:
             upload_route_event_paths(source, "push")
