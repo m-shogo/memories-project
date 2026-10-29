@@ -1110,10 +1110,26 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         )
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
-    native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
+    # Go list classifies these additional C++/header/Fortran/ObjC inputs.
+    native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".cxx", ".hh", ".hpp",
+                       ".hxx", ".f", ".for", ".f90", ".m", ".syso", ".swig", ".swigcxx"}
     def reject_native(directory: Path) -> None:
         if any(p.suffix.lower() in native_suffixes for p in directory.iterdir()):
             raise RuntimeError("unreviewed Go native build input: " + str(directory))
+    with tempfile.TemporaryDirectory(prefix="upload-go-native-suffix-") as tmp:
+        fixture_root = Path(tmp)
+        for suffix in (".cxx", ".hh", ".hpp", ".hxx", ".f", ".for", ".f90", ".m"):
+            fixture = fixture_root / ("native" + suffix)
+            fixture.write_text("fixture\n", encoding="utf-8")
+            try:
+                reject_native(fixture_root)
+            except RuntimeError as exc:
+                if not str(exc).startswith("unreviewed Go native build input: "):
+                    raise
+            else:
+                raise RuntimeError("unreviewed Go native suffix accepted: " + suffix)
+            fixture.unlink()
+        reject_native(fixture_root)
     reject_native(target)
     require_unaliased_go_path(source_root, source_root / "services/import-api/go.mod")
     module_text = (source_root / "services/import-api/go.mod").read_text(encoding="utf-8")
