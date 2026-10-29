@@ -271,6 +271,15 @@ def validate(repo_root: Path) -> None:
                     and not node.value.args and not node.value.keywords):
                 return True
             if isinstance(node, ast.Call):
+                # Eager dynamic module execution can mutate either protected
+                # binding through imported code without a local Name(Store).
+                # This is conservative lexical rejection, not alias closure.
+                if (isinstance(node.func, ast.Name)
+                        and node.func.id == "__import__"):
+                    return True
+                if (isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"import_module", "run_module", "run_path"}):
+                    return True
                 # An immediately invoked lambda executes its body now, unlike
                 # a bare lambda expression or a deferred generator body.
                 if isinstance(node.func, ast.Lambda) and binds(
