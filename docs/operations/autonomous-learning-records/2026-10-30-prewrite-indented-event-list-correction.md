@@ -1,0 +1,22 @@
+# Supplemental OPS learning — variably indented event mapping/list correction (2026-10-30)
+
+Append-only supplemental learning only; the canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and the mandatory contract is unchanged. This record cannot be production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material failure and correction
+
+- **symptom:** The first variably indented YAML event guard overcounted ordinary nested `paths` list entries as if they were top-level event sequences, making a known unrelated-path CLI negative fail.
+- **evidence:** [Autonomous Learning Guard #40913698409](https://github.com/m-shogo/memories-project/actions/runs/40913698409) FAILED on `055ef0b4fe86dc9369b1cc10752b501b216222c0`. The actual negative suite raised `RuntimeError: prewrite fanout CLI undercount/misclassification: BOM unrelated`. The parser's new `sequence_rows` search matched `      - "docs/**"` nested beneath `on.push.paths`, even though the top-level `on` node was an event mapping, not a sequence.
+- **rootCauseOrUnknown:** Verified list-depth classification error: detecting any indented `- ` line anywhere in the `on` block conflated nested path lists with top-level event lists.
+- **failedApproach:** Unscoped list-item detection across the entire `on` subtree, despite existing negative controls for unrelated path filters.
+- **correction:** [`655be966`](https://github.com/m-shogo/memories-project/commit/655be966e4beadbf29c055c9708c80d5993aaae0) considers block event sequences only when the **first live row** of the `on` block is a list item; nested path lists under a mapping no longer change classification. A new real CLI and synthetic regression fixture checks an unrelated `branches` + `paths` nested list.
+- **recurrenceGuard:** CI-reachable exact ordered fixture pins now cover 64 audit and 47 CLI cases. The new `nested paths list regression` must remain a negative control, alongside `BOM unrelated`, while noncanonical one/four-space event mappings and one/three-space event lists remain positive controls.
+- **retryCondition:** Revisit list-depth parsing only with an independently reviewed nested YAML fixture showing a genuine undercount; do not repeat unscoped descendant-list detection. Existing MinIO 401, canonical large-learning transport and human-promotion blockers remain unchanged.
+
+## Material success and protected authority
+
+- **outcome/evidence:** [Autonomous Learning Guard #40913899694](https://github.com/m-shogo/memories-project/actions/runs/40913899694) completed **SUCCESS** on exact source `655be966e4beadbf29c055c9708c80d5993aaae0`. CI logs report **201** learning fail-closed cases, **74** fanout synthetic cases, **1,186** helper-ancestor negatives, contract and append-only PASS, 9 direct shared-entrypoint matches classified `BLOCKED_KNOWN_WRITER_CAS`.
+- **whySafe:** Only the read-only fanout auditor and its CI-bound negative harness changed; no workflow, production service, credential, traffic, recovery evidence or human promotion authority was touched. The failed version was corrected rather than being treated as successful or repeatedly rerun.
+- **reusableMechanism:** Identify the YAML node shape from the first live child row before interpreting descendant list items; pair conservative event matching with explicit unrelated-path negatives and exact fixture-identity checks.
+- **protectedAuthorityCheck:** Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` and all six protected registries remain unchanged. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations, approved objectives, executable reviewed requests, generation recovery evidence, typed eight-domain records, final candidates and human promotion remain zero.
+- **limitation:** The canonical learning file is too large for connector content retrieval, so only its blob identity was verified. No full admission chain or production readiness was inferred from this read-only CI.
+- **nextSafeTarget:** Run a final read-only protected-authority/diff audit and review whether any remaining trigger grammar gap warrants a scoped new guard. Do not alter Upload Route triggers until its direct and transitive dependencies are fully proven.
