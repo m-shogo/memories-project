@@ -1,0 +1,28 @@
+# Supplemental OPS learning — Go linkname closure guard and repeated tab-escape failure (2026-10-30)
+
+Append-only supplemental learning only. Canonical learning authority `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json` remain separate. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion gates.
+
+## Material failure / static dependency gap
+
+- **Symptom:** The Upload Route Go compilation-input audit rejected `//go:embed`, CGo and native sources but did not reject `//go:linkname`, which can bind an unimported symbol outside the reviewed Go import graph. This is a potential future static-closure escape, not observed production use.
+- **Observed evidence:** The reviewed scanner traversed Go import declarations and source files and checked embed/CGo/native mechanisms. No `go:linkname` guard or synthetic negatives existed; GitHub code search returned no matching indexed result, which is not exhaustive evidence of absence on branch `so`.
+- **Verified root cause:** The audit treated imports and reviewed native/embed mechanisms as its bounded closure but omitted the separate compiler linkname directive.
+- **Failed approach:** Assuming an unchanged Go import graph necessarily covers all compile/link-time symbol dependencies.
+- **Correction / executable recurrence guard:** [6e581afa](https://github.com/m-shogo/memories-project/commit/6e581afa7615ea575c62960a491b29e158654f21) adds a fail-closed `//go:linkname` detector for both target and transitive local Go source files, plus five directive negatives and a documentation-only positive control. It does not claim complete external-module or toolchain closure.
+- **Retry condition:** Review legitimate linkname usage only with an explicit symbol/dependency inventory and independently reviewed CI trigger coverage; do not narrow Upload Route triggers based on this guard alone.
+
+## Material failure / repeated generator escaping
+
+- **Symptom / evidence:** Initial [Autonomous Learning Guard #40901230109](https://github.com/m-shogo/memories-project/actions/runs/40901230109) FAILED on exact source `6e581afa7615ea575c62960a491b29e158654f21`. The traceback reported `Go linkname negative accepted: tab indent`. Local Python reproduction showed that the generated raw regex `[ \\t]` did not match actual tab bytes, whereas `[ \t]` did.
+- **Verified root cause:** JavaScript template-string escaping emitted two backslashes in the Python raw regex instead of one. This repeats the previously documented Go-embed tab-escape failure mechanism; the earlier recorded precondition had **not** changed, so the unvalidated generator approach should not have been repeated.
+- **Failed approach:** Writing generated regex source without first running a real-tab positive/negative check against the emitted pattern.
+- **Correction / executable recurrence guard:** [bd803d54](https://github.com/m-shogo/memories-project/commit/bd803d54778787bf791dc0602688fdd22dc84341) corrected the regex to a single raw backslash. Before writing the correction, an isolated Python check proved the original regex rejected real-tab cases and the corrected regex accepted them. The committed `tab indent` and `tab separator` synthetic negatives remain CI-bound and will reject a recurrence. Future generated regex edits must use literal-preserving construction and test actual tab bytes before the write, not rely on visually similar escaped source text.
+- **Retry condition:** The failed exact source must not be rerun unchanged. The correction changed the verified regex precondition and was validated in a new exact-source CI run.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40901304276](https://github.com/m-shogo/memories-project/actions/runs/40901304276) completed SUCCESS on corrected source `bd803d54778787bf791dc0602688fdd22dc84341`. Logs show 170 fail-closed learning negatives, 43 prewrite fanout synthetic cases, 1186 helper-ancestor negative mutations, append-only and entry-document validation, and clean-source/read-only checks PASS.
+- **Why safe:** Only the existing read-only learning negative validator changed. No Go service source, workflow trigger, MinIO service, credential, production traffic, recovery evidence, typed non-resurrection, independent review or human promotion authority was modified.
+- **Reusable mechanism:** Treat compiler directives as distinct dependency edges; use executable real-byte fixtures for escape-sensitive regexes and reject generator output before write when a known escape failure is reproducible.
+- **Protected-authority check:** Canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` and six generation/objective/drill/evidence/non-resurrection/promotion registries were unchanged. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`. Registered and semantically preflight-eligible generations remain distinct; current human-approved objective, executable reviewed request, request-bound generation evidence, complete typed eight-domain non-resurrection, independent review and separate human promotion gates remain mandatory and unsatisfied.
+- **Next safe target:** Read-only audit of remaining Go compiler directive classes and dynamic Python input composition; use prewrite fanout checks before modifying shared high-fanout entrypoint authorities.
