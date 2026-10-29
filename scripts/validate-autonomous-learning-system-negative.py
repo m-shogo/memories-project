@@ -808,6 +808,28 @@ def require_reviewed_upload_route_python_imports(source: str, count: int,
                            for alias in node.names)
     if len(entries) != len(set(entries)):
         raise RuntimeError("unreviewed Upload Route Python duplicate import")
+    # Import identity is insufficient if a later assignment, parameter, or
+    # declaration shadows the imported runtime binding without a new import.
+    bindings = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            bindings.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            bindings.update(alias.asname or alias.name for alias in node.names)
+    for node in ast.walk(tree):
+        shadow = (
+            isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+            and node.id in bindings
+        ) or (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and node.name in bindings
+        ) or (
+            isinstance(node, ast.arg) and node.arg in bindings
+        ) or (
+            isinstance(node, ast.ExceptHandler) and node.name in bindings
+        )
+        if shadow:
+            raise RuntimeError("unreviewed Upload Route Python import binding shadow")
     require_reviewed_upload_route_input_set(set(entries), count, expected_sha256)
 
 
@@ -828,12 +850,22 @@ def prove_upload_route_python_import_negatives() -> None:
         ("nested class import", base.replace("import json\n", "class Helper:\n    import json\n")),
         ("nested try import", base.replace("import json\n", "try:\n    import json\nexcept ImportError:\n    pass\n")),
         ("nested from import", base.replace("from pathlib import Path\n", "def helper():\n    from pathlib import Path\n")),
+        ("assigned imported Path", base + "Path = lambda value: value\n"),
+        ("function shadows Path", base + "def Path():\n    pass\n"),
+        ("class shadows Path", base + "class Path:\n    pass\n"),
+        ("async function shadows json", base + "async def json():\n    pass\n"),
+        ("parameter shadows Path", base + "def helper(Path):\n    return Path\n"),
+        ("local assignment shadows json", base + "def helper():\n    json = None\n"),
+        ("delete imported json", base + "del json\n"),
+        ("loop target shadows Path", base + "for Path in (1,):\n    pass\n"),
+        ("exception alias shadows json", base + "try:\n    raise RuntimeError()\nexcept RuntimeError as json:\n    pass\n"),
     ):
         try:
             require_reviewed_upload_route_python_imports(candidate, 2, digest)
         except RuntimeError as exc:
             if str(exc) not in {"unreviewed Upload Route Python duplicate import",
                                 "unreviewed Upload Route Python nested import",
+                                "unreviewed Upload Route Python import binding shadow",
                                 "upload route reviewed input identity changed; review required"}:
                 raise
         else:
