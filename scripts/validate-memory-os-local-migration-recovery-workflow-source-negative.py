@@ -87,6 +87,18 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     ):
         first, second = (push, pr) if is_publisher else (pr, push)
         end = "  workflow_dispatch:\n" if is_publisher else "\npermissions:\n"
+        def expect_trigger_rejected(mutated: str, diagnostic: str, case: str) -> None:
+            try:
+                validate_trigger_reachability(mutated, publisher=is_publisher)
+            except SystemExit as exc:
+                if str(exc) != diagnostic:
+                    raise SystemExit(
+                        "local recovery CI wrong trigger diagnostic: "
+                        + label + "/" + case + ": " + str(exc)
+                    ) from exc
+            else:
+                raise SystemExit("local recovery CI accepted " + label + "/" + case)
+
         for event, start, stop in (("first", first, second), ("second", second, end)):
             start_index = source.index(start) + len(start)
             end_index = source.index(stop, start_index)
@@ -96,12 +108,10 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 if block.count(token) != 1:
                     raise SystemExit("local recovery CI trigger mutation anchor drift: " + path)
                 mutated = source[:start_index] + block.replace(token, "", 1) + source[end_index:]
-                try:
-                    validate_trigger_reachability(mutated, publisher=is_publisher)
-                except SystemExit:
-                    pass
-                else:
-                    raise SystemExit("local recovery CI accepted missing " + label + " " + event + " trigger: " + path)
+                expect_trigger_rejected(
+                    mutated, "local recovery CI " + event + " exact trigger inventory drift",
+                    event + " missing " + path,
+                )
             for name, injection in (
                 ("quoted extra", '      - "unreviewed/**"\n'),
                 ("quoted duplicate", '      - "' + paths[0] + '"\n'),
@@ -109,16 +119,18 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                 ("unquoted duplicate", "      - " + paths[0] + "\n"),
             ):
                 mutated = source[:start_index] + injection + source[start_index:]
-                try:
-                    validate_trigger_reachability(mutated, publisher=is_publisher)
-                except SystemExit:
-                    pass
-                else:
-                    raise SystemExit("local recovery CI accepted " + label + " " + event + " " + name)
+                expect_trigger_rejected(
+                    mutated, "local recovery CI " + event + " exact trigger inventory drift",
+                    event + " " + name,
+                )
         try:
             validate_trigger_reachability(source, publisher=is_publisher, trigger_paths=paths[:-1])
-        except SystemExit:
-            pass
+        except SystemExit as exc:
+            if str(exc) != "local recovery CI trigger inventory shortened or duplicated":
+                raise SystemExit(
+                    "local recovery CI wrong shortened-inventory diagnostic: "
+                    + label + ": " + str(exc)
+                ) from exc
         else:
             raise SystemExit("local recovery CI accepted shortened " + label + " inventory")
     print("PASS: local recovery CI event triggers (38 removals; 16 additions; 2 shortened inventory negatives)")
