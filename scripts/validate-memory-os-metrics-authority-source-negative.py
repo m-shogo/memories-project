@@ -324,6 +324,70 @@ def metrics_trigger_negatives(writer: str, pr: str, independent: str) -> None:
           + str(len(topology)) + " event topology/schedule negatives")
 
 
+
+def metrics_concurrency_authority(writer: str, pr: str) -> None:
+    """Pin writer serialization separately from cancellable PR validation."""
+    for label, content, group, cancel in (
+        ("writer", writer, "reconcile-metrics-authority-so", "false"),
+        ("PR", pr, "validate-metrics-authority-pr-${{ github.event.pull_request.number }}", "true"),
+    ):
+        marker = "\nconcurrency:\n"
+        if content.count(marker) != 1 or content.count("\njobs:\n") != 1:
+            raise AssertionError("metrics " + label + " concurrency authority drift")
+        actual = content.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+        expected = "  group: " + group + "\n  cancel-in-progress: " + cancel + "\n"
+        if actual != expected:
+            raise AssertionError("metrics " + label + " concurrency authority drift")
+
+
+def metrics_concurrency_negatives(writer: str, pr: str) -> None:
+    """Require the intended diagnostic for each semantic YAML mutation."""
+    count = 0
+    for index, label, original, group, cancel in (
+        (0, "writer", writer, "reconcile-metrics-authority-so", "false"),
+        (1, "PR", pr, "validate-metrics-authority-pr-${{ github.event.pull_request.number }}", "true"),
+    ):
+        group_row = "  group: " + group + "\n"
+        cancel_row = "  cancel-in-progress: " + cancel + "\n"
+        cases = (
+            ("changed group", group_row, "  group: unreviewed\n"),
+            ("missing group", group_row, ""),
+            ("duplicate group", group_row, group_row + group_row),
+            ("quoted group", group_row, "  'group': " + group + "\n"),
+            ("spaced group", group_row, "  group : " + group + "\n"),
+            ("shadow group", group_row, group_row + "  group : unreviewed\n"),
+            ("changed cancellation", cancel_row,
+             "  cancel-in-progress: " + ("true" if cancel == "false" else "false") + "\n"),
+            ("missing cancellation", cancel_row, ""),
+            ("duplicate cancellation", cancel_row, cancel_row + cancel_row),
+            ("quoted cancellation", cancel_row, "  'cancel-in-progress': " + cancel + "\n"),
+            ("spaced cancellation", cancel_row, "  cancel-in-progress : " + cancel + "\n"),
+            ("unreviewed leaf", cancel_row, cancel_row + "  unexpected: true\n"),
+        )
+        for name, old, replacement in cases:
+            if original.count(old) != 1:
+                raise AssertionError("metrics concurrency fixture anchor drift: " + label + " " + name)
+            changed = original.replace(old, replacement, 1)
+            sources = [writer, pr]
+            sources[index] = changed
+            try:
+                metrics_concurrency_authority(*sources)
+            except AssertionError as exc:
+                expected = "metrics " + label + " concurrency authority drift"
+                if str(exc) != expected:
+                    raise AssertionError(
+                        "metrics concurrency wrong negative diagnostic: "
+                        + label + " " + name + ": " + str(exc)
+                    ) from exc
+            else:
+                raise AssertionError("metrics accepted concurrency mutation: " + label + " " + name)
+            count += 1
+    if count != 24:
+        raise AssertionError("metrics concurrency negative inventory drift")
+    print("PASS: metrics writer/PR concurrency authority (24 exact-diagnostic negatives)")
+
+
+
 def policy(s: str, required: tuple, label: str) -> None:
     if any(s.count(action) != 1 for action in (CHECKOUT, SETUP_GO, SETUP_PY)):
         raise AssertionError("metrics " + label + " immutable Actions drift")
@@ -456,6 +520,8 @@ def main() -> None:
     policy(pr, PR_REQUIRED, "PR")
     metrics_trigger_matrix(writer, pr, independent)
     metrics_trigger_negatives(writer, pr, independent)
+    metrics_concurrency_authority(writer, pr)
+    metrics_concurrency_negatives(writer, pr)
     negatives(writer, WRITER_REQUIRED, "writer")
     negatives(pr, PR_REQUIRED, "PR")
     head = "a" * 40
