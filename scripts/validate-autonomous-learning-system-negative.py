@@ -3546,6 +3546,11 @@ def main() -> int:
             ("eager-importlib-module", 'importlib.import_module("math")'),
             ("eager-runpy-path", 'runpy.run_path("fixture.py")'),
             ("eager-runpy-module", 'runpy.run_module("math")'),
+            # Direct names can be imported via from-import, without a
+            # lexically visible importlib/runpy attribute call.
+            ("eager-direct-import-module", 'import_module("math")'),
+            ("eager-direct-run-module", 'run_module("math")'),
+            ("eager-direct-run-path", 'run_path("fixture.py")'),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
