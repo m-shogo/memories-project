@@ -776,7 +776,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_dependency_blob_negatives()
     for relative, expected in (
         ("requirements-security-validation.txt", "8790ebe281089c679686d0689ecd59080899c3cb"),
-        ("services/import-api/go.mod", "ae1c51f23619581ac073fbb6e8f030c"),
+        ("services/import-api/go.mod", "ae1c51f23619581ac073fbb9c512c5f71f8f030c"),
         ("services/import-api/go.sum", "7600ae8d6d9cb772cba6b733c77ef95152bc1cf0"),
     ):
         path = source_root / relative
