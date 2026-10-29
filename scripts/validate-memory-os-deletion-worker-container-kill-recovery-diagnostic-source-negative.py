@@ -503,6 +503,53 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: container-kill publisher/independent nested job authority (24 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed worker container-kill recovery noncancelling serialization."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = "  group: deletion-worker-container-kill-recovery-so\n  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("worker-container-kill publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("worker-container-kill publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic worker container-kill concurrency shadows."""
+    validate_concurrency_authority(publisher)
+    group = "  group: deletion-worker-container-kill-recovery-so\n"
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: deletion-worker-container-kill-recovery-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("worker-container-kill concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("worker-container-kill unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "worker-container-kill publisher concurrency scope drift":
+                raise SystemExit(
+                    "worker-container-kill wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("worker-container-kill accepted concurrency mutation: " + name)
+    print("PASS: worker-container-kill publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -532,6 +579,7 @@ def main():
     prove_trigger_reachability_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     validate_job_authority(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
     identity_runtime(independent, "Require exact clean worker container kill recovery diagnostic source")
