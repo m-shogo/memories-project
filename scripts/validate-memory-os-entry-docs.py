@@ -8,6 +8,7 @@ import hashlib
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -2666,6 +2667,37 @@ def main() -> int:
                                 + fanout_result.stderr[:300])
             else:
                 print(fanout_result.stdout.strip())
+                # Verify real CLI path matching for valid quoted and scalar
+                # GitHub event forms, not only an in-process helper fixture.
+                for label, event_source, expected_count in (
+                    ("quoted-on", "'on':\n  push:\n    paths:\n      - 'scripts/synthetic.py'\n", 1),
+                    ("scalar-push", "on: push\n", 1),
+                    ("dispatch-only", "on: workflow_dispatch\n", 0),
+                ):
+                    with tempfile.TemporaryDirectory(prefix="ops-fanout-") as temporary:
+                        fixture_root = Path(temporary)
+                        fixture_dir = fixture_root / ".github/workflows"
+                        fixture_dir.mkdir(parents=True)
+                        (fixture_dir / "synthetic.yml").write_text(
+                            event_source, encoding="utf-8"
+                        )
+                        try:
+                            fixture_result = subprocess.run(
+                                [sys.executable, str(fanout_guard), "--path",
+                                 "scripts/synthetic.py", "--repo-root",
+                                 str(fixture_root)],
+                                cwd=REPO_ROOT, capture_output=True, text=True,
+                                timeout=30, check=False,
+                            )
+                        except (OSError, subprocess.TimeoutExpired):
+                            failures.append("prewrite fanout event CLI unavailable: " + label)
+                        else:
+                            expected = "matched workflow count: " + str(expected_count)
+                            if (fixture_result.returncode != 0
+                                    or expected not in fixture_result.stdout):
+                                failures.append(
+                                    "prewrite fanout event CLI undercount: " + label
+                                )
                 # Verify the actual CLI fails closed for both known risk
                 # classes; a passing self-test alone cannot prove its exit code.
                 for candidate in (
