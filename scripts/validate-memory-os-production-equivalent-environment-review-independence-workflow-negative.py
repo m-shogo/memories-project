@@ -288,9 +288,64 @@ def prove_trigger_reachability_negatives(source: str) -> None:
     print("PASS: review independence CI event-specific triggers (32 removals; 8 additions; 1 shortened inventory negative)")
 
 
+
+def validate_concurrency_authority(source: str) -> None:
+    """Pin independent-review publisher noncancellation independently of blob SHA."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: production-equivalent-environment-review-independence-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    if (source.count(marker) != 1 or source.count(end) != 1
+            or source.split(marker, 1)[1].split(end, 1)[0] != expected):
+        raise SystemExit("review independence CI concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(source: str) -> None:
+    """Require the intended diagnostic for ten group/cancellation regressions."""
+    validate_concurrency_authority(source)
+    original = (
+        "  group: production-equivalent-environment-review-independence-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    cases = (
+        ("global group", "  group: production-equivalent-environment-review-independence-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancellation enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if source.count(original) != 1:
+        raise SystemExit("review independence CI concurrency fixture anchor drift")
+    for name, replacement in cases:
+        changed = source.replace(original, replacement, 1)
+        if changed == source:
+            raise SystemExit("review independence CI unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "review independence CI concurrency scope drift":
+                raise SystemExit(
+                    "review independence CI wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("review independence CI accepted concurrency mutation: " + name)
+    print("PASS: review independence CI concurrency (10 exact-diagnostic negatives)")
+
+
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     validate_yaml_authority(source)
+    validate_concurrency_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit("review independence CI workflow source drift: " + label)
@@ -356,6 +411,7 @@ def main() -> int:
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
+    prove_concurrency_authority_negatives(source)
     prove_branch_guards_runtime()
     prove_diagnostic_redaction_runtime(source)
     cases = (
