@@ -1347,10 +1347,50 @@ REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS = {
 }
 
 
+def require_reviewed_upload_route_critical_coverage(
+    event: str, step_names: list[str], covered_names: list[str],
+) -> None:
+    """Prove all and only executable steps have reviewed shell-body fingerprints."""
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route critical step coverage")
+    actions = {"Set up Go", "Set up Python",
+               "Checkout exact authority source" if event == "push" else "Checkout exact PR head"}
+    if (len(step_names) != len(set(step_names))
+            or len(covered_names) != len(set(covered_names))
+            or not actions.issubset(set(step_names))
+            or set(covered_names) != set(step_names) - actions):
+        raise RuntimeError("unreviewed Upload Route critical step coverage")
+
+
+def prove_upload_route_critical_coverage_negatives() -> None:
+    for event in ("push", "pull_request"):
+        names = list(reviewed_upload_route_steps(event))
+        covered = list(REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS[event])
+        require_reviewed_upload_route_critical_coverage(event, names, covered)
+        for label, changed_names, changed_covered in (
+            ("missing body", names, covered[:-1]),
+            ("extra body", names, covered + ["Extra"]),
+            ("duplicate body", names, covered + [covered[0]]),
+            ("missing action", names[1:], covered),
+            ("duplicate step", names + [names[0]], covered),
+            ("extra step", names + ["Extra"], covered),
+        ):
+            try:
+                require_reviewed_upload_route_critical_coverage(event, changed_names, changed_covered)
+            except RuntimeError as exc:
+                if str(exc) != "unreviewed Upload Route critical step coverage":
+                    raise
+            else:
+                raise RuntimeError("Upload Route critical coverage negative accepted: " + label)
+
+
 def require_reviewed_upload_route_critical_steps(source: str, event: str) -> None:
     """Pin exact MinIO readiness, source integrity and writer CAS shell bodies."""
     if event not in REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS:
         raise RuntimeError("unreviewed Upload Route critical shell step")
+    import re
+    names = re.findall(r"(?m)^      - name: ([^\r\n]+)$", source)
+    require_reviewed_upload_route_critical_coverage(event, names, list(REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS[event]))
     for name, expected in REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS[event].items():
         marker = "      - name: " + name + "\n"
         if source.count(marker) != 1:
@@ -2251,6 +2291,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_step_order_negatives()
     prove_upload_route_test_environment_negatives(source_root)
     prove_upload_route_critical_step_negatives(source_root)
+    prove_upload_route_critical_coverage_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
