@@ -264,6 +264,46 @@ def symlink_parent_directory(root: Path, relative: Path) -> None:
     directory.symlink_to(target.name, target_is_directory=True)
 
 
+def upload_route_local_go_imports(source: str) -> set[str]:
+    """Parse reviewed Go import forms conservatively; reject unknown syntax."""
+    import re
+    module = "github.com/m-shogo/memories-project/services/import-api/"
+    blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
+    paths = []
+    for block in blocks:
+        for line in block.group(1).splitlines():
+            if not line.strip() or line.lstrip().startswith("//"):
+                continue
+            match = re.fullmatch(r'\s*(?:[A-Za-z_.]\w*\s+)?"([^"]+)"\s*(?://.*)?', line)
+            if match is None:
+                raise RuntimeError("unreviewed Go import block entry")
+            paths.append(match.group(1))
+    for block in reversed(blocks):
+        source = source[:block.start()] + source[block.end():]
+    for line in source.splitlines():
+        if re.match(r"^[ \t]*import\b", line):
+            match = re.fullmatch(r'[ \t]*import[ \t]+(?:[A-Za-z_.]\w*[ \t]+)?"([^"]+)"[ \t]*(?://.*)?', line)
+            if match is None:
+                raise RuntimeError("unreviewed single-line Go import")
+            paths.append(match.group(1))
+    return {path[len(module):] for path in paths if path.startswith(module)}
+
+
+def prove_upload_route_go_import_parser() -> None:
+    module = "github.com/m-shogo/memories-project/services/import-api/"
+    sample = 'package test\nimport (\n  "fmt"\n  alias "' + module + 'internal/metrics"\n)\n'
+    if upload_route_local_go_imports(sample) != {"internal/metrics"}:
+        raise RuntimeError("Go import block positive fixture failed")
+    if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
+        raise RuntimeError("Go single-line import positive fixture failed")
+    try:
+        upload_route_local_go_imports('import (\n  not_a_go_import\n)\n')
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("Go import parser accepted invalid import fixture")
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -748,6 +788,7 @@ def main() -> int:
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
+    prove_upload_route_go_import_parser()
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases} fail-closed cases)")
     return 0
