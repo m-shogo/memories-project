@@ -347,6 +347,18 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         if not (source_root / path).is_file():
             raise RuntimeError("missing direct Python validator input: " + path)
         inputs.add(path)
+    # Directly loaded by validate-memory-os-operability.py during Upload Route.
+    for path in (
+        "docs/memory-os-production-operability-audit-2026-07-24.md",
+        "docs/memory-os-current-authority-order-round-10-operability.md",
+        "contracts/operations/live-postgres-load-scenario-contract.v1.json",
+        "contracts/operations/live-object-load-scenario-contract.v1.json",
+        "contracts/operations/sustained-local-soak-contract.v1.json",
+        "docs/fixtures/memory-os-operability/sustained-local-soak-trend-review.v1.json",
+    ):
+        if not (source_root / path).is_file():
+            raise RuntimeError("missing direct operability validator input: " + path)
+        inputs.add(path)
 
     def matches(path: str, pattern: str) -> bool:
         if pattern.startswith("!") or any(c in pattern for c in "?[]{}"):
@@ -384,7 +396,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("duplicate/empty upload route paths: " + workflow)
         uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
                              for path in inputs))
-    if len(inputs) < 101 or any(count < 73 for count in uncovered):
+    if len(inputs) < 107 or any(count < 79 for count in uncovered):
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
