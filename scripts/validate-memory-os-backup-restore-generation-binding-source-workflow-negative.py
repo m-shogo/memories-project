@@ -365,9 +365,13 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                     mutated = prefix + push_marker + suffix.replace(token, "", 1)
                 try:
                     validate_trigger_reachability(mutated, kind)
-                except SystemExit:
-                    continue
-                raise SystemExit("generation binding " + kind + " accepted missing " + event + " trigger: " + item)
+                except SystemExit as exc:
+                    expected = "generation binding " + kind + " " + event + " exact trigger inventory drift"
+                    if str(exc) != expected:
+                        raise SystemExit("generation binding wrong missing-trigger diagnostic: "
+                                         + kind + "/" + event + "/" + item + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("generation binding " + kind + " accepted missing " + event + " trigger: " + item)
         for event in ("pull_request", "push"):
             marker = "  pull_request:\n    branches:\n      - so\n    paths:\n" if event == "pull_request" else push_marker
             for label, injected in (
@@ -383,16 +387,23 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
                     raise SystemExit("generation binding " + kind + " addition fixture unchanged")
                 try:
                     validate_trigger_reachability(mutated, kind)
-                except SystemExit:
-                    continue
-                raise SystemExit("generation binding " + kind + " accepted " + event + " addition: " + label)
+                except SystemExit as exc:
+                    expected = "generation binding " + kind + " " + event + " exact trigger inventory drift"
+                    if str(exc) != expected:
+                        raise SystemExit("generation binding wrong addition diagnostic: "
+                                         + kind + "/" + event + "/" + label + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("generation binding " + kind + " accepted " + event + " addition: " + label)
         try:
             validate_trigger_reachability(content, kind, trigger_paths=paths[:-1])
-        except SystemExit:
-            pass
+        except SystemExit as exc:
+            expected = "generation binding " + kind + " CI trigger inventory shortened or duplicated"
+            if str(exc) != expected:
+                raise SystemExit("generation binding wrong shortened-inventory diagnostic: "
+                                 + kind + ": " + str(exc)) from exc
         else:
             raise SystemExit("generation binding " + kind + " shortened trigger inventory accepted")
-    print("PASS: generation binding CI event-specific trigger reachability (112 removals; 16 additions; 2 shortened inventory negatives)")
+    print("PASS: generation binding CI exact-diagnostic event-specific trigger reachability (112 removals; 16 additions; 2 shortened inventory negatives)")
 
 
 def validate(
