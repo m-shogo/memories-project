@@ -544,6 +544,14 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         # control flow. Ignore deferred function/lambda bodies and class-local
         # assignments; this is not a reflective-mutation proof.
         def module_shadows_main(node: ast.AST, *, top_level: bool, class_local: bool = False) -> bool:
+            # Decorator lambdas are invoked when applied, unlike ordinary
+            # deferred lambdas. Their lexical bindings remain lambda-local.
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if any(isinstance(dec, ast.Lambda)
+                       and module_shadows_main(dec.body, top_level=False,
+                                               class_local=True)
+                       for dec in node.decorator_list):
+                    return True
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 # Function bodies are deferred; decorators and default
                 # argument expressions run immediately at definition time.
@@ -678,6 +686,8 @@ def prove_prewrite_python_negatives() -> None:
         ("function-local attribute", 'def helper():\n    module.main = 1\n', (2, 0)),
         ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
+        ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
+        ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
         scoped = baseline.replace('if __name__', insertion + 'if __name__')
@@ -733,6 +743,15 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("class method decorator reflection", baseline.replace(
             'if __name__', 'class Helper:\n    @globals().__setitem__("main", None)\n    def method(self):\n        pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function lambda decorator reflection", baseline.replace(
+            'if __name__', '@(lambda fn: globals().__setitem__("main", None))\ndef helper():\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class lambda decorator reflection", baseline.replace(
+            'if __name__', '@(lambda cls: globals().__setitem__("main", None))\nclass Helper:\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class method lambda decorator reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    @(lambda fn: globals().__setitem__("main", None))\n    def method(self):\n        pass\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("class decorator reflection", baseline.replace(
             'if __name__', '@globals().__setitem__("main", None)\nclass Helper:\n    pass\nif __name__'),
