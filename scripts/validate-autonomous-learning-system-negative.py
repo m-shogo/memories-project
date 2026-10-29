@@ -1091,6 +1091,25 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n', 0),
         ("dispatch only", 'on: workflow_dispatch\n', 0),
     )
+    def require_exact_count(result: subprocess.CompletedProcess[str],
+                            count: int, label: str) -> None:
+        expected = "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: " + str(count)
+        if (result.returncode != 0 or result.stderr or
+                expected not in result.stdout.splitlines()):
+            raise RuntimeError("prewrite fanout CLI undercount/misclassification: "
+                               + label + ": " + result.stderr)
+
+    # A substring assertion could accept count 10 as proof of count 1.
+    try:
+        require_exact_count(
+            subprocess.CompletedProcess([], 0,
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 10\n", ""),
+            1, "prefix collision",
+        )
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("prewrite fanout CLI count prefix collision accepted")
     with tempfile.TemporaryDirectory(prefix="learning-fanout-cli-") as tmp:
         root = Path(tmp)
         directory = root / ".github/workflows"
@@ -1106,11 +1125,10 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 )
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError("prewrite fanout CLI timed out: " + label) from exc
-            if (result.returncode != 0 or result.stderr or
-                    "matched workflow count: " + str(count) not in result.stdout):
-                raise RuntimeError("prewrite fanout CLI undercount/misclassification: "
-                                   + label + ": " + result.stderr)
-    return len(cases)
+            require_exact_count(result, count, label)
+            if count == 1 and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite fanout CLI matched identity missing: " + label)
+    return len(cases) + 1
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
