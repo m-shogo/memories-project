@@ -128,7 +128,9 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     sequence_rows = [
         row for row in live_rows if re.match(r"^[ \t]+-[ \t]+", row)
     ]
-    if sequence_rows:
+    # Only a top-level event sequence starts with a list item. Nested
+    # paths/branches lists under an event mapping are not event sequences.
+    if live_rows and re.match(r"^[ \t]+-[ \t]+", live_rows[0]):
         if len(sequence_rows) != len(live_rows):
             return True
         return any(
@@ -331,6 +333,8 @@ def self_test(repo_root: Path) -> None:
         ("one-space event list", 'on:\n - push\n', "scripts/a.py", True),
         ("three-space event list", 'on:\n   - pull_request_target\n', "scripts/a.py", True),
         ("four-space dispatch only", 'on:\n    workflow_dispatch:\n', "scripts/a.py", False),
+        ("nested paths list regression", 'on:\n  push:\n    branches: [so]\n    paths:\n      - "docs/**"\n',
+         "scripts/a.py", False),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -359,9 +363,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 63 or hashlib.sha256(
+    if (len(cases) != 64 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "965e823a4617130641be07b6f84b56b42a820a15b8dc8eec9fca1ff6cb6f6ec0"):
+    ).hexdigest() != "aa6b16cdb74560b4f64c6ace89735406d4b86711542d9ed0fc495cba357301df"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:

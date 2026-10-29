@@ -1240,6 +1240,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("one-space event list", 'on:\n - push\n', 1),
         ("three-space event list", 'on:\n   - pull_request_target\n', 1),
         ("four-space dispatch only", 'on:\n    workflow_dispatch:\n', 0),
+        ("nested paths list regression", 'on:\n  push:\n    branches: [so]\n    paths:\n      - "docs/**"\n', 0),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n', 1),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n', 1),
 
@@ -1256,9 +1257,9 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     )
     # A generated fixture edit may replace rather than append a prior case.
     # Pin exact ordered labels, not only the total number of tests.
-    if (len(cases) != 46 or hashlib.sha256(
+    if (len(cases) != 47 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "3f1f14c58fd00438c648701a52e760a1e434afd107a12579b30e802110957906"):
+    ).hexdigest() != "f0ebdf3ee0ca7048771168cbffaa5739655e452c07ee7bc92cec21f634c8b088"):
         raise RuntimeError("prewrite fanout CLI fixture identity drift")
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:
