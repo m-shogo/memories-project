@@ -107,7 +107,7 @@ jobs:
         !contains(github.event.head_commit.message, 'docs(migration): register local recovery artifact rehearsal')))
     permissions:
       contents: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     services:
       postgres:
@@ -152,10 +152,17 @@ jobs:
           test -z "$(git status --porcelain)"
           python scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py
 
-      - name: Install PostgreSQL client
+      - name: Install PostgreSQL 16 client and verify server major
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
+          for binary in psql pg_dump pg_restore; do
+            "$binary" --version | grep -Eq 'PostgreSQL\\) 16\\.'
+          done
+          server_version="$(psql -Atqc 'SHOW server_version_num')"
+          [[ "$server_version" =~ ^[0-9]+$ ]]
+          test "$((server_version / 10000))" -eq 16
 
       - name: Reconcile registry foundation before source capture
         run: |

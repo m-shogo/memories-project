@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PUBLISHER = ".github/workflows/local-migration-recovery-artifact.yml"
 INDEPENDENT = ".github/workflows/local-migration-recovery-source-negative.yml"
 SELF = "scripts/validate-memory-os-local-migration-recovery-workflow-source-negative.py"
-PUBLISHER_SHA = "c28a2f7cc363bf8c787c7f1670d484e569dbc1b3"
+PUBLISHER_SHA = "823b0f2bcdc2b03ef629e0f4119a35fc29b91c42"
 INDEPENDENT_SHA = "094d794db2d11846a4a174ac7ab976b4f81e304a"
 
 PUBLISHER_TRIGGER_PATHS = (
@@ -175,6 +175,10 @@ PUBLISHER_REQUIRED = (
     (WRITER_REF, 1),
     (PR_SHA, 1),
     (WRITER_SHA, 1),
+    ("    runs-on: ubuntu-24.04\n", 1),
+    ("for binary in psql pg_dump pg_restore; do", 1),
+    ("server_version=\\"$(psql -Atqc 'SHOW server_version_num')\\"", 1),
+    ("test \"$((server_version / 10000))\" -eq 16", 1),
     ("ref: so", 1),
     ("'output': 'REDACTED: local migration recovery failed; raw output withheld'", 1),
     ("raw log suppressed", 1),
@@ -399,7 +403,7 @@ def validate_job_authority(publisher: str, independent: str) -> None:
                 "    " + key + ":"
                 + ((" >-" if name == "rehearse" else
                     " " + condition.splitlines()[0].split(": ", 1)[1]) if key == "if" else
-                   (" ubuntu-latest" if key == "runs-on" else
+                   ((" ubuntu-24.04" if name == "rehearse" else " ubuntu-latest") if key == "runs-on" else
                     " " + str(timeout) if key == "timeout-minutes" else ""))
                 for key in keys
             ]
@@ -446,7 +450,10 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
                 return prefix + header + suffix.replace(before, after, 1)
 
             permission = "    permissions:\n      contents: " + scope + "\n"
-            runner = "    runs-on: ubuntu-latest\n"
+            runner = ("    runs-on: ubuntu-24.04
+" if name == "rehearse"
+                      else "    runs-on: ubuntu-latest
+")
             time_limit = "    timeout-minutes: " + str(timeout) + "\n"
             steps = "    steps:\n"
             cases = [
@@ -523,6 +530,8 @@ def negative_proofs(publisher: str, independent: str) -> None:
         ("publisher PR base", True, PR_BASE, "true"),
         ("publisher writer ref", True, WRITER_REF, "true"),
         ("publisher writer scope", True, WRITER_SCOPE, "    if: always()"),
+        ("publisher runner major", True, "    runs-on: ubuntu-24.04\n", "    runs-on: ubuntu-latest\n"),
+        ("publisher server major guard", True, 'test "$((server_version / 10000))" -eq 16', "true"),
         ("publisher PR SHA", True, PR_SHA, 'test -n "$expected"'),
         ("publisher writer SHA", True, WRITER_SHA, 'test -n "$GITHUB_SHA"'),
         ("publisher checkout pin", True, CHECKOUT, "uses: actions/checkout@v4"),
@@ -573,6 +582,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
             elif label == "publisher writer scope":
                 require(reason == "local recovery publisher rehearse job key shadow drift",
                         "negative rejected for wrong writer job reason: " + label + ": " + reason)
+            elif label == "publisher runner major":
+                require(reason == "local recovery publisher rehearse job key shadow drift",
+                        "negative rejected for wrong runner job reason: " + label + ": " + reason)
             else:
                 require(reason.startswith("local migration recovery CI source guard: ")
                         and expected in reason,
