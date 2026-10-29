@@ -1,0 +1,23 @@
+# Supplemental OPS learning — bounded Python prewrite direct-main shadow guard (2026-10-30)
+
+Append-only supplemental execution history only. Canonical learning authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory policy remains `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material failure / prospective false-green prewrite
+
+- **Symptom:** A candidate Python source can have exactly one syntactically valid synchronous `def main()` and one canonical `__main__` guard, but a later module-level `main = ...`, destructuring assignment, import alias, class definition or `del main` can replace/remove the callable invoked by that guard. This is a prospective static-check gap, **not** an observed production incident.
+- **Observed evidence:** The prior `validate_prewrite_python` checked AST syntax and the number of `FunctionDef` nodes named `main`, but did not inspect direct module-level rebinding. The existing contract validator separately guards module-scope shadows in its CI entrypoint; its prewrite helper did not have equivalent direct-binding coverage.
+- **Verified root cause:** Counting `def main` declarations is not equivalent to proving the module binding still refers to that function at the `__main__` invocation.
+- **Failed approach:** Treating a unique `FunctionDef` and canonical invocation syntax as sufficient proof against direct module-level shadowing.
+- **Correction / executable recurrence guard:** [`30df97cd`](https://github.com/m-shogo/memories-project/commit/30df97cd4b18060500071a84aa9263563e0fb895) extends the existing CI-reachable, read-only Python prewrite validator to reject direct module-scope assignment, destructuring, import alias, class and delete bindings named `main` in either baseline or candidate. Five isolated candidate negative mutations verify the new rejection diagnostic. The guard explicitly does **not** claim complete control-flow, reflective mutation or import-hook analysis.
+- **Retry condition:** A legitimate change to prewrite `main` binding semantics requires an independently reviewed executable entrypoint and fresh source/HEAD, baseline digest, bounded AST/diff checks, exact GitHub blob CAS, exact-source CI and protected-authority verification. Do not retry unchanged MinIO 401, workflow-write permission, large canonical learning append transport or human promotion blockers.
+
+## Material success
+
+- **Observed outcome / evidence:** [Autonomous Learning Guard #40956273514](https://github.com/m-shogo/memories-project/actions/runs/40956273514) completed **SUCCESS** on exact source `30df97cd4b18060500071a84aa9263563e0fb895`. The GitHub job reports all steps successful, including append-only enforcement, learning contract and executable negatives, helper-ancestor reachability and clean read-only execution. The five new negatives run inside the positive validator and do not increment the printed canonical negative count.
+- **Why safe:** The code commit modified only `scripts/validate-autonomous-learning-system.py` (+37/-0 lines). No workflow YAML, Go source, production data, credentials, traffic, backup/recovery evidence, generation, objective, drill, typed non-resurrection, independent review or promotion authority was modified.
+- **Reusable mechanism:** Independently validate the callable identity's direct module binding, not just a function definition and syntactically present invocation, before allowing a generated Python edit.
+- **Protected-authority check:** Compared the code commit with its parent: only the read-only validator changed. Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, mandatory contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` and OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged; reviewed generation, objective, evidence and promotion registry blob identities also matched the prior baseline. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; no synthetic generations, objectives, request-bound recovery evidence, typed eight-domain coverage, independent review or human promotion were created.
+
+## Next independent safe target
+
+Bound adversarial prewrite diff-comparison input complexity before `difflib.SequenceMatcher`, with a normal-size positive control and an oversized-line-count negative. Keep source-only Go CI trigger reachability as a separate known permission-scoped blocker, not an implied success of this change.
