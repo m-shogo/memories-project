@@ -322,7 +322,8 @@ def expected_diagnostic(name: str) -> str:
         return "learning CI entrypoint main binding is shadowed by module control flow"
     # A wildcard import has an unbounded export set, so the canonical
     # validator rejects the main binding first even in the guard-labelled case.
-    if (name == "dynamic learning guard wildcard-import"
+    if (name in {"dynamic learning guard wildcard-import",
+                 "dynamic learning guard exec"}
             or name.startswith("dynamic learning guard eager-")):
         # Both bindings are conservatively at risk; main is checked first.
         return "learning CI entrypoint main binding is shadowed by module control flow"
