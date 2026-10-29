@@ -999,6 +999,50 @@ def prove_upload_route_container_image_negatives() -> None:
             raise RuntimeError("Upload Route container-image negative accepted: " + label)
 
 
+def require_reviewed_upload_route_permissions(source: str, event: str) -> None:
+    """Reject privilege expansion and shadowed Publisher/PR permissions."""
+    import re
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route permissions")
+    expected = "write" if event == "push" else "read"
+    block = re.search(r"(?ms)^permissions:\n(.*?)(?=^[A-Za-z_][\w-]*:|\Z)", source)
+    mentions = re.findall(r"""(?m)^[ \t]*(?:permissions|['"]permissions['"])\s*:""", source)
+    if (len(mentions) != 1 or block is None
+            or block.group(1).strip() != f"contents: {expected}"):
+        raise RuntimeError("unreviewed Upload Route permissions")
+
+
+def prove_upload_route_permission_negatives() -> None:
+    base = "permissions:\n  contents: write\n\nconcurrency:\n  group: example\n"
+    require_reviewed_upload_route_permissions(base, "push")
+    require_reviewed_upload_route_permissions(
+        base.replace("contents: write", "contents: read"), "pull_request"
+    )
+    for label, candidate, event in (
+        ("Publisher read", base.replace("contents: write", "contents: read"), "push"),
+        ("PR write", base, "pull_request"),
+        ("id token escalation", base.replace("contents: write",
+                                              "contents: write\n  id-token: write"), "push"),
+        ("duplicate contents", base.replace("permissions:\n",
+                                             "permissions:\n  contents: write\n", 1), "push"),
+        ("quoted shadow", base.replace("permissions:\n",
+                                       "'permissions':\npermissions:\n", 1), "push"),
+        ("spaced shadow", base.replace("permissions:\n",
+                                       "permissions :\npermissions:\n", 1), "push"),
+        ("write-all scalar", base.replace("permissions:\n",
+                                          "permissions: write-all\n", 1), "push"),
+        ("job override", base + "jobs:\n  a:\n    permissions:\n      contents: write\n", "push"),
+        ("spaced contents", base.replace("contents: write", "contents : write"), "push"),
+    ):
+        try:
+            require_reviewed_upload_route_permissions(candidate, event)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route permissions":
+                raise
+        else:
+            raise RuntimeError("Upload Route permissions negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1820,6 +1864,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_working_directory_negatives()
     prove_upload_route_action_input_negatives()
     prove_upload_route_container_image_negatives()
+    prove_upload_route_permission_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -2050,6 +2095,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_working_directories(source)
         require_reviewed_upload_route_action_inputs(source, event)
         require_reviewed_upload_route_container_images(source)
+        require_reviewed_upload_route_permissions(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
