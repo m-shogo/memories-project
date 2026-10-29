@@ -117,6 +117,17 @@ def validate(repo_root: Path) -> None:
         if resolved != relative:
             raise ValidationFailure(f"learning authority path substituted through parent: {relative}")
     contract = load_object(repo_root / CONTRACT)
+    expected_keys = {
+        "schemaVersion", "purpose", "loop", "requiredFailureFields",
+        "requiredSuccessFields", "rules", "protectedInvariants", "authority",
+        "validator", "negativeValidator", "ciEntrypoint",
+    }
+    if set(contract) != expected_keys:
+        raise ValidationFailure("learning contract field set changed")
+    if contract["purpose"] != (
+            "Turn observed execution outcomes into reusable, fail-closed prevention "
+            "without treating learning as production evidence."):
+        raise ValidationFailure("learning contract purpose changed")
     if contract.get("schemaVersion") != "autonomous-learning-system.0.1":
         raise ValidationFailure("unsupported schemaVersion")
     if contract.get("loop") != EXPECTED_LOOP:
@@ -127,6 +138,8 @@ def validate(repo_root: Path) -> None:
     rules = contract.get("rules")
     if not isinstance(rules, dict):
         raise ValidationFailure("rules must be an object")
+    if set(rules) != TRUE_RULES:
+        raise ValidationFailure("learning contract rule set changed")
     for rule in TRUE_RULES:
         if rules.get(rule) is not True:
             raise ValidationFailure(f"mandatory learning rule must remain true: {rule}")
@@ -134,6 +147,9 @@ def validate(repo_root: Path) -> None:
     protected = contract.get("protectedInvariants")
     if not isinstance(protected, dict):
         raise ValidationFailure("protectedInvariants must be an object")
+    if set(protected) != {"productionDecisionDefault", "opsP0007EvidenceMustBeReal",
+                          "humanPromotionReviewIsSeparate"}:
+        raise ValidationFailure("learning contract protected invariant set changed")
     if protected.get("productionDecisionDefault") != "NO_GO":
         raise ValidationFailure("learning must not weaken the NO_GO default")
     if protected.get("opsP0007EvidenceMustBeReal") is not True:
