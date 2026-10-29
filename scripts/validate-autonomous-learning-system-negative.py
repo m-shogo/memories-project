@@ -1055,6 +1055,81 @@ def prove_upload_route_permission_negatives() -> None:
             raise RuntimeError("Upload Route permissions negative accepted: " + label)
 
 
+def require_reviewed_upload_route_job_execution(source: str, event: str) -> None:
+    """Bind Upload Route runner, skip, shell, and concurrency authority."""
+    import re
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route job execution controls")
+    job = "reconcile" if event == "push" else "validate"
+    group = ("reconcile-upload-route-authority-so" if event == "push"
+             else "validate-upload-route-authority-pr-${{ github.event.pull_request.number }}")
+    forbidden = ("shell", "defaults", "continue-on-error", "strategy",
+                 "container", "needs", "environment")
+    if any(re.search(r"(?m)^[ \t]*(?:" + key + r"|['\"]" + key + r"['\"])\s*:", source)
+           for key in forbidden):
+        raise RuntimeError("unreviewed Upload Route job execution controls")
+    for key, value in (("runs-on", "ubuntu-latest"), ("timeout-minutes", "20")):
+        if (re.findall(r"(?m)^    " + key + r": ([^\r\n]+)$", source) != [value]
+                or len(re.findall(r"(?m)^[ \t]*(?:" + key + r"|['\"]" + key + r"['\"])\s*:", source)) != 1):
+            raise RuntimeError("unreviewed Upload Route job execution controls")
+    blocks = re.findall(r"(?ms)^concurrency:\n(.*?)(?=^[A-Za-z_][\w-]*:|\Z)", source)
+    if (blocks != [f"  group: {group}\n  cancel-in-progress: true\n\n"]
+            or len(re.findall(r"""(?m)^[ \t]*(?:concurrency|['"]concurrency['"])\s*:""", source)) != 1):
+        raise RuntimeError("unreviewed Upload Route job execution controls")
+    sections = source.split("\njobs:\n")
+    if (len(sections) != 2 or
+            re.findall(r"(?m)^  ([A-Za-z_][\w-]*):[ \t]*$", sections[1]) != [job]):
+        raise RuntimeError("unreviewed Upload Route job execution controls")
+    conditions = re.findall(r"(?ms)^    if: >-\n(.*?)(?=^    [A-Za-z_][\w-]*:|\Z)", source)
+    expected_if = ("      github.event_name != 'push' ||\n"
+                   "      !contains(github.event.head_commit.message, 'fix(http): reconcile upload route authority')\n")
+    if (conditions != ([expected_if] if event == "push" else [])
+            or len(re.findall(r"""(?m)^[ \t]*(?:if|['"]if['"])\s*:""", source)) != (1 if event == "push" else 0)):
+        raise RuntimeError("unreviewed Upload Route job execution controls")
+
+
+def prove_upload_route_job_execution_negatives() -> None:
+    base = ("concurrency:\n  group: reconcile-upload-route-authority-so\n  cancel-in-progress: true\n\n"
+            "jobs:\n  reconcile:\n    if: >-\n      github.event_name != 'push' ||\n"
+            "      !contains(github.event.head_commit.message, 'fix(http): reconcile upload route authority')\n"
+            "    runs-on: ubuntu-latest\n    timeout-minutes: 20\n")
+    pr = (base.replace("reconcile-upload-route-authority-so",
+                       "validate-upload-route-authority-pr-${{ github.event.pull_request.number }}")
+          .replace("  reconcile:\n", "  validate:\n")
+          .replace("    if: >-\n      github.event_name != 'push' ||\n"
+                   "      !contains(github.event.head_commit.message, 'fix(http): reconcile upload route authority')\n", ""))
+    require_reviewed_upload_route_job_execution(base, "push")
+    require_reviewed_upload_route_job_execution(pr, "pull_request")
+    for label, candidate, event in (
+        ("runner", base.replace("ubuntu-latest", "windows-latest"), "push"),
+        ("timeout", base.replace("timeout-minutes: 20", "timeout-minutes: 1"), "push"),
+        ("shell", base + "    shell: python\n", "push"),
+        ("defaults", base + "defaults:\n  run:\n    shell: bash\n", "push"),
+        ("continue on error", base + "    continue-on-error: true\n", "push"),
+        ("strategy", base + "    strategy:\n      matrix: {}\n", "push"),
+        ("container", base + "    container: ubuntu:latest\n", "push"),
+        ("needs", base + "    needs: other\n", "push"),
+        ("environment", base + "    environment: production\n", "push"),
+        ("skip expression", base.replace("github.event_name != 'push' ||",
+                                         "false && github.event_name != 'push' ||"), "push"),
+        ("PR skip", pr + "    if: false\n", "pull_request"),
+        ("concurrency group", base.replace("reconcile-upload-route-authority-so", "different"), "push"),
+        ("cancel flag", base.replace("cancel-in-progress: true", "cancel-in-progress: false"), "push"),
+        ("extra concurrency", base + "concurrency:\n  group: wrong\n", "push"),
+        ("extra job", base + "  other:\n    runs-on: ubuntu-latest\n", "push"),
+        ("renamed job", base.replace("  reconcile:\n", "  changed:\n"), "push"),
+        ("quoted if", base + "    'if': false\n", "push"),
+        ("quoted shell", base + "    'shell': bash\n", "push"),
+    ):
+        try:
+            require_reviewed_upload_route_job_execution(candidate, event)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route job execution controls":
+                raise
+        else:
+            raise RuntimeError("Upload Route job execution negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1877,6 +1952,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_action_input_negatives()
     prove_upload_route_container_image_negatives()
     prove_upload_route_permission_negatives()
+    prove_upload_route_job_execution_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -2108,6 +2184,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_action_inputs(source, event)
         require_reviewed_upload_route_container_images(source)
         require_reviewed_upload_route_permissions(source, event)
+        require_reviewed_upload_route_job_execution(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
