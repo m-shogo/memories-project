@@ -1,0 +1,21 @@
+# Supplemental OPS learning — semantic environment eligibility publisher concurrency (2026-10-29)
+
+Append-only supplemental history only; not canonical learning, production/backup/restore/RPO/RTO/skew evidence, a registered or semantically eligible environment generation, approved current recovery objective, executable reviewed drill request, typed eight-domain non-resurrection evidence, credentials, traffic, readiness, independent review or human promotion.
+
+## Material failure / executable recurrence prevention
+
+- **Symptom:** The semantic environment-eligibility workflow validator pinned reviewed full Git blob, root `concurrency:` mapping, exact event/trigger paths and job permissions, but did not independently prove the publisher's concurrency group or noncancellation leaves. This is a static validation coverage gap, not observed evidence admission bypass.
+- **Observed evidence:** Reviewed publisher blob `cad837867ba560444e665636087d62279de7f60b` declares PR/so-scoped `production-equivalent-environment-eligibility-${{ github.event.pull_request.number || 'so' }}` and `cancel-in-progress: false`. Previous validator blob `f03d94e95c72dbc1a2784c0e18444d63ea914d24` checked the root key without exact nested-leaf diagnostics.
+- **Verified root cause:** Full-source digest and root-key presence do not independently classify YAML-equivalent duplicate/spaced/quoted concurrency overrides or cancellation drift.
+- **Failed approach:** Treating generic source mismatch as sufficient semantic proof of noncancelling environment eligibility reconciliation.
+- **Correction / recurrence guard:** [Commit `03a8ff72`](https://github.com/m-shogo/memories-project/commit/03a8ff725db6d3e87d29fca257b138ed68c7b3de) adds exact reviewed concurrency-block validation and ten exact-diagnostic negatives: global group, enabled cancellation, duplicate/spaced/quoted group and cancellation keys, extra leaf and missing cancellation. All must fail with `semantic eligibility CI concurrency scope drift`.
+- **Retry condition:** Revisit only on a reviewed concurrency-policy change, demonstrated YAML semantic bypass, or actual source CI failure. Do not repeat unchanged MinIO 401, canonical-learning transport, workflow permission or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [Production Equivalent Environment Eligibility #40808535615](https://github.com/m-shogo/memories-project/actions/runs/40808535615) completed **SUCCESS** at exact code `03a8ff72`. Job log explicitly reports ten concurrency exact-diagnostic negatives, 24 job authority negatives, nine YAML event/root/permission negatives, 41 trigger negatives, branch runtime and source admission checks. Full Backup Restore Admission Chain #40808535673 was **PENDING** at observation; no overall admission-chain success is inferred.
+- **Why safe:** Only the CI-reachable read-only validator changed. The reviewed publisher workflow, generation registry, approval/objective and drill request authorities, typed eight-domain evidence, production status, credentials, traffic and human promotion were not modified.
+- **Reusable mechanism:** Pin reviewed noncancelling semantic eligibility serialization independently of Git blob and root/job checks. Registered generations remain distinct from unsuperseded semantically preflight-eligible generations; preflight still requires distinct environments and an explicitly human-approved current recovery objective.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; generation registry blob `bfd1b04561a257d1a288bd127572bdad762bfae5` still has zero registered generations; autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No production-equivalent evidence or human promotion was created.
+- **Canonical-learning limitation:** The 4.17 MB canonical learning authority returned empty text through the current read path. Existing unchanged transport blocker was not retried; this record is supplemental only.
+- **Next safe target:** Independently guard the production-equivalent environment review-independence publisher's noncancelling concurrency policy without changing review authority or evidence.
