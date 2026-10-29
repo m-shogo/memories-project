@@ -1,0 +1,19 @@
+# Supplemental OPS learning — strict OPS-P0-007 snapshot readonly concurrency (2026-10-29)
+
+Append-only supplemental learning, never canonical learning, production/backup/restore/RPO/RTO/skew/drill/credential/traffic/readiness/promotion evidence. Cannot register generations, approve current recovery objectives, make reviewed drills executable, satisfy typed eight-domain non-resurrection coverage, independently review candidates, or promote production.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** Strict OPS-P0-007 snapshot readonly workflow had approved PR/so-scoped cancellation but its workflow-permissions negative validator pinned only publisher noncancellation separately. Readonly concurrency shadows lacked their own exact diagnostic. This was a static semantic coverage gap, not an observed production bypass.
+- **Observed evidence:** Reviewed readonly workflow blob `5a1f5b020a2b388ad62495ee70a18c97a4d7dfef` declares `ops-p0-007-admission-snapshot-readonly` PR/so group with `cancel-in-progress: true`. Prior validator blob `468552e4a70bb30a33ab15f544ac8864fd4d39cb` had publisher-only concurrency negatives.
+- **Verified root cause:** Distinct readonly and publisher cancellation policies were not independently classified. Source-digest and root-key checks alone cannot explain YAML-equivalent concurrency shadow drift.
+- **Failed approach:** Treating publisher noncancellation proof as covering readonly cancellation, or treating generic source drift as a semantic diagnostic.
+- **Correction / executable recurrence guard:** [Commit `65c62fc6`](https://github.com/m-shogo/memories-project/commit/65c62fc6f4c56850fb6acf584819f5359051146d) adds readonly `cancel-in-progress: true` authority validation and ten exact-diagnostic negatives for global group, cancellation disabled, duplicate/spaced/quoted group/cancellation, extra leaf and removed cancellation.
+- **Retry condition:** Revisit only on reviewed readonly cancellation policy change, observed semantic bypass or exact-source CI regression. Do not retry unchanged MinIO 401, canonical learning transfer, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [OPS P0 007 Snapshot Permission Boundary #40817279386](https://github.com/m-shogo/memories-project/actions/runs/40817279386) completed **SUCCESS** at exact code `65c62fc6`; log explicitly confirms ten readonly concurrency exact-diagnostic negatives and ten existing publisher concurrency negatives. Separate readonly workflow result must be checked independently.
+- **Why safe:** Only the CI-reachable read-only Python validator changed (+50 lines, zero deletions). Reviewed snapshot publisher/PR/readonly workflows, production evidence and protected registries, credentials, traffic and promotion authority were not modified.
+- **Reusable mechanism:** Preserve reviewed cancellation policy separately for readonly (`true`) and publisher (`false`), with exact semantic diagnostics and no evidence promotion. Registered generations are not semantically preflight-eligible by default; require unsuperseded distinct-environment eligibility, human-approved current objective, executable reviewed request, complete typed eight-domain non-resurrection coverage, independent review and separate human promotion.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. CI/learning cannot satisfy production readiness.
+- **Canonical learning limitation:** Canonical large-file authority remains unavailable through existing connector read; unchanged transfer blocker not retried.
+- **Next safe target:** Audit strict snapshot PR-only concurrency cancellation separately, without changing protected OPS-P0-007 evidence.
