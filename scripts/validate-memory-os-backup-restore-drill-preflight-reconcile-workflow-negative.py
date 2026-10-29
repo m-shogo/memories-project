@@ -223,6 +223,7 @@ def prove_publisher_yaml_authority_negatives(source: str) -> None:
 
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_publisher_yaml_authority(source)
+    validate_publisher_concurrency_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"semantic preflight reconcile workflow source boundary drift: {label}")
@@ -553,10 +554,60 @@ def prove_sha_guard_runtime() -> None:
     print(f"PASS: semantic preflight reconcile shared PR/push SHA runtime ({len(cases)} cases)")
 
 
+def validate_publisher_concurrency_authority(source: str) -> None:
+    """Pin reviewed semantic preflight reconcile CI serialization independently of the blob."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = ("  group: backup-restore-drill-preflight-reconcile-negative-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    expected = group + "  cancel-in-progress: false\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("semantic preflight reconcile publisher concurrency scope drift")
+    if source.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("semantic preflight reconcile publisher concurrency scope drift")
+
+
+def prove_publisher_concurrency_authority_negatives(source: str) -> None:
+    """Reject ten YAML-equivalent publisher concurrency shadows by exact diagnostic."""
+    validate_publisher_concurrency_authority(source)
+    group = ("  group: backup-restore-drill-preflight-reconcile-negative-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: backup-restore-drill-preflight-reconcile-negative-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if source.count(original) != 1 or len(cases) != 10:
+        raise SystemExit("semantic preflight reconcile publisher concurrency fixture anchor drift")
+    for label, replacement in cases:
+        mutated = source.replace(original, replacement, 1)
+        if mutated == source:
+            raise SystemExit("semantic preflight reconcile publisher inert concurrency fixture: " + label)
+        try:
+            validate_publisher_concurrency_authority(mutated)
+        except SystemExit as exc:
+            if str(exc) != "semantic preflight reconcile publisher concurrency scope drift":
+                raise SystemExit(
+                    "semantic preflight reconcile publisher wrong concurrency diagnostic: " + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("semantic preflight reconcile publisher accepted concurrency mutation: " + label)
+    print("PASS: semantic preflight reconcile publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_publisher_yaml_authority_negatives(source)
+    prove_publisher_concurrency_authority_negatives(source)
     independent = INDEPENDENT_PATH.read_text(encoding="utf-8")
     validate_independent(independent)
     prove_independent_trigger_negatives(independent)
