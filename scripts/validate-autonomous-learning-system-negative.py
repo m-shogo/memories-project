@@ -673,6 +673,70 @@ def prove_upload_route_action_negatives() -> None:
             raise RuntimeError("Upload Route action negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_RUNTIME_COMMANDS = (
+    "python -m pip install --disable-pip-version-check --requirement requirements-security-validation.txt",
+    "python -m py_compile scripts/reconcile-memory-os-upload-route-authority.py scripts/validate-memory-os-upload-route-reconcile-rollback.py scripts/validate-memory-os-metrics.py scripts/validate-memory-os-rate-limit.py scripts/validate-memory-os-observability.py scripts/validate-memory-os-operability.py",
+    "python scripts/validate-memory-os-upload-route-reconcile-rollback.py",
+    "python scripts/reconcile-memory-os-upload-route-authority.py",
+    "go test ./internal/httpserver -run '^(TestRouteAuthorityMatchesRegisteredUploadSurface|TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes|TestUploadLifecycleOverHTTP|TestAccountDeletionFencesAndErasesOverHTTP)$' -count=1 -timeout=10m",
+    "python scripts/validate-memory-os-metrics.py",
+    "python scripts/validate-memory-os-rate-limit.py",
+    "python scripts/validate-memory-os-observability.py",
+    "python scripts/validate-memory-os-operability.py",
+    "python scripts/reconcile-memory-os-upload-route-authority.py",
+)
+
+
+def upload_route_runtime_commands(source: str) -> tuple[str, ...]:
+    import re
+    lines = source.splitlines()
+    observed = []
+    for index, line in enumerate(lines):
+        match = re.match(r"^\s*(?:run:\s*)?((?:python|go)\s+.*)$", line)
+        if match is None:
+            continue
+        parts, cursor = [match.group(1).strip()], index
+        while parts[-1].endswith("\\"):
+            parts[-1] = parts[-1][:-1].rstrip()
+            cursor += 1
+            if cursor >= len(lines):
+                raise RuntimeError("unreviewed Upload Route runtime command")
+            parts.append(lines[cursor].strip())
+        observed.append(" ".join(parts))
+    return tuple(observed)
+
+
+def require_reviewed_upload_route_runtime_commands(source: str) -> None:
+    if upload_route_runtime_commands(source) != REVIEWED_UPLOAD_ROUTE_RUNTIME_COMMANDS:
+        raise RuntimeError("unreviewed Upload Route runtime command")
+
+
+def prove_upload_route_runtime_command_negatives() -> None:
+    base = "\n".join("run: " + cmd for cmd in REVIEWED_UPLOAD_ROUTE_RUNTIME_COMMANDS) + "\n"
+    require_reviewed_upload_route_runtime_commands(base)
+    continuation = "python -m py_compile " + chr(92) + "\n  scripts/a.py " + chr(92) + "\n  scripts/b.py\n"
+    if upload_route_runtime_commands(continuation) != (
+            "python -m py_compile scripts/a.py scripts/b.py",):
+        raise RuntimeError("Upload Route command continuation positive failed")
+    for label, candidate in (
+        ("new command", base + "run: python scripts/new.py\n"),
+        ("Go target", base.replace("go test ./internal/httpserver", "go test ./other")),
+        ("Python validator", base.replace("python scripts/validate-memory-os-metrics.py",
+                                          "python scripts/validate-memory-os-new.py")),
+        ("pip arguments", base.replace("python -m pip install", "python -m pip uninstall")),
+        ("removed validator", base.replace(
+            "run: python scripts/validate-memory-os-observability.py\n", "")),
+        ("Go test filter", base.replace("TestUploadLifecycleOverHTTP", "TestOther")),
+    ):
+        try:
+            require_reviewed_upload_route_runtime_commands(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route runtime command":
+                raise
+        else:
+            raise RuntimeError("Upload Route command negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1488,6 +1552,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_go_workspace_negatives()
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
+    prove_upload_route_runtime_command_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1712,6 +1777,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
         require_reviewed_upload_route_toolchain_environment(source)
         require_reviewed_upload_route_actions(source)
+        require_reviewed_upload_route_runtime_commands(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
