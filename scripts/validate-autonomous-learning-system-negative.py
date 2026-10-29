@@ -135,6 +135,13 @@ def expected_diagnostic(name: str) -> str:
         "drop CI guard timeout handling": "learning CI entrypoint lost executable guard invocation: except subprocess.TimeoutExpired:",
         "drop anti-regression lesson": "learning authority lost invariant: Repeating a known failed approach without changed preconditions is a regression",
         "invalid contract JSON": "invalid JSON:",
+        "duplicate contract JSON key": "duplicate JSON key:",
+        "nested duplicate contract JSON key": "duplicate JSON key:",
+        "nonfinite contract JSON": "nonfinite JSON number:",
+        "overflow float contract JSON": "nonfinite JSON number:",
+        "huge integer contract JSON": "oversized JSON integer:",
+        "invalid UTF8 contract JSON": "invalid UTF-8:",
+        "oversized contract JSON": "oversized JSON authority:",
         "non-object contract root": "root must be an object:",
         "downgrade schema version": "unsupported schemaVersion",
         "reorder closed-loop execution": "closed-loop execution order changed",
@@ -190,7 +197,11 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
     # Variable canonical diagnostics end with a colon and must include a detail.
     # Every other diagnostic is an exact authority string: a matching prefix
     # with an unrelated same-line suffix is not proof of the intended guard.
-    variable_detail = (name in {"invalid contract JSON", "non-object contract root"}
+    variable_detail = (name in {"invalid contract JSON", "non-object contract root",
+                                "duplicate contract JSON key", "nested duplicate contract JSON key",
+                                "nonfinite contract JSON", "overflow float contract JSON",
+                                "huge integer contract JSON", "invalid UTF8 contract JSON",
+                                "oversized contract JSON"}
                        or name.startswith(("drop required failure ", "drop required success ",
                                            "symlinked ")))
     matched = (observed.startswith(expected + " ") and len(observed) > len(expected) + 1
@@ -378,6 +389,20 @@ def main() -> int:
 
     cases = [
         ("invalid contract JSON", lambda root: (root / CONTRACT).write_text("{", encoding="utf-8")),
+        ("duplicate contract JSON key", lambda root: (root / CONTRACT).write_text(
+            '{"schemaVersion":"a","schemaVersion":"b"}', encoding="utf-8")),
+        ("nested duplicate contract JSON key", lambda root: (root / CONTRACT).write_text(
+            '{"rules":{"ciReachabilityRequired":true,"ciReachabilityRequired":false}}', encoding="utf-8")),
+        ("nonfinite contract JSON", lambda root: (root / CONTRACT).write_text(
+            '{"value":NaN}', encoding="utf-8")),
+        ("overflow float contract JSON", lambda root: (root / CONTRACT).write_text(
+            '{"value":1e9999}', encoding="utf-8")),
+        ("huge integer contract JSON", lambda root: (root / CONTRACT).write_text(
+            '{"value":' + "9" * 129 + '}', encoding="utf-8")),
+        ("invalid UTF8 contract JSON", lambda root: (root / CONTRACT).write_bytes(
+            bytes([255]))),
+        ("oversized contract JSON", lambda root: (root / CONTRACT).write_bytes(
+            b" " * (1024 * 1024 + 1))),
         ("non-object contract root", lambda root: (root / CONTRACT).write_text("[]", encoding="utf-8")),
         ("weaken mandatory rule", lambda root: edit_contract(root, lambda d: d["rules"].__setitem__("unchangedBlockerIsNotRetried", False))),
         ("disable required CI reachability", lambda root: edit_contract(root, lambda d: d["rules"].__setitem__("ciReachabilityRequired", False))),
