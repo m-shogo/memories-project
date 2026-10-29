@@ -283,7 +283,7 @@ def main() -> int:
         ("read-only token", REQUIRED[17][1], "permissions:\n  contents: write\n"),
         ("injected shell", "          python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py\n", "          echo UNREVIEWED\n          python scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py\n"),
         ("injected action", "      - name: Compile generation evidence rollback diagnostics negative\n", "      - uses: unreviewed/action@v1\n      - name: Compile generation evidence rollback diagnostics negative\n"),
-        ("removed PR self-trigger", '      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py"\n', ""),
+        ("removed push self-trigger", '      - "scripts/validate-memory-os-backup-restore-generation-evidence-rollback-workflow-negative.py"\n', ""),
     )
     blob_only = {"injected shell", "injected action"}
     if len(cases) != 21 or sum(label in blob_only for label, _, _ in cases) != 2:
@@ -291,16 +291,46 @@ def main() -> int:
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"generation rollback diagnostics negative anchor missing: {label}")
-        mutated = source.replace(old, replacement, 1)
+        if label == "removed push self-trigger":
+            push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+            if source.count(push_marker) != 1:
+                raise SystemExit("generation rollback diagnostics push fixture marker drift")
+            prefix, push_block = source.split(push_marker, 1)
+            if push_block.count(old) != 1:
+                raise SystemExit("generation rollback diagnostics push fixture anchor drift")
+            mutated = prefix + push_marker + push_block.replace(old, replacement, 1)
+        else:
+            mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit("generation rollback diagnostics inert negative: " + label)
         semantic = any(mutated.count(token) != source.count(token)
                        for _, token, _ in REQUIRED)
         if semantic == (label in blob_only):
             raise SystemExit("generation rollback diagnostics mutation classification drift: " + label)
+        required_label = {
+            "persist credentials": "no credentials",
+            "PR source checkout": "PR checkout",
+            "PR event admission": "PR event",
+            "PR head SHA": "PR head",
+            "push/dispatch branch": "branch",
+            "unreviewed event rejection": "unreviewed event",
+        }.get(label, label)
+        expected = {
+            "PR target": "generation rollback diagnostics trigger marker drift",
+            "self-trigger": "generation rollback diagnostics pull_request exact trigger inventory drift",
+            "removed push self-trigger": "generation rollback diagnostics push exact trigger inventory drift",
+            "read-only token": "generation rollback diagnostics permission leaf shadow drift",
+        }.get(label, ("generation rollback diagnostics complete workflow source drift"
+                      if label in blob_only
+                      else "generation rollback diagnostics workflow source boundary drift: " + required_label))
         try:
             validate(mutated, check_blob=label in blob_only)
-        except SystemExit:
-            continue
-        raise SystemExit(f"generation rollback diagnostics accepted forbidden mutation: {label}")
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation rollback diagnostics wrong negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit(f"generation rollback diagnostics accepted forbidden mutation: {label}")
     print(f"PASS: generation rollback diagnostics workflow source admission ({len(cases) - 2} semantic anchor + 2 blob-only negatives)")
     return 0
 
