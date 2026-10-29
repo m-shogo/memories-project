@@ -274,10 +274,28 @@ def main() -> int:
     digest_only = frozenset({"injected shell command", "injected executable action"})
     semantic_count = 0
     blob_only_count = 0
+    special_diagnostics = {
+        "PR target": "promotion source-order CI exact event header drift",
+        "self-trigger": "promotion source-order CI exact event header drift",
+        "removed PR self-trigger": "promotion source-order CI exact event header drift",
+        "read-only token": "promotion source-order CI permission leaf shadow drift",
+        "job permission escalation": "promotion source-order CI source drift: no contents write permission",
+        "injected shell command": "promotion source-order CI complete source drift",
+        "injected executable action": "promotion source-order CI complete source drift",
+    }
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit("promotion source-order CI negative anchor missing: " + label)
-        mutated = source.replace(old, replacement, 1)
+        if label == "removed PR self-trigger":
+            marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+            if source.count(marker) != 1:
+                raise SystemExit("promotion source-order CI PR event mutation marker drift")
+            prefix, suffix = source.split(marker, 1)
+            if suffix.count(old) != 1:
+                raise SystemExit("promotion source-order CI PR self-trigger fixture drift")
+            mutated = prefix + marker + suffix.replace(old, replacement, 1)
+        else:
+            mutated = source.replace(old, replacement, 1)
         if mutated == source:
             raise SystemExit("promotion source-order CI mutation unchanged: " + label)
         semantic = any(mutated.count(token) != source.count(token)
@@ -286,11 +304,17 @@ def main() -> int:
             raise SystemExit("promotion source-order CI mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
+        expected = special_diagnostics.get(label, "promotion source-order CI source drift: " + label)
         try:
             validate(mutated, check_blob=not semantic)
-        except SystemExit:
-            continue
-        raise SystemExit("promotion source-order CI accepted forbidden mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "promotion source-order CI wrong source diagnostic: "
+                    + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("promotion source-order CI accepted forbidden mutation: " + label)
     if (semantic_count, blob_only_count) != (20, 2):
         raise SystemExit("promotion source-order CI semantic/blob mutation coverage drift")
     print(f"PASS: promotion source-order CI source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
