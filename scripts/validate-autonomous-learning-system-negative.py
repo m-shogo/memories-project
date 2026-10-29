@@ -1090,6 +1090,8 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n', 1),
         ("unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n', 0),
         ("dispatch only", 'on: workflow_dispatch\n', 0),
+        ("blank unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n', 0),
+        ("blank then matching", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n      - "scripts/a.py"\n', 1),
     )
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:

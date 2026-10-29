@@ -65,14 +65,23 @@ def workflow_matches_path(source: str, relative: str) -> bool:
             return True
         if len(re.findall(r"""(?m)^    (?:paths|['"]paths['"]):""", event_body)) > 1:
             return True
-        paths = re.search(
-            r"(?ms)^    paths:\s*\n((?:^      - .*(?:\n|\Z))+)",
-            event_body,
-        )
-        if paths is None:
+        # DOTALL .* can consume blank lines after the list. Do not treat
+        # those blank lines as an empty path or silently stop before a later
+        # path entry. Scan the complete bounded event tail instead.
+        path_rows = event_body.splitlines()
+        if path_rows.count("    paths:") != 1:
             return True
-        for row in paths.group(1).splitlines():
-            raw = row.strip()[2:].strip()
+        entries = []
+        for row in path_rows[path_rows.index("    paths:") + 1:]:
+            if not row.strip() or row.lstrip().startswith("#"):
+                continue
+            if not row.startswith("      - "):
+                return True  # Unreviewed trailing event mapping.
+            entries.append(row)
+        if not entries:
+            return True
+        for row in entries:
+            raw = row[len("      - "):].strip()
             if raw.startswith(("'", '"')):
                 quote = raw[0]
                 quoted = re.fullmatch(
@@ -167,6 +176,12 @@ def self_test(repo_root: Path) -> None:
         ("duplicate paths", 'on:\n  push:\n    paths:\n      - "docs/**"\n    paths:\n      - "scripts/a.py"\n',
          "scripts/a.py", True),
         ("extglob", 'on:\n  push:\n    paths:\n      - "scripts/!(b).py"\n',
+         "scripts/a.py", True),
+        ("blank after unrelated list", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n',
+         "scripts/a.py", False),
+        ("blank inside matching list", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n      - "scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("unreviewed trailing mapping", 'on:\n  push:\n    paths:\n      - "docs/**"\n    types:\n      - opened\n',
          "scripts/a.py", True),
     )
     for name, source, path, expected in cases:
