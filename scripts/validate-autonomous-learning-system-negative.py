@@ -3097,6 +3097,12 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
              "prewrite candidate must have one sync main", []),
             ("unchanged", baseline.encode(), "prewrite candidate has no changes", []),
             ("invalid UTF-8", b"\xff", "prewrite input unreadable or invalid UTF-8", []),
+            ("computed reflective import", baseline.replace(
+                'if __name__', 'getattr(importlib, "import_" + "module")("math")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("dynamic reflective loader", baseline.replace(
+                'if __name__', 'getattr(loader, method)(None)\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
             ("diff budget", candidate.replace("    # safe edit\n", "    # a\n    # b\n").encode(),
              "prewrite diff exceeds reviewed line budget", ["--max-added-lines", "1"]),
         )
