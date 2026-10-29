@@ -885,6 +885,14 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
             modules = [(node.module or "").split(".")[0]]
         else:
             modules = []
+        # These reflective namespace primitives can resolve hidden importers,
+        # process launchers, or replace reviewed Path/json bindings at runtime.
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"globals", "locals", "vars", "getattr",
+                                     "setattr", "delattr"}):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if isinstance(node, ast.Name) and node.id in {"__builtins__", "__loader__"}:
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if any(module in {"importlib", "subprocess", "runpy", "ctypes", "builtins",
                           "posixpath", "ntpath"} for module in modules):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
@@ -1059,6 +1067,14 @@ def prove_upload_route_python_source_negatives() -> None:
         ("subprocess import", base + "from subprocess import run\n"),
         ("builtin loader", base + 'Y = __import__("os")\n'),
         ("builtin eval", base + 'Y = eval("1")\n'),
+        ("globals builtins lookup", base + 'Y = globals()["__builtins__"]\n'),
+        ("locals imported Path lookup", base + 'Y = locals()["Path"]\n'),
+        ("vars builtins lookup", base + 'Y = vars(__builtins__)\n'),
+        ("getattr builtins importer", base + 'Y = getattr(__builtins__, "__import__")\n'),
+        ("setattr builtins importer", base + 'Y = setattr(__builtins__, "x", 1)\n'),
+        ("delattr builtins importer", base + 'Y = delattr(__builtins__, "x")\n'),
+        ("direct builtins namespace", base + 'Y = __builtins__["__import__"]\n'),
+        ("module loader namespace", base + 'Y = __loader__.load_module("os")\n'),
         ("os system", base + 'import os\nY = os.system("echo")\n'),
         ("os alias launcher", base + 'import os as shell\nY = shell.system("echo")\n'),
         ("os getattr launcher", base + 'import os\nY = getattr(os, "system")("echo")\n'),
