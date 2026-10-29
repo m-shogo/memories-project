@@ -87,6 +87,10 @@ def workflow_matches_path(source: str, relative: str) -> bool:
            for event in ("push", "pull_request_target", "pull_request")):
         return True
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
+    # GitHub Actions supports YAML aliases; an inline sequence may expand to
+    # a push/PR event without spelling that event in the on: value.
+    if inline and re.search(r"\*[A-Za-z_][A-Za-z0-9_-]*", inline.group(1)):
+        return True
     if inline and re.search(r"\b(?:push|pull_request_target|pull_request)\b", inline.group(1)):
         return True
     if re.search(r"(?m)^on:\s*\[[^\]]*\b(?:push|pull_request_target|pull_request)\b", source):
@@ -97,6 +101,16 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     if section is None:
         return bool(re.search(r"(?m)^  (?:push|pull_request_target|pull_request):", source))
     block = section.group(1)
+    # Block YAML sequences are equivalent to inline event arrays. Treat
+    # aliases or unreviewed entries as potentially unfiltered push/PR.
+    live_rows = [
+        row for row in block.splitlines()
+        if row.strip() and not row.lstrip().startswith("#")
+    ]
+    if any(row.startswith("  - ") for row in live_rows):
+        if any(not row.startswith("  - ") for row in live_rows):
+            return True
+        return any(row[4:].strip() != "workflow_dispatch" for row in live_rows)
     for event in ("push", "pull_request_target", "pull_request"):
         match = re.search(
             r"(?ms)^  " + event + r":\s*\n(.*?)(?=^  [A-Za-z_][\w-]*:|\Z)",
@@ -274,6 +288,12 @@ def self_test(repo_root: Path) -> None:
          "scripts/a.py", True),
         ("globstar unrelated", 'on:\n  push:\n    paths:\n      - "**/docs/a.py"\n',
          "scripts/a.py", False),
+        ("block push sequence", 'on:\n  - push\n', "scripts/a.py", True),
+        ("block target sequence", 'on:\n  - pull_request_target\n', "scripts/a.py", True),
+        ("block dispatch only", 'on:\n  - workflow_dispatch\n', "scripts/a.py", False),
+        ("block aliased sequence", 'name: &trigger push\non:\n  - *trigger\n', "scripts/a.py", True),
+        ("inline aliased sequence", 'name: &trigger push\non: [*trigger]\n', "scripts/a.py", True),
+        ("inline dispatch list", 'on: [workflow_dispatch]\n', "scripts/a.py", False),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -302,9 +322,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 46 or hashlib.sha256(
+    if (len(cases) != 52 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "5850e80220e7276e9227f2816445b9fda687616a60d3193db8c6db6082418e8e"):
+    ).hexdigest() != "2dcd3f14b5d4d06c27a5c3df402068a144c38d61f8a738b771ded183227bbba5"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
