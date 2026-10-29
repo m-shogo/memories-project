@@ -293,6 +293,114 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
     print("PASS: distributed-rate-limit root/permission YAML authority (12 exact-diagnostic negatives)")
 
 
+def validate_nested_job_authority(publisher: str, independent: str) -> None:
+    """Independently bind publisher writer and read-only reviewer job semantics."""
+    reviewed = (
+        ("publisher", publisher, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+            ("validate-and-publish", "github.event_name != 'pull_request'", "write", 8),
+        )),
+        ("independent", independent, (
+            ("source-admission", "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read", 5),
+        )),
+    )
+    for label, content, jobs in reviewed:
+        prefix = "distributed-rate-limit " + label + " "
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        body = content.split("\njobs:\n", 1)[1]
+        headers = [line for line in body.splitlines()
+                   if line.startswith("  ") and len(line) > 2 and line[2] != " "
+                   and not line.lstrip().startswith("#")]
+        if headers != ["  " + name + ":" for name, *_ in jobs]:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        for index, (name, condition, scope, timeout) in enumerate(jobs):
+            header = "  " + name + ":\n"
+            section = body.split(header, 1)[1]
+            if index + 1 < len(jobs):
+                section = section.split("\n  " + jobs[index + 1][0] + ":\n", 1)[0]
+            keys = [line for line in section.splitlines()
+                    if line.startswith("    ") and len(line) > 4 and line[4] != " "
+                    and not line.lstrip().startswith("#")]
+            if keys != ["    if: " + condition, "    permissions:",
+                        "    runs-on: ubuntu-latest", "    timeout-minutes: " + str(timeout),
+                        "    steps:"]:
+                raise SystemExit(prefix + name + " job key shadow drift")
+            marker = "    permissions:\n"
+            if (section.count(marker) != 1
+                    or section.split(marker, 1)[1].split("    runs-on: ubuntu-latest\n", 1)[0]
+                    != "      contents: " + scope + "\n"):
+                raise SystemExit(prefix + name + " job permission leaf shadow drift")
+
+
+def prove_nested_job_authority_negatives(publisher: str, independent: str) -> None:
+    """Reject nested YAML job shadow and permission escalation with exact diagnostics."""
+    validate_nested_job_authority(publisher, independent)
+    reviewed = (
+        ("publisher", publisher, independent, (
+            ("validate-pr", "github.event_name == 'pull_request'", "read", 8),
+            ("validate-and-publish", "github.event_name != 'pull_request'", "write", 8),
+        ), True),
+        ("independent", independent, publisher, (
+            ("source-admission", "github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')", "read", 5),
+        ), False),
+    )
+    total = 0
+    for label, content, other, jobs, is_publisher in reviewed:
+        for name, condition, scope, timeout in jobs:
+            header = "  " + name + ":\n"
+            if content.count(header) != 1:
+                raise SystemExit("distributed-rate-limit job mutation header drift: " + label + "/" + name)
+
+            def in_job(before: str, after: str) -> str:
+                before_job, after_job = content.split(header, 1)
+                if before not in after_job:
+                    raise SystemExit("distributed-rate-limit job mutation anchor drift: " + name)
+                return before_job + header + after_job.replace(before, after, 1)
+
+            permission = "    permissions:\n      contents: " + scope + "\n"
+            condition_line = "    if: " + condition + "\n"
+            runner = "    runs-on: ubuntu-latest\n"
+            timeout_line = "    timeout-minutes: " + str(timeout) + "\n"
+            steps = "    steps:\n"
+            cases = (
+                ("duplicate mapping", content + "\n" + header + runner, "job mapping shadow drift"),
+                ("quoted mapping", content.replace(header, "  '" + name + "':\n", 1), "job mapping shadow drift"),
+                ("spaced mapping", content.replace(header, "  " + name + " :\n", 1), "job mapping shadow drift"),
+                ("condition bypass", in_job(condition_line, "    if: true\n"), name + " job key shadow drift"),
+                ("condition shadow", in_job(condition_line, condition_line + "    if : true\n"), name + " job key shadow drift"),
+                ("permission shadow", in_job(permission, permission + "    permissions :\n      contents: write\n"), name + " job key shadow drift"),
+                ("duplicate permission", in_job(permission, permission + "    permissions:\n      contents: write\n"), name + " job key shadow drift"),
+                ("direct permission", in_job(permission, permission.replace("contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))), name + " job permission leaf shadow drift"),
+                ("quoted permission leaf", in_job(permission, permission + "      'contents': write\n"), name + " job permission leaf shadow drift"),
+                ("spaced permission leaf", in_job(permission, permission + "      contents : write\n"), name + " job permission leaf shadow drift"),
+                ("runner shadow", in_job(runner, runner + "    runs-on : ubuntu-latest\n"), name + " job key shadow drift"),
+                ("timeout shadow", in_job(timeout_line, timeout_line + "    timeout-minutes : 1\n"), name + " job key shadow drift"),
+                ("continuation override", in_job(steps, "    continue-on-error: true\n" + steps), name + " job key shadow drift"),
+                ("steps shadow", in_job(steps, "    steps : []\n" + steps), name + " job key shadow drift"),
+            )
+            for mutation, changed, diagnostic in cases:
+                if changed == content:
+                    raise SystemExit("distributed-rate-limit unchanged job fixture: " + label + "/" + mutation)
+                try:
+                    if is_publisher:
+                        validate_nested_job_authority(changed, other)
+                    else:
+                        validate_nested_job_authority(other, changed)
+                except SystemExit as exc:
+                    expected = "distributed-rate-limit " + label + " " + diagnostic
+                    if str(exc) != expected:
+                        raise SystemExit("distributed-rate-limit wrong job diagnostic: "
+                                         + label + "/" + name + "/" + mutation + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("distributed-rate-limit accepted job mutation: "
+                                     + label + "/" + name + "/" + mutation)
+                total += 1
+    if total != 42:
+        raise SystemExit("distributed-rate-limit nested job negative inventory drift")
+    print("PASS: distributed-rate-limit nested publisher/independent job authority (42 exact-diagnostic negatives)")
+
+
 def validate(publisher: str, independent: str) -> None:
     publisher_required = (
         "  push:\n    branches:\n      - so\n",
@@ -492,6 +600,7 @@ def main() -> int:
     rate_limit_trigger_matrix_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_nested_job_authority_negatives(publisher, independent)
     predicate_runtime(independent)
     source_negatives(publisher, independent)
     runtime(publisher)
