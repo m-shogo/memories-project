@@ -621,9 +621,12 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         and node.args[1].value == "main"):
                     return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
+                # A module-level star import may bind main without naming it
+                # in the import AST; its export surface is not statically bound.
                 return not class_local and any(
-                    (alias.asname or (alias.name.split(".")[0]
-                                      if isinstance(node, ast.Import) else alias.name)) == "main"
+                    (isinstance(node, ast.ImportFrom) and alias.name == "*")
+                    or (alias.asname or (alias.name.split(".")[0]
+                                        if isinstance(node, ast.Import) else alias.name)) == "main"
                     for alias in node.names
                 )
             return any(module_shadows_main(child, top_level=False, class_local=class_local)
@@ -676,6 +679,7 @@ def prove_prewrite_python_negatives() -> None:
         ("function default benign", 'def helper(x=1):\n    pass\n', (2, 0)),
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
+        ("safe explicit import", 'from math import sqrt\n', (1, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("class conditional local", 'class Helper:\n    if True:\n        main = 1\n', (3, 0)),
         ("class method named main", 'class Helper:\n    def main(self):\n        pass\n', (3, 0)),
@@ -729,6 +733,9 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("module wildcard import", baseline.replace(
+            'if __name__', 'from math import *\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("class conditional reflection", baseline.replace(
             'if __name__', 'class Helper:\n    if True:\n        globals().__setitem__("main", None)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
