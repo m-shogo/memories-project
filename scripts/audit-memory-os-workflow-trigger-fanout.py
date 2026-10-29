@@ -250,6 +250,17 @@ def self_test(repo_root: Path) -> None:
         raise AuditFailure("known operability validator risk classification missing")
     if not (set(rate) & KNOWN_EXTERNAL_BLOCKED_WORKFLOWS):
         raise AuditFailure("known upload-route MinIO trigger coupling not detected")
+    entry_docs = matching_workflows(
+        repo_root, "scripts/validate-memory-os-entry-docs.py"
+    )
+    if ".github/workflows/autonomous-learning-guard.yml" not in entry_docs:
+        raise AuditFailure("shared entrypoint direct trigger identity missing")
+    entry_risk = classify(entry_docs)
+    if entry_risk not in {
+        "BOUNDED_DIRECT_MATCH_ONLY", "BLOCKED_HIGH_FANOUT",
+        "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY",
+    }:
+        raise AuditFailure("shared entrypoint direct trigger risk unclassified")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
@@ -286,6 +297,8 @@ def self_test(repo_root: Path) -> None:
         "prewrite fanout audit PASS: " + str(len(cases) + 10)
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
+        + "; entry-docs direct matches=" + str(len(entry_docs))
+        + "; entry-docs risk=" + entry_risk
         + "; known MinIO coupling flagged; no workflow executed"
     )
 
