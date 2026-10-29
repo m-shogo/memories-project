@@ -795,6 +795,66 @@ def prove_upload_route_dependency_blob_negatives() -> None:
             raise RuntimeError("Upload Route dependency manifest negative accepted: " + label)
 
 
+def autonomous_learning_guard_event_paths(source: str, event: str,
+                                          expected_count: int) -> tuple[str, ...]:
+    """Parse only the reviewed literal trigger grammar; never infer wildcard reach."""
+    lines = source.splitlines()
+    if lines.count("on:") != 1 or lines.count("  " + event + ":") != 1:
+        raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
+    start = lines.index("  " + event + ":")
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i] and (not lines[i].startswith(" ") or
+                                 (lines[i].startswith("  ") and not lines[i].startswith("   ")))), len(lines))
+    block = lines[start + 1:end]
+    if block.count("    paths:") != 1:
+        raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
+    paths = block[block.index("    paths:") + 1:]
+    if (len(paths) != expected_count or
+            any(not row.startswith('      - "') or not row.endswith('"') for row in paths)):
+        raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
+    parsed = tuple(row[9:-1] for row in paths)
+    if len(set(parsed)) != len(parsed) or any("*" in path or "!" in path for path in parsed):
+        raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
+    return parsed
+
+
+def require_autonomous_learning_trigger_claims(paths: tuple[str, ...],
+                                               claims: dict[str, bool]) -> None:
+    for relative, claimed_covered in claims.items():
+        if (relative in paths) is not claimed_covered:
+            raise RuntimeError("Autonomous Learning Guard trigger coverage claim changed: " + relative)
+
+
+def prove_autonomous_learning_trigger_negatives() -> None:
+    sample = ('on:\n  push:\n    paths:\n      - "scripts/guard.py"\n'
+              '      - "docs/authority.md"\n  pull_request:\n    paths:\n'
+              '      - "scripts/guard.py"\n      - "docs/authority.md"\n')
+    paths = autonomous_learning_guard_event_paths(sample, "push", 2)
+    require_autonomous_learning_trigger_claims(paths, {"scripts/guard.py": True, "go.mod": False})
+    for label, claims in (
+        ("false coverage", {"go.mod": True}),
+        ("hidden coverage", {"scripts/guard.py": False}),
+    ):
+        try:
+            require_autonomous_learning_trigger_claims(paths, claims)
+        except RuntimeError as exc:
+            if not str(exc).startswith("Autonomous Learning Guard trigger coverage claim changed: "):
+                raise
+        else:
+            raise RuntimeError("Autonomous Learning Guard coverage negative accepted: " + label)
+    for label, changed in (
+        ("missing PR event", sample.replace("  pull_request:", "  other:")),
+        ("wildcard path", sample.replace('"docs/authority.md"', '"docs/*.md"')),
+    ):
+        try:
+            autonomous_learning_guard_event_paths(changed, "pull_request" if label == "missing PR event" else "push", 2)
+        except RuntimeError as exc:
+            if str(exc) != "Autonomous Learning Guard event trigger authority changed":
+                raise
+        else:
+            raise RuntimeError("Autonomous Learning Guard event negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -809,6 +869,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_snapshot_function_negatives()
     prove_upload_route_snapshot_inventory_negatives()
     prove_upload_route_dependency_blob_negatives()
+    prove_autonomous_learning_trigger_negatives()
     for relative, expected in (
         ("requirements-security-validation.txt", "8790ebe281089c679686d0689ecd59080899c3cb"),
         ("services/import-api/go.mod", "ae1c51f23619581ac073fbb9c512c5f71f8f030c"),
@@ -972,9 +1033,26 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         uncovered_sets.append({path for path in inputs
                                if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
-    require_upload_route_snapshot_gap(
-        upload_route_snapshot_inventory(source_root), reviewed_paths[0], matches, 1687, 1620
-    )
+    snapshot_paths = upload_route_snapshot_inventory(source_root)
+    require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1687, 1620)
+    guard_source = (source_root / ".github/workflows/autonomous-learning-guard.yml").read_text(encoding="utf-8")
+    critical = {
+        ".github/workflows/reconcile-upload-route-authority.yml": False,
+        ".github/workflows/reconcile-upload-route-authority-pr.yml": False,
+        "scripts/validate-memory-os-metrics.py": False,
+        "scripts/validate-memory-os-rate-limit.py": False,
+        "scripts/validate-memory-os-observability.py": False,
+        "scripts/validate-memory-os-operability.py": False,
+        "requirements-security-validation.txt": False,
+        "services/import-api/go.mod": False,
+        "services/import-api/go.sum": False,
+        "scripts/validate-autonomous-learning-system-negative.py": True,
+    }
+    for event in ("push", "pull_request"):
+        guard_paths = autonomous_learning_guard_event_paths(guard_source, event, 15)
+        require_autonomous_learning_trigger_claims(guard_paths, critical)
+        if len(snapshot_paths.intersection(guard_paths)) != 15:
+            raise RuntimeError("Autonomous Learning Guard reviewed snapshot trigger reach changed")
     for patterns in reviewed_paths:
         require_reviewed_upload_route_event_sequence(
             patterns, 12, "c8ee443d21a468393cec2d4104c9b47da60f38173edacba213c74f16df478fd8"
