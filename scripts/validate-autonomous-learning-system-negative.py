@@ -3551,6 +3551,7 @@ def main() -> int:
             ("eager-direct-import-module", 'import_module("math")'),
             ("eager-direct-run-module", 'run_module("math")'),
             ("eager-direct-run-path", 'run_path("fixture.py")'),
+            ("eager-loader-exec-module", 'loader.exec_module(None)'),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
