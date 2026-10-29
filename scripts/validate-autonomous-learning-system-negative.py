@@ -192,6 +192,11 @@ def expected_diagnostic(name: str) -> str:
         "invalid UTF8 contract JSON": "invalid UTF-8:",
         "oversized contract JSON": "oversized JSON authority:",
         "non-object contract root": "root must be an object:",
+        "extra learning contract field": "learning contract field set changed",
+        "missing learning purpose": "learning contract field set changed",
+        "changed learning purpose": "learning contract purpose changed",
+        "extra learning rule": "learning contract rule set changed",
+        "extra protected invariant": "learning contract protected invariant set changed",
         "downgrade schema version": "unsupported schemaVersion",
         "reorder closed-loop execution": "closed-loop execution order changed",
         "comment-only learning guard call": "learning CI entrypoint main must directly invoke bound learning guards",
@@ -3324,6 +3329,21 @@ def main() -> int:
             ),
         ))
     cases.extend((
+        ("extra learning contract field", lambda root: edit_contract(
+            root, lambda data: data.__setitem__("productionDecision", "GO")
+        )),
+        ("missing learning purpose", lambda root: edit_contract(
+            root, lambda data: data.pop("purpose")
+        )),
+        ("changed learning purpose", lambda root: edit_contract(
+            root, lambda data: data.__setitem__("purpose", "Promotion can be automatic")
+        )),
+        ("extra learning rule", lambda root: edit_contract(
+            root, lambda data: data["rules"].__setitem__("allowAutomaticPromotion", True)
+        )),
+        ("extra protected invariant", lambda root: edit_contract(
+            root, lambda data: data["protectedInvariants"].__setitem__("allowSyntheticEvidence", True)
+        )),
         ("downgrade schema version", lambda root: edit_contract(
             root, lambda data: data.__setitem__("schemaVersion", "autonomous-learning-system.0.0")
         )),
