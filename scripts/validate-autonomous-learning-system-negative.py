@@ -572,6 +572,22 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
         if any(module in {"importlib", "subprocess", "runpy", "ctypes", "builtins"}
                for module in modules):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        # An os alias bypasses the direct os.system/popen/spawn/exec call check.
+        if (isinstance(node, ast.Import) and
+                any(alias.name == "os" and alias.asname not in (None, "os")
+                    for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        # Reflective access can retrieve a process launcher without an
+        # os.system call node. Treat it as an unreviewed dependency mechanism.
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"getattr", "vars"} and node.args
+                and isinstance(node.args[0], ast.Name)
+                and node.args[0].id == "os"):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.Attribute) and
+                isinstance(node.value, ast.Name) and node.value.id == "os"
+                and node.attr == "__dict__"):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.ImportFrom) and node.module == "os"
                 and any(alias.name in {"system", "popen"} or
                         alias.name.startswith(("spawn", "exec")) for alias in node.names)):
@@ -593,6 +609,9 @@ def prove_upload_route_python_source_negatives() -> None:
     base = 'from pathlib import Path\nX = "contracts/operations/a.json"\n'
     digest = hashlib.sha256(b"contracts/operations/a.json\n").hexdigest()
     require_reviewed_upload_route_python_source(base, 1, digest)
+    require_reviewed_upload_route_python_source(
+        base + 'import os\nY = os.path.basename("x")\n', 1, digest
+    )
     for label, candidate in (
         ("same-count literal swap", base.replace("a.json", "b.json")),
         ("added path literal", base + 'Y = "docs/b.md"\n'),
@@ -601,6 +620,10 @@ def prove_upload_route_python_source_negatives() -> None:
         ("builtin loader", base + 'Y = __import__("os")\n'),
         ("builtin eval", base + 'Y = eval("1")\n'),
         ("os system", base + 'import os\nY = os.system("echo")\n'),
+        ("os alias launcher", base + 'import os as shell\nY = shell.system("echo")\n'),
+        ("os getattr launcher", base + 'import os\nY = getattr(os, "system")("echo")\n'),
+        ("os vars launcher", base + 'import os\nY = vars(os)["system"]("echo")\n'),
+        ("os dict launcher", base + 'import os\nY = os.__dict__["system"]("echo")\n'),
         ("from os system", base + 'from os import system\nY = system("echo")\n'),
         ("runpy loader", base + "import runpy\n"),
         ("ctypes loader", base + "import ctypes\n"),
