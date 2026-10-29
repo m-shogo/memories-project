@@ -27,6 +27,12 @@ class AuditFailure(RuntimeError):
 
 def workflow_matches_path(source: str, relative: str) -> bool:
     """Conservatively match direct push/PR events; ambiguous filters are risky."""
+    # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
+    # Missing these forms would undercount prewrite fanout, not just overestimate.
+    source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
+    inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
+    if inline and re.search(r"\b(?:push|pull_request)\b", inline.group(1)):
+        return True
     if re.search(r"(?m)^on:\s*\[[^\]]*\b(?:push|pull_request)\b", source):
         return True
     section = re.search(
@@ -106,6 +112,14 @@ def self_test(repo_root: Path) -> None:
         ("paths-ignore", 'on:\n  push:\n    paths-ignore:\n      - "docs/**"\n', "scripts/a.py", True),
         ("dispatch", 'on:\n  workflow_dispatch:\n', "scripts/a.py", False),
         ("inline", 'on: [push, workflow_dispatch]\n', "scripts/a.py", True),
+        ("quoted-on-block", "'on':\n  push:\n    paths:\n      - 'scripts/a.py'\n",
+         "scripts/a.py", True),
+        ("quoted-on-inline", '"on": [push, workflow_dispatch]\n',
+         "scripts/a.py", True),
+        ("scalar-push", "on: push\n", "scripts/a.py", True),
+        ("inline-map", "on: {pull_request: {paths: ['scripts/a.py']}}\n",
+         "scripts/a.py", True),
+        ("scalar-dispatch", "on: workflow_dispatch\n", "scripts/a.py", False),
     )
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
@@ -129,7 +143,8 @@ def self_test(repo_root: Path) -> None:
     if not (set(rate) & KNOWN_EXTERNAL_BLOCKED_WORKFLOWS):
         raise AuditFailure("known upload-route MinIO trigger coupling not detected")
     print(
-        "prewrite fanout audit PASS: 9 synthetic cases; operability direct matches="
+        "prewrite fanout audit PASS: " + str(len(cases) + 2)
+        + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; known MinIO coupling flagged; no workflow executed"
     )
