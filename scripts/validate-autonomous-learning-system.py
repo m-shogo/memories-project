@@ -275,10 +275,10 @@ def validate(repo_root: Path) -> None:
                 # binding through imported code without a local Name(Store).
                 # This is conservative lexical rejection, not alias closure.
                 if (isinstance(node.func, ast.Name)
-                        and node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
+                        and node.func.id in {"__import__", "import_module", "run_module", "run_path", "reload"}):
                     return True
                 if (isinstance(node.func, ast.Attribute)
-                        and node.func.attr in {"import_module", "run_module", "run_path", "exec_module"}):
+                        and node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload"}):
                     return True
                 # Eager reflective lookup of module execution callables is
                 # unreviewed even when the function is invoked indirectly.
@@ -294,7 +294,7 @@ def validate(repo_root: Path) -> None:
                         and len(node.args) >= 2
                         and (not isinstance(node.args[1], ast.Constant)
                              or node.args[1].value in {"__import__", "import_module",
-                                                       "run_module", "run_path", "exec_module"})):
+                                                       "run_module", "run_path", "exec_module", "reload"})):
                     return True
                 # An immediately invoked lambda executes its body now, unlike
                 # a bare lambda expression or a deferred generator body.
@@ -672,10 +672,10 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 # code with namespace side effects. This is a bounded lexical
                 # rejection, not a complete alias or import-graph proof.
                 if (isinstance(node.func, ast.Name) and
-                        node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
+                        node.func.id in {"__import__", "import_module", "run_module", "run_path", "reload"}):
                     return True
                 if (isinstance(node.func, ast.Attribute) and
-                        node.func.attr in {"import_module", "run_module", "run_path", "exec_module"}):
+                        node.func.attr in {"import_module", "run_module", "run_path", "exec_module", "reload"}):
                     return True
                 # Eager attrgetter/methodcaller construction can hide module
                 # execution behind a returned callable; alias closure is unknown.
@@ -689,7 +689,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         and len(node.args) >= 2
                         and (not isinstance(node.args[1], ast.Constant)
                              or node.args[1].value in {"__import__", "import_module",
-                                                       "run_module", "run_path", "exec_module"})):
+                                                       "run_module", "run_path", "exec_module", "reload"})):
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
@@ -774,6 +774,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
+        ("deferred direct reload", 'def helper():\n    reload(importlib)\n', (2, 0)),
+        ("deferred importlib reload", 'def helper():\n    importlib.reload(importlib)\n', (2, 0)),
         ("deferred loader execution", 'def helper():\n    loader.exec_module(None)\n', (2, 0)),
         ("deferred reflective import", 'def helper():\n    getattr(importlib, "import_module")("math")\n', (2, 0)),
         ("deferred computed reflective import", 'def helper():\n    getattr(importlib, "import_" + "module")("math")\n', (2, 0)),
@@ -842,6 +844,15 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct-name runpy path", baseline.replace(
             'if __name__', 'run_path("fixture.py")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct reload", baseline.replace(
+            'if __name__', 'reload(importlib)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager importlib reload", baseline.replace(
+            'if __name__', 'importlib.reload(importlib)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager reflective reload", baseline.replace(
+            'if __name__', 'getattr(importlib, "reload")(importlib)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager loader exec_module", baseline.replace(
             'if __name__', 'loader.exec_module(None)\nif __name__'),
