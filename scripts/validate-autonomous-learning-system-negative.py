@@ -737,6 +737,47 @@ def prove_upload_route_runtime_command_negatives() -> None:
             raise RuntimeError("Upload Route command negative accepted: " + label)
 
 
+def reject_unreviewed_upload_route_shell_dispatch(source: str) -> None:
+    """Do not silently omit prefixed/chained Python or Go shell invocations."""
+    import re
+    patterns = (
+        r"(?m)^\s*(?:run:\s*)?(?:env|command|sudo)\s+(?:python(?:3(?:\.\d+)?)?|go)\b",
+        r"(?m)\b(?:bash|sh)\s+-c\b",
+        r"(?m)(?:&&|;|\|)\s*(?:python(?:3(?:\.\d+)?)?|go)\b",
+        r"(?m)^\s*(?:run:\s*)?python3(?:\.\d+)?\b",
+        r"\$\(\s*(?:python|go)\b",
+    )
+    if any(re.search(pattern, source) for pattern in patterns):
+        raise RuntimeError("unreviewed Upload Route shell dispatch")
+
+
+def prove_upload_route_shell_dispatch_negatives() -> None:
+    reject_unreviewed_upload_route_shell_dispatch(
+        "run: python scripts/validate-memory-os-metrics.py\n"
+        "run: go test ./internal/httpserver\n"
+    )
+    for label, source in (
+        ("env Python", "run: env python scripts/new.py"),
+        ("command Python", "run: command python scripts/new.py"),
+        ("sudo Go", "run: sudo go test ./x"),
+        ("bash shell", "run: bash -c 'python x.py'"),
+        ("sh shell", "run: sh -c 'go test ./x'"),
+        ("chained Python", "echo ok && python x.py"),
+        ("semicolon Go", "echo ok; go test ./x"),
+        ("python3", "run: python3 x.py"),
+        ("python3 minor", "run: python3.12 x.py"),
+        ("piped Python", "echo ok | python x.py"),
+        ("substitution", "echo $(python x.py)"),
+    ):
+        try:
+            reject_unreviewed_upload_route_shell_dispatch(source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route shell dispatch":
+                raise
+        else:
+            raise RuntimeError("Upload Route shell dispatch negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1553,6 +1594,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
+    prove_upload_route_shell_dispatch_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1778,6 +1820,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_toolchain_environment(source)
         require_reviewed_upload_route_actions(source)
         require_reviewed_upload_route_runtime_commands(source)
+        reject_unreviewed_upload_route_shell_dispatch(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
