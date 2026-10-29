@@ -545,7 +545,14 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         # assignments; this is not a reflective-mutation proof.
         def module_shadows_main(node: ast.AST, *, top_level: bool) -> bool:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                return not top_level and node.name == "main"
+                # Function bodies are deferred; decorators and default
+                # argument expressions run immediately at definition time.
+                eager = [*node.decorator_list, *node.args.defaults,
+                         *(value for value in node.args.kw_defaults
+                           if value is not None)]
+                return ((not top_level and node.name == "main")
+                        or any(module_shadows_main(value, top_level=False)
+                               for value in eager))
             if isinstance(node, ast.ClassDef):
                 return node.name == "main"
             if isinstance(node, ast.Lambda):
@@ -645,6 +652,7 @@ def prove_prewrite_python_negatives() -> None:
     unexecutable = baseline.replace('if __name__', 'return 1\nif __name__')
     # Module-scope checks must not reject deferred or local main bindings.
     local_controls = (
+        ("function default benign", 'def helper(x=1):\n    pass\n', (2, 0)),
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
@@ -694,6 +702,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("function decorator reflection", baseline.replace(
+            'if __name__', '@globals().__setitem__("main", None)\ndef helper():\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function positional default reflection", baseline.replace(
+            'if __name__', 'def helper(x=globals().__setitem__("main", None)):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("function keyword default reflection", baseline.replace(
+            'if __name__', 'def helper(*, x=vars().__setitem__("main", None)):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("async function default reflection", baseline.replace(
+            'if __name__', 'async def helper(x=globals().__setitem__("main", None)):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("list comprehension reflection", baseline.replace(
             'if __name__', 'items = [globals().__setitem__("main", None) for _ in (1,)]\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
