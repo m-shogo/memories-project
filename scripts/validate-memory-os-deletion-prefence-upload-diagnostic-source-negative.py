@@ -1163,6 +1163,53 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: pre-fence-upload publisher/independent nested job authority (24 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed pre-fence upload noncancelling serialization."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = "  group: deletion-prefence-upload-completion-so\n  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("prefence-upload publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("prefence-upload publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic pre-fence upload cancellation/group shadows."""
+    validate_concurrency_authority(publisher)
+    group = "  group: deletion-prefence-upload-completion-so\n"
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: deletion-prefence-upload-completion-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("prefence-upload concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("prefence-upload unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "prefence-upload publisher concurrency scope drift":
+                raise SystemExit(
+                    "prefence-upload wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("prefence-upload accepted concurrency mutation: " + name)
+    print("PASS: prefence-upload publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main():
     publisher = source(PUBLISHER)
     if blob(publisher) != REVIEWED:
@@ -1189,6 +1236,7 @@ def main():
     prefence_upload_trigger_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     validate_job_authority(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
     mutations(publisher)
