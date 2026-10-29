@@ -553,6 +553,62 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: lease-authority publisher/independent job authority (36 exact-diagnostic negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind the reviewed lease-recovery event/PR-scoped noncancellation."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = (
+        "  group: reconcile-deletion-lease-recovery-authority-"
+        + chr(36) + "{{ github.event_name }}-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    expected = group + "  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("lease-recovery publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("lease-recovery publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic lease-recovery concurrency shadows."""
+    validate_concurrency_authority(publisher)
+    group = (
+        "  group: reconcile-deletion-lease-recovery-authority-"
+        + chr(36) + "{{ github.event_name }}-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: reconcile-deletion-lease-recovery-authority-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("lease-recovery concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("lease-recovery unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "lease-recovery publisher concurrency scope drift":
+                raise SystemExit(
+                    "lease-recovery wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("lease-recovery accepted concurrency mutation: " + name)
+    print("PASS: lease-recovery publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
@@ -575,6 +631,7 @@ def main() -> None:
     prove_trigger_reachability_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     validate_job_authority(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
     policy(publisher)
