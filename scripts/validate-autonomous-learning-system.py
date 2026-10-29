@@ -557,6 +557,14 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(node, (ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
                 if node.name == "main":
                     return True
+            # A module-level reflective namespace call or immediately invoked
+            # lambda can rebind main without a lexical Store/Del node.
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Lambda):
+                    return True
+                if (isinstance(node.func, ast.Name) and
+                        node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
+                    return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return any(
                     (alias.asname or (alias.name.split(".")[0]
@@ -614,6 +622,8 @@ def prove_prewrite_python_negatives() -> None:
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
         ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
+        ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
+        ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
     )
     for label, insertion, expected in local_controls:
         scoped = baseline.replace('if __name__', insertion + 'if __name__')
@@ -655,6 +665,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("reflective globals shadow", baseline.replace(
+            'if __name__', 'globals()["main"] = lambda: 1\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("reflective vars shadow", baseline.replace(
+            'if __name__', 'vars()["main"] = lambda: 1\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("reflective exec shadow", baseline.replace(
+            'if __name__', 'exec("main = lambda: 1")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("immediate lambda shadow", baseline.replace(
+            'if __name__', '(lambda: globals().__setitem__("main", None))()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("conditional main shadow", baseline.replace(
             'if __name__', 'if True:\n    main = lambda: 1\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
