@@ -1215,6 +1215,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("event alias", 'on: *events\n', 1),
         ("quoted comment", 'on:\n  push:\n    paths:\n      - "scripts/a.py" # note\n', 1),
         ("plain comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n', 1),
+        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n', 1),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n', 1),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n', 1),
 
@@ -1229,6 +1230,12 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("target unrelated", 'on:\n  pull_request_target:\n    paths:\n      - "docs/**"\n', 0),
         ("target unfiltered", 'on:\n  pull_request_target:\n', 1),
     )
+    # A generated fixture edit may replace rather than append a prior case.
+    # Pin exact ordered labels, not only the total number of tests.
+    if (len(cases) != 22 or hashlib.sha256(
+            "\n".join(case[0] for case in cases).encode("utf-8")
+    ).hexdigest() != "a9d9d252e0c8146f954c44600606e1bba1b656d68d1197cdf0096e1cc4858140"):
+        raise RuntimeError("prewrite fanout CLI fixture identity drift")
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:
         expected = "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: " + str(count)

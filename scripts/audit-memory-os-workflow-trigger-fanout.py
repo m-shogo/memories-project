@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import re
 import sys
 import tempfile
@@ -233,6 +234,8 @@ def self_test(repo_root: Path) -> None:
          "scripts/a.py", True),
         ("plain inline comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n',
          "scripts/a.py", True),
+        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n',
+         "scripts/a.py", True),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -259,6 +262,12 @@ def self_test(repo_root: Path) -> None:
         ("target duplicate", 'on:\n  pull_request_target:\n    paths:\n      - "docs/**"\n  pull_request_target:\n    paths:\n      - "scripts/a.py"\n',
          "scripts/a.py", True),
     )
+    # Pin the ordered fixture identities: an equal-count substitution must
+    # not silently remove a previously reviewed negative.
+    if (len(cases) != 39 or hashlib.sha256(
+            "\n".join(case[0] for case in cases).encode("utf-8")
+    ).hexdigest() != "a018d606ec665db0a787d5e33c376f753e482aeeee4b0c1350c4a8006a5e600b"):
+        raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite fanout negative/positive failed: " + name)
