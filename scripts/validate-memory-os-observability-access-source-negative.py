@@ -275,6 +275,56 @@ def observability_trigger_matrix_negatives(publisher: str, independent: str) -> 
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def observability_concurrency_authority(source: str) -> None:
+    """Keep the reviewed noncancelling publisher serialization authority."""
+    marker = "\nconcurrency:\n"
+    if source.count(marker) != 1 or source.count("\njobs:\n") != 1:
+        raise AssertionError("observability-access concurrency authority drift")
+    actual = source.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = (
+        "  group: reconcile-observability-access-${{ github.event.pull_request.number || 'so' }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    if actual != expected:
+        raise AssertionError("observability-access concurrency authority drift")
+
+
+def observability_concurrency_negatives(source: str) -> None:
+    group = "  group: reconcile-observability-access-${{ github.event.pull_request.number || 'so' }}\n"
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("group changed", group, "  group: unreviewed\n"),
+        ("group missing", group, ""),
+        ("group duplicated", group, group + group),
+        ("group quoted", group, "  'group': reconcile-observability-access\n"),
+        ("group spaced", group, "  group : unreviewed\n"),
+        ("group shadowed", group, group + "  group : unreviewed\n"),
+        ("cancellation enabled", cancel, "  cancel-in-progress: true\n"),
+        ("cancellation missing", cancel, ""),
+        ("cancellation duplicated", cancel, cancel + cancel),
+        ("cancellation quoted", cancel, "  'cancel-in-progress': false\n"),
+        ("cancellation spaced", cancel, "  cancel-in-progress : false\n"),
+        ("unreviewed leaf", cancel, cancel + "  unexpected: true\n"),
+    )
+    for name, old, replacement in cases:
+        if source.count(old) != 1:
+            raise AssertionError("observability-access concurrency fixture anchor drift: " + name)
+        changed = source.replace(old, replacement, 1)
+        try:
+            observability_concurrency_authority(changed)
+        except AssertionError as exc:
+            if str(exc) != "observability-access concurrency authority drift":
+                raise AssertionError("observability-access concurrency wrong diagnostic: "
+                                     + name + ": " + str(exc)) from exc
+        else:
+            raise AssertionError("observability-access accepted concurrency mutation: " + name)
+    if len(cases) != 12:
+        raise AssertionError("observability-access concurrency fixture count drift")
+    print("PASS: observability-access publisher concurrency (12 exact-diagnostic negatives)")
+
+
+
 def policy(s: str) -> None:
     if s.count(CHECKOUT) != 2 or s.count(SETUP) != 2:
         raise AssertionError("observability-access immutable Actions drift")
@@ -400,6 +450,8 @@ def main() -> None:
     observability_validate_trigger_matrix(source, independent)
     observability_trigger_matrix_negatives(source, independent)
     observability_yaml_shadow_negatives(source, independent)
+    observability_concurrency_authority(source)
+    observability_concurrency_negatives(source)
     for index, marker in enumerate(REQUIRED):
         changed = source.replace(marker, "REMOVED_BY_NEGATIVE", 1)
         if changed == source:
