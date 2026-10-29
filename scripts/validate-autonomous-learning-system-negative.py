@@ -512,7 +512,7 @@ def prove_go_embed_negatives() -> None:
 def reject_unreviewed_go_linknames(source: str) -> None:
     """Go linkname can bind unimported symbols outside the static import graph."""
     import re
-    if re.search(r"(?m)^[ \\t]*//go:linkname(?:[ \\t]|$)", source):
+    if re.search(r"(?m)^[ \t]*//go:linkname(?:[ \t]|$)", source):
         raise RuntimeError("unreviewed Go linkname symbol dependency")
 
 
