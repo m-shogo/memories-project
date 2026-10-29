@@ -1318,6 +1318,74 @@ def prove_upload_route_test_environment_negatives(source_root: Path) -> None:
                 raise RuntimeError("Upload Route test environment negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256 = "5f1334748c3ac7088d02a976fd4dfa781a08a6ad6a6e34a035dd98da339472fb"
+REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS = {
+    "push": {
+        "Start local MinIO": REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256,
+        "Confirm exact clean source": "ef005ca7e8a13416a66b7101565a9cd738cca2b2b3a40d1340ec4c4da09bbed1",
+        "Commit reconciled route authority": "eff8b093bc5e626f2005493cd37cf71c36969ecfdcd45e4e5a753dac3a30658e",
+    },
+    "pull_request": {
+        "Start local MinIO": REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256,
+        "Confirm exact clean source": "67b258528a940f3905da352cd42172d2e45be14c789799c047d9cf77d455921e",
+        "Require deterministic whole-worktree authority": "631e27fa9ac80db93efa83ac15d75621752365311c172233edd1fc7e3d835e85",
+    },
+}
+
+
+def require_reviewed_upload_route_critical_steps(source: str, event: str) -> None:
+    """Pin exact MinIO readiness, source integrity and writer CAS shell bodies."""
+    if event not in REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS:
+        raise RuntimeError("unreviewed Upload Route critical shell step")
+    for name, expected in REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS[event].items():
+        marker = "      - name: " + name + "\n"
+        if source.count(marker) != 1:
+            raise RuntimeError("unreviewed Upload Route critical shell step")
+        start = source.index(marker)
+        end = source.find("\n      - name: ", start + len(marker))
+        block = source[start:end if end >= 0 else len(source)]
+        if hashlib.sha256(block.encode()).hexdigest() != expected:
+            raise RuntimeError("unreviewed Upload Route critical shell step")
+
+
+def prove_upload_route_critical_step_negatives(source_root: Path) -> None:
+    for workflow, event in (
+        ("reconcile-upload-route-authority.yml", "push"),
+        ("reconcile-upload-route-authority-pr.yml", "pull_request"),
+    ):
+        source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
+        require_reviewed_upload_route_critical_steps(source, event)
+        cases = [
+            ("MinIO wait", "for attempt in $(seq 1 60)", "for attempt in $(seq 1 1)"),
+            ("MinIO endpoint", "/minio/health/live", "/other"),
+            ("MinIO failure exit", "          exit 1\n", "          exit 0\n"),
+        ]
+        if event == "push":
+            cases += [
+                ("clean source SHA", 'test "$(git rev-parse HEAD)" = "${{ github.sha }}"', "test true"),
+                ("writer CAS fetch", "git fetch origin so", "git fetch origin main"),
+                ("writer destination", "git push origin HEAD:so", "git push origin HEAD:main"),
+                ("stale CAS exit", "exit 75", "exit 0"),
+            ]
+        else:
+            cases += [
+                ("PR clean source", 'test "$(git rev-parse HEAD)" = "$PR_HEAD_SHA"', "test true"),
+                ("PR clean diff", "git diff --exit-code", "git diff --stat"),
+                ("PR final check", "          git diff --check\n          git diff --exit-code",
+                 "          git diff --exit-code"),
+            ]
+        for label, before, after in cases:
+            if source.count(before) != 1:
+                raise RuntimeError("Upload Route critical step fixture anchor changed: " + label)
+            try:
+                require_reviewed_upload_route_critical_steps(source.replace(before, after, 1), event)
+            except RuntimeError as exc:
+                if str(exc) != "unreviewed Upload Route critical shell step":
+                    raise
+            else:
+                raise RuntimeError("Upload Route critical shell step negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -2143,6 +2211,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_job_execution_negatives()
     prove_upload_route_step_order_negatives()
     prove_upload_route_test_environment_negatives(source_root)
+    prove_upload_route_critical_step_negatives(source_root)
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -2378,6 +2447,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_job_execution(source, event)
         require_reviewed_upload_route_step_order(source, event)
         require_reviewed_upload_route_test_environment(source, event)
+        require_reviewed_upload_route_critical_steps(source, event)
         require_reviewed_upload_route_event_set(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
