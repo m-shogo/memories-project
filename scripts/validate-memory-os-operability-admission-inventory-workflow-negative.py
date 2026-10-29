@@ -88,6 +88,53 @@ def validate(publisher: str, independent: str) -> None:
         blob = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
         if hashlib.sha1(blob).hexdigest() != digest:
             raise SystemExit("operability inventory " + name + " complete source drift")
+    validate_concurrency_authority(publisher)
+
+
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed noncancelling derived inventory publisher group."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = "  group: operability-admission-inventory-so\n  cancel-in-progress: false\n"
+    if (publisher.count(marker) != 1 or publisher.count(end) != 1
+            or publisher.split(marker, 1)[1].split(end, 1)[0] != expected):
+        raise SystemExit("operability inventory publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Ten exact-diagnostic negatives for inventory serialization and cancellation."""
+    validate_concurrency_authority(publisher)
+    original = "  group: operability-admission-inventory-so\n  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: operability-admission-inventory-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancellation enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("operability inventory concurrency fixture anchor drift")
+    for name, replacement in cases:
+        changed = publisher.replace(original, replacement, 1)
+        if changed == publisher:
+            raise SystemExit("operability inventory unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "operability inventory publisher concurrency scope drift":
+                raise SystemExit(
+                    "operability inventory wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("operability inventory accepted concurrency mutation: " + name)
+    print("PASS: operability inventory publisher concurrency (10 exact-diagnostic negatives)")
 
 
 def validate_yaml_authority(content: str, kind: str) -> None:
@@ -467,6 +514,7 @@ def main() -> int:
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     diagnostic_runtime(publisher)
     runtime(publisher, independent)
     negatives(publisher, independent)
