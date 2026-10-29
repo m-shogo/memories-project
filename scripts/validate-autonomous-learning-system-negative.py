@@ -484,12 +484,36 @@ def prove_unaliased_go_path_negatives() -> None:
             raise RuntimeError("Go symlinked parent negative accepted")
 
 
+def reject_unreviewed_go_embeds(source: str) -> None:
+    """Go embed assets are extra compile inputs absent from the import graph."""
+    import re
+    if re.search(r"(?m)^[ \\t]*//go:embed(?:[ \\t]|$)", source):
+        raise RuntimeError("unreviewed Go embedded asset input")
+
+
+def prove_go_embed_negatives() -> None:
+    reject_unreviewed_go_embeds("// go:embed is not a directive\\n")
+    for label, source in (
+        ("direct", "//go:embed static/*\\nvar assets embed.FS\\n"),
+        ("indented", "    //go:embed assets/config.json\\n"),
+        ("empty", "//go:embed\\n"),
+    ):
+        try:
+            reject_unreviewed_go_embeds(source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go embedded asset input":
+                raise
+        else:
+            raise RuntimeError("Go embed negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
     prove_unaliased_go_path_negatives()
+    prove_go_embed_negatives()
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
@@ -513,6 +537,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     for file in go_files:
         require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
+        reject_unreviewed_go_embeds(source)
         if 'import "C"' in source:
             raise RuntimeError("unreviewed Go CGo import")
         packages.update(upload_route_local_go_imports(source))
@@ -540,6 +565,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             require_unaliased_go_path(source_root, file)
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
+            reject_unreviewed_go_embeds(source)
             if 'import "C"' in source:
                 raise RuntimeError("unreviewed Go CGo import")
             for dependency in upload_route_local_go_imports(source):
