@@ -1,0 +1,15 @@
+# Supplemental OPS learning — review source-order exact source diagnostics and PR fixture (2026-10-29)
+
+Append-only supplemental learning only; not canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md`, production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, typed eight-domain non-resurrection or human promotion evidence.
+
+## Material success
+
+- **Observed outcome:** [`7683f63d`](https://github.com/m-shogo/memories-project/commit/7683f63d551f1e9a983fb9c68f999f3d0326fd27) changed only `scripts/validate-memory-os-backup-restore-review-source-order-workflow-negative.py`. All 21 existing source-admission negative cases now require their first-failing canonical diagnostic, instead of accepting arbitrary `SystemExit`. The separately named `removed PR self-trigger` fixture now actually removes the PR event path; the existing `self-trigger` case still removes the push event path.
+- **Evidence:** [Backup Restore Review Source Order #40798909228](https://github.com/m-shogo/memories-project/actions/runs/40798909228) completed **SUCCESS** on exact source `7683f63d`, with the job logging 24 event-specific trigger removals, eight additions, one shortened-inventory negative, 15 YAML exact-diagnostic negatives, six runtime branch cases and 19 semantic plus two blob-only source-admission negatives. [Backup Restore Admission Chain #40798909233](https://github.com/m-shogo/memories-project/actions/runs/40798909233) completed **SUCCESS** on that same source.
+- **Why safe:** Only an existing CI-reachable read-only Python negative validator changed. The fixtures mutate in-memory text, not reviewed workflows, production contracts, registries, credentials, traffic, recovery evidence, readiness or human promotion authority.
+- **Reusable mechanism:** Bind each source-admission fixture to the first canonical rejection guard (event header, permission leaf, named REQUIRED source inventory or complete Git blob SHA). Use event-scoped replacement for duplicated PR/push trigger paths, never an ambiguous first occurrence. Preserve semantic negatives separately from blob-only cases.
+- **Protected-authority check:** Production status blob `3ab8092c7e3fec2b48d62fb2728f024151f610c5` remains `productionDecision=NO_GO`. OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED` with registered/semantically eligible generations 0/0, approved recovery objectives 0, executable reviewed drill requests 0, generation recovery evidence 0, complete typed eight-domain records 0 and final candidates 0. Autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. Human production promotion was not performed.
+
+## Next safe target
+
+Audit `scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py` for generic trigger rejection acceptance. Keep the independent promotion chronology and human promotion decision separate; do not modify production authority or retry unchanged external blockers.
