@@ -278,7 +278,7 @@ def validate(repo_root: Path) -> None:
                         and node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
                     return True
                 if (isinstance(node.func, ast.Attribute)
-                        and node.func.attr in {"import_module", "run_module", "run_path"}):
+                        and node.func.attr in {"import_module", "run_module", "run_path", "exec_module"}):
                     return True
                 # An immediately invoked lambda executes its body now, unlike
                 # a bare lambda expression or a deferred generator body.
@@ -659,7 +659,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
                     return True
                 if (isinstance(node.func, ast.Attribute) and
-                        node.func.attr in {"import_module", "run_module", "run_path"}):
+                        node.func.attr in {"import_module", "run_module", "run_path", "exec_module"}):
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
@@ -744,6 +744,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
+        ("deferred loader execution", 'def helper():\n    loader.exec_module(None)\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -806,6 +807,9 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct-name runpy path", baseline.replace(
             'if __name__', 'run_path("fixture.py")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager loader exec_module", baseline.replace(
+            'if __name__', 'loader.exec_module(None)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
