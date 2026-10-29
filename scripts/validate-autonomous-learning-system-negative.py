@@ -313,7 +313,8 @@ def symlink_parent_directory(root: Path, relative: Path) -> None:
     directory.symlink_to(target.name, target_is_directory=True)
 
 
-def upload_route_local_go_imports(source: str, include_external: bool = False) -> set[str]:
+def upload_route_local_go_imports(source: str, include_external: bool = False,
+                                  include_aliases: bool = False) -> set[str]:
     """Parse reviewed Go import forms conservatively; reject unknown syntax."""
     import re
     module = "github.com/m-shogo/memories-project/services/import-api/"
@@ -323,26 +324,33 @@ def upload_route_local_go_imports(source: str, include_external: bool = False) -
         raise RuntimeError("unreviewed Go import placement")
     blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
     paths = []
+    aliases = []
     for block in blocks:
         for line in block.group(1).splitlines():
             if not line.strip() or line.lstrip().startswith("//"):
                 continue
-            match = re.fullmatch(r'\s*(?:[A-Za-z_.]\w*\s+)?"([^"]+)"\s*(?://.*)?', line)
+            match = re.fullmatch(r'\s*(?:([A-Za-z_.]\w*)\s+)?"([^"]+)"\s*(?://.*)?', line)
             if match is None:
                 raise RuntimeError("unreviewed Go import block entry")
-            if match.group(1) == "C":
+            if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
-            paths.append(match.group(1))
+            paths.append(match.group(2))
+            if match.group(1):
+                aliases.append(match.group(1) + "\t" + match.group(2))
     for block in reversed(blocks):
         source = source[:block.start()] + source[block.end():]
     for line in source.splitlines():
         if re.match(r"^[ \t]*import\b", line):
-            match = re.fullmatch(r'[ \t]*import[ \t]+(?:[A-Za-z_.]\w*[ \t]+)?"([^"]+)"[ \t]*(?://.*)?', line)
+            match = re.fullmatch(r'[ \t]*import[ \t]+(?:([A-Za-z_.]\w*)[ \t]+)?"([^"]+)"[ \t]*(?://.*)?', line)
             if match is None:
                 raise RuntimeError("unreviewed single-line Go import")
-            if match.group(1) == "C":
+            if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
-            paths.append(match.group(1))
+            paths.append(match.group(2))
+            if match.group(1):
+                aliases.append(match.group(1) + "\t" + match.group(2))
+    if include_aliases:
+        return set(aliases)
     return set(paths) if include_external else {
         path[len(module):] for path in paths if path.startswith(module)
     }
@@ -356,6 +364,25 @@ def prove_upload_route_go_import_parser() -> None:
     if upload_route_local_go_imports(sample, include_external=True) != {
             "fmt", module + "internal/metrics"}:
         raise RuntimeError("Go complete import path positive fixture failed")
+    if upload_route_local_go_imports(sample, include_aliases=True) != {
+            "alias\t" + module + "internal/metrics"}:
+        raise RuntimeError("Go import alias positive fixture failed")
+    for alias in ("_", "."):
+        if upload_route_local_go_imports('import ' + alias + ' "fmt"\n', include_aliases=True) != {alias + "\tfmt"}:
+            raise RuntimeError("Go special import alias positive fixture failed")
+    plain, aliased = 'import "fmt"\n', 'import other "fmt"\n'
+    if upload_route_local_go_imports(plain, include_external=True) != upload_route_local_go_imports(aliased, include_external=True):
+        raise RuntimeError("Go alias mutation changed path-only positive control")
+    alias_digest = hashlib.sha256(b"a.go\talias\tfmt\n").hexdigest()
+    require_reviewed_upload_route_input_set({"a.go\talias\tfmt"}, 1, alias_digest)
+    for candidate in ({"a.go\tother\tfmt"}, {"b.go\talias\tfmt"}, set()):
+        try:
+            require_reviewed_upload_route_input_set(candidate, 1, alias_digest)
+        except RuntimeError as exc:
+            if str(exc) != "upload route reviewed input identity changed; review required":
+                raise
+        else:
+            raise RuntimeError("Go import alias identity negative accepted")
     sample_entries = {
         "services/import-api/internal/httpserver/a.go\tfmt",
         "services/import-api/internal/httpserver/a.go\t" + module + "internal/metrics",
@@ -1299,6 +1326,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         raise RuntimeError("upload route Go compilation surface shrank without review")
     packages: set[str] = set()
     import_entries: set[str] = set()
+    alias_entries: set[str] = set()
     for file in go_files:
         require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
@@ -1309,6 +1337,8 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         packages.update(upload_route_local_go_imports(source))
         import_entries.update(file.relative_to(source_root).as_posix() + "\t" + dependency
                               for dependency in upload_route_local_go_imports(source, include_external=True))
+        alias_entries.update(file.relative_to(source_root).as_posix() + "\t" + binding
+                             for binding in upload_route_local_go_imports(source, include_aliases=True))
     if len(packages) < 21:
         raise RuntimeError("upload route local Go package inventory shrank without review")
     inputs = {p.relative_to(source_root).as_posix() for p in go_files}
@@ -1339,6 +1369,8 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
                 raise RuntimeError("unreviewed Go CGo import")
             import_entries.update(file.relative_to(source_root).as_posix() + "\t" + dependency
                                   for dependency in upload_route_local_go_imports(source, include_external=True))
+            alias_entries.update(file.relative_to(source_root).as_posix() + "\t" + binding
+                                 for binding in upload_route_local_go_imports(source, include_aliases=True))
             for dependency in upload_route_local_go_imports(source):
                 if dependency not in visited:
                     pending.append(dependency)
@@ -1351,6 +1383,10 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     # baseline was independently observed before this enforcement change.
     require_reviewed_upload_route_input_set(
         import_entries, 722, "66a22b030f30e6a127445fbd63f659c9f1ca89c0a85b9cb5988ff7829e029da6"
+    )
+    # Explicit Go import bindings can drift without changing imported paths.
+    require_reviewed_upload_route_input_set(
+        alias_entries, 3, "eeead3493d6bc1d40354fe2de6d1db6a07a202ce4d9d7dd19c8bb9c1436dfb25"
     )
     for path in ("services/import-api/go.mod", "services/import-api/go.sum",
                  "requirements-security-validation.txt"):
