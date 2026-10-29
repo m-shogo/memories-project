@@ -268,6 +268,10 @@ def upload_route_local_go_imports(source: str) -> set[str]:
     """Parse reviewed Go import forms conservatively; reject unknown syntax."""
     import re
     module = "github.com/m-shogo/memories-project/services/import-api/"
+    # Go accepts "package p; import ..." and "/* note */ import ...".
+    # A line-anchored parser would silently omit those legal dependencies.
+    if re.search(r"(?:;|\*/)[ \t]*import(?:[ \t]+|[ \t]*\()", source):
+        raise RuntimeError("unreviewed Go import placement")
     blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
     paths = []
     for block in blocks:
@@ -300,6 +304,17 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import block positive fixture failed")
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
+    for label, candidate in (
+        ("semicolon-prefixed import", 'package test; import "' + module + 'internal/reqid"\n'),
+        ("comment-prefixed import", 'package test\n/* note */ import "' + module + 'internal/metrics"\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go import placement":
+                raise
+        else:
+            raise RuntimeError("Go import placement negative accepted: " + label)
     for label, candidate in (
         ("tab-separated CGo", 'import\t"C"\n'),
         ("grouped CGo", 'import (\n  "C"\n)\n'),
