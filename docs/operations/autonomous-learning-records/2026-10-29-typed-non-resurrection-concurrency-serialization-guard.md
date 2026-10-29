@@ -1,0 +1,18 @@
+# Supplemental OPS learning — typed eight-domain non-resurrection admission concurrency (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, production/backup/restore/RPO/RTO/skew evidence, a generation, approved recovery objective, executable reviewed drill, typed eight-domain non-resurrection evidence, credentials, traffic, readiness, independent recovery review or human promotion.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** Typed eight-domain non-resurrection admission source-negative CI pinned reviewed Git blobs, event/root YAML and role-specific job permissions but lacked an independent publisher concurrency group/cancellation diagnostic. Static coverage gap, not observed evidence admission bypass.
+- **Observed evidence:** Publisher blob `22d2e65556f21f01f6ce3bffbd5e1f874a0f2c88` declares PR/so-scoped `backup-restore-non-resurrection-admission` grouping and `cancel-in-progress: false`. Previous validator blob `5a0f850f3803e4491cc9a73215461e16c670d43d` checked root `concurrency:` but not nested leaves.
+- **Verified root cause:** Full-source SHA and root YAML checks reject changed bytes without independently proving effective serialization/cancellation semantics or classifying YAML shadows.
+- **Failed approach:** Treating generic digest mismatch and a root concurrency key as sufficient semantic proof of typed admission noncancellation.
+- **Correction / executable recurrence guard:** [`3b8b5982`](https://github.com/m-shogo/memories-project/commit/3b8b5982696ab13854d094650a65151d42258be2) pins reviewed PR/so group and noncancellation, adding ten exact-diagnostic negatives for global group, cancellation enabled, duplicate/spaced/quoted leaves, unreviewed leaf and missing cancellation.
+- **Retry condition:** Revisit only on reviewed concurrency-policy change or demonstrated effective YAML shadow bypass; do not retry unchanged MinIO HTTP 401, canonical-learning transport, workflow-write permission or human approval blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Non-Resurrection Admission Source Negative #40807173516](https://github.com/m-shogo/memories-project/actions/runs/40807173516) completed **SUCCESS** at exact code `3b8b5982`; log confirms ten concurrency negatives and 39 existing YAML event/root/job/permission negatives. [Non-Resurrection Admission #40807173460](https://github.com/m-shogo/memories-project/actions/runs/40807173460) also completed **SUCCESS** for the same source. Full Backup Restore Admission Chain #40807173544 was PENDING at record creation, not claimed successful.
+- **Why safe:** Only the CI-reachable read-only source-negative Python validator changed (+55 lines, no deletions). Reviewed publisher/independent workflows, typed eight-domain evidence registry, recovery objectives, environment generations, credentials, traffic and human promotion authority were untouched.
+- **Reusable mechanism:** Pin reviewed noncancelling concurrency separately from SHA/root/job authority. Complete typed eight-domain coverage and independent review remain mandatory for final production-equivalent recovery candidates; learning/CI results cannot satisfy these gates.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No registered generation, approved objective, executable reviewed request, generation evidence, typed eight-domain record, final candidate or human promotion.
+- **Next safe target:** Audit generation independent-review negative workflow concurrency without modifying production authority.
