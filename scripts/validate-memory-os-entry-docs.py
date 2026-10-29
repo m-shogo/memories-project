@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import importlib.util
 import re
 import subprocess
 import sys
@@ -2718,6 +2719,45 @@ def main() -> int:
                                 or "risk: BLOCKED_" not in cli_result.stdout):
                             failures.append("prewrite workflow fanout CLI failed closed: "
                                             + candidate)
+
+    # Independently exercise the actual production-operability JSON loader
+    # with raw invalid UTF-8, without editing its 79-workflow-fanout source.
+    # A backslash-x JSON escape is not an invalid UTF-8 byte sequence.
+    operability_reader = REPO_ROOT / "scripts/validate-memory-os-operability.py"
+    if operability_reader.is_symlink() or not operability_reader.is_file():
+        failures.append("operability UTF-8 actual-loader source missing or symlinked")
+    else:
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "memory_os_operability_utf8_probe", operability_reader
+            )
+            if spec is None or spec.loader is None:
+                raise RuntimeError("operability module loader unavailable")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            with tempfile.TemporaryDirectory(prefix="ops-utf8-negative-") as temporary:
+                candidate = Path(temporary) / "authority.json"
+                candidate.write_bytes(b'{"valid":true}')
+                if module.load_json(candidate) != {"valid": True}:
+                    failures.append("operability UTF-8 positive control failed")
+                raw_invalid = b'{"invalid":"' + bytes([0xff]) + b'"}'
+                try:
+                    raw_invalid.decode("utf-8")
+                except UnicodeDecodeError:
+                    pass
+                else:
+                    failures.append("operability UTF-8 fixture is not invalid")
+                candidate.write_bytes(raw_invalid)
+                try:
+                    module.load_json(candidate)
+                except module.ValidationFailure:
+                    print("operability actual-loader raw invalid UTF-8 negative PASS")
+                else:
+                    failures.append("operability actual-loader accepted raw invalid UTF-8")
+        except Exception as exc:
+            failures.append(
+                "operability actual-loader UTF-8 probe failed: " + type(exc).__name__
+            )
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
