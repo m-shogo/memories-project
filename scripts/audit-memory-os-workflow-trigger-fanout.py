@@ -111,16 +111,30 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # An escaped quoted mapping key may decode to push/pull_request.
     if re.search(r'(?m)^  "[^"\r\n]*\\[^"\r\n]*"[ \t]*:', block):
         return True
+    # YAML mapping/list indentation is not fixed at two spaces. A noncanonical
+    # event key must not be mistaken for an absent push/PR trigger.
+    for row in block.splitlines():
+        event_row = re.match(
+            r"""^([ \t]+)(['"]?)(push|pull_request_target|pull_request)\2[ \t]*:""", row
+        )
+        if event_row and (event_row.group(1) != "  " or event_row.group(2)):
+            return True
     # Block YAML sequences are equivalent to inline event arrays. Treat
     # aliases or unreviewed entries as potentially unfiltered push/PR.
     live_rows = [
         row for row in block.splitlines()
         if row.strip() and not row.lstrip().startswith("#")
     ]
-    if any(row.startswith("  - ") for row in live_rows):
-        if any(not row.startswith("  - ") for row in live_rows):
+    sequence_rows = [
+        row for row in live_rows if re.match(r"^[ \t]+-[ \t]+", row)
+    ]
+    if sequence_rows:
+        if len(sequence_rows) != len(live_rows):
             return True
-        return any(row[4:].strip() != "workflow_dispatch" for row in live_rows)
+        return any(
+            re.sub(r"^[ \t]+-[ \t]+", "", row).strip() != "workflow_dispatch"
+            for row in sequence_rows
+        )
     for event in ("push", "pull_request_target", "pull_request"):
         match = re.search(
             r"(?ms)^  " + event + r":\s*\n(.*?)(?=^  [A-Za-z_][\w-]*:|\Z)",
@@ -310,6 +324,13 @@ def self_test(repo_root: Path) -> None:
         ("nested escaped event key", 'on:\n  "p\\u0075sh":\n    paths:\n      - "docs/**"\n',
          "scripts/a.py", True),
         ("plain quoted unrelated root", '"name": workflow_dispatch\n', "scripts/a.py", False),
+        ("one-space event map", 'on:\n push:\n  paths:\n   - "docs/**"\n', "scripts/a.py", True),
+        ("four-space event map", 'on:\n    push:\n      paths:\n        - "docs/**"\n', "scripts/a.py", True),
+        ("four-space quoted event map", 'on:\n    "pull_request":\n      paths:\n        - "docs/**"\n',
+         "scripts/a.py", True),
+        ("one-space event list", 'on:\n - push\n', "scripts/a.py", True),
+        ("three-space event list", 'on:\n   - pull_request_target\n', "scripts/a.py", True),
+        ("four-space dispatch only", 'on:\n    workflow_dispatch:\n', "scripts/a.py", False),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -338,9 +359,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 57 or hashlib.sha256(
+    if (len(cases) != 63 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "3fdb90e2ec80278eb0ac49738367850c7c0665a6a74c4b06b3aac6090507286e"):
+    ).hexdigest() != "965e823a4617130641be07b6f84b56b42a820a15b8dc8eec9fca1ff6cb6f6ec0"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
