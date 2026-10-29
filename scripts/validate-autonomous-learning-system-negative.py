@@ -497,6 +497,8 @@ def prove_go_embed_negatives() -> None:
         ("direct", "//go:embed static/*\nvar assets embed.FS\n"),
         ("indented", "    //go:embed assets/config.json\n"),
         ("empty", "//go:embed\n"),
+        ("tab separator", "//go:embed\tassets/config.json\n"),
+        ("tab indent", "\t//go:embed assets/config.json\n"),
     ):
         try:
             reject_unreviewed_go_embeds(source)
