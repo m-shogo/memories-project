@@ -499,6 +499,7 @@ def validate(repo_root: Path) -> None:
 
 
 PREWRITE_MAX_SOURCE_BYTES = 512 * 1024
+PREWRITE_MAX_SOURCE_LINES = 4096
 PREWRITE_MAX_ADDED_LINES = 80
 PREWRITE_MAX_REMOVED_LINES = 40
 
@@ -518,6 +519,10 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
     if baseline == candidate:
         raise ValidationFailure("prewrite candidate has no changes")
     for label, source in (("baseline", baseline), ("candidate", candidate)):
+        # Bound SequenceMatcher's potentially quadratic line comparisons.
+        # Keep the checked-in 3,566-line negative validator admissible.
+        if len(source.splitlines()) > PREWRITE_MAX_SOURCE_LINES:
+            raise ValidationFailure("prewrite " + label + " Python line count exceeds reviewed bound")
         try:
             tree = ast.parse(source)
         except (SyntaxError, ValueError, RecursionError) as exc:
@@ -578,7 +583,13 @@ def prove_prewrite_python_negatives() -> None:
                                 max_added=1, max_removed=0) != (1, 0):
         raise ValidationFailure("prewrite positive control failed")
     with_comment = baseline.replace('    return 0\n', '    # removable\n    return 0\n')
+    overlong = "# bounded fixture\n" * (PREWRITE_MAX_SOURCE_LINES + 1) + baseline
     cases = (
+        ("overlong candidate", overlong, sha, 40, 20,
+         "candidate Python line count exceeds reviewed bound", baseline),
+        ("overlong baseline", overlong.replace("    return 0\n", "    # edit\n    return 0\n"),
+         hashlib.sha256(overlong.encode("utf-8")).hexdigest(), 40, 20,
+         "baseline Python line count exceeds reviewed bound", overlong),
         ("unchanged", baseline, sha, 40, 20, "no changes", baseline),
         ("bad baseline hash", candidate, "0" * 64, 40, 20, "SHA-256 mismatch", baseline),
         ("syntax", baseline + 'def broken(:\n', sha, 40, 20, "syntax invalid", baseline),
