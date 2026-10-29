@@ -81,6 +81,55 @@ def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[s
         raise RuntimeError(f"negative case leaked implementation traceback: {name}")
 
 
+def require_reviewed_learning_negative_stdout(source: str) -> None:
+    """Reject extra stdout before the exact downstream PASS classifier runs."""
+    import ast
+    tree = ast.parse(source)
+    mains = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name == "main"]
+    stdout_calls = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "print"):
+            continue
+        stderr = any(kw.arg == "file" and isinstance(kw.value, ast.Attribute)
+                     and isinstance(kw.value.value, ast.Name)
+                     and kw.value.value.id == "sys" and kw.value.attr == "stderr"
+                     for kw in node.keywords)
+        if not stderr:
+            stdout_calls.append(node)
+    if (len(mains) != 1 or len(stdout_calls) != 1 or
+            not any(node is stdout_calls[0] for node in ast.walk(mains[0]))):
+        raise RuntimeError("unreviewed learning negative stdout")
+    call = stdout_calls[0]
+    if len(call.args) != 1 or not isinstance(call.args[0], ast.JoinedStr):
+        raise RuntimeError("unreviewed learning negative stdout")
+    static = "".join(part.value for part in call.args[0].values
+                     if isinstance(part, ast.Constant) and isinstance(part.value, str))
+    if static != "Autonomous learning negative validation PASS ( fail-closed cases)":
+        raise RuntimeError("unreviewed learning negative stdout")
+
+
+def prove_learning_negative_stdout_negatives() -> None:
+    base = 'def main():\n    print(f"Autonomous learning negative validation PASS ({count} fail-closed cases)")\n'
+    require_reviewed_learning_negative_stdout(base)
+    require_reviewed_learning_negative_stdout(base + 'print("debug", file=sys.stderr)\n')
+    for label, candidate in (
+        ("extra stdout", base + 'print("extra")\n'),
+        ("wrong marker", base.replace("Autonomous learning", "Autonomous learn")),
+        ("disguised stdout", base + 'print("extra", file=sys.stdout)\n'),
+        ("missing marker", "def main():\n    pass\n"),
+        ("helper stdout", base + 'def helper():\n    print("extra")\n'),
+    ):
+        try:
+            require_reviewed_learning_negative_stdout(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed learning negative stdout":
+                raise
+        else:
+            raise RuntimeError("learning negative stdout fixture accepted: " + label)
+
+
 def prove_failure_classifier() -> None:
     # A validator startup/implementation failure must not count as a
     # successful negative admission rejection.
@@ -314,7 +363,7 @@ def prove_upload_route_go_import_parser() -> None:
     sample_digest = "5af039209052f569a5e26c8aa8ea0caa6fccf5dfd0886ae59cb8afc5168cd55f"
     require_reviewed_upload_route_input_set(sample_entries, 2, sample_digest)
     for label, candidate in (
-        ("external import swap", {next(iter(sample_entries)), "a.go\tother/external"}),
+        ("external import swap", {sorted(sample_entries)[0], "a.go\tother/external"}),
         ("import file move", {entry.replace("/a.go\t", "/b.go\t") for entry in sample_entries}),
     ):
         try:
@@ -1736,6 +1785,11 @@ def main() -> int:
     args = parser.parse_args()
     source_root = args.repo_root.resolve()
 
+    negative_source = source_root / "scripts/validate-autonomous-learning-system-negative.py"
+    if negative_source.is_symlink() or not negative_source.is_file():
+        raise RuntimeError("unreviewed learning negative stdout source alias")
+    require_reviewed_learning_negative_stdout(negative_source.read_text(encoding="utf-8"))
+    prove_learning_negative_stdout_negatives()
     prove_failure_classifier()
 
     # A negative must reject for its own intended invariant, not merely for
