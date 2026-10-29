@@ -1,0 +1,16 @@
+# Supplemental OPS learning — load-readiness-note event-scoped concurrency (2026-10-29)
+
+Append-only supplemental operational learning. This record is not the canonical learning authority, production or backup/restore evidence, RPO/RTO/skew evidence, drill evidence, credentials, traffic, readiness, generation/objective authority, typed eight-domain non-resurrection evidence, independent review or human promotion.
+
+## Material success
+
+- **Outcome:** [ba730888](https://github.com/m-shogo/memories-project/commit/ba730888af36b115b7388f6a142674b322c715ee) adds a fail-closed effective YAML publisher concurrency guard and 12 exact-diagnostic negative fixtures to the independent read-only `scripts/validate-memory-os-load-readiness-note-source-negative.py`. The reviewed event-scoped `reconcile-load-readiness-note-${{ github.event_name }}-${{ github.event.pull_request.number || 'so' }}` group and `cancel-in-progress: false` remain unchanged.
+- **Observed evidence:** [Load Readiness Note Source Negative #40834431828](https://github.com/m-shogo/memories-project/actions/runs/40834431828) completed SUCCESS on the exact code SHA. Job 123315788129 logs 12/12 concurrency negatives, existing root/permission and trigger negatives, 13 source mutations, 14 identity shell cases and `production evidence generated: false`. Git compare from 031b4c5d to ba730888 shows only one read-only validator modified (60 additions, zero deletions).
+- **Why safe:** Reviewed publisher/independent workflows and production authority were not changed. No generation, objective, drill, recovery evidence, typed eight-domain non-resurrection record, independent review, credential, traffic, readiness or promotion was fabricated or admitted.
+- **Reusable executable mechanism:** Compare the complete effective concurrency mapping and prove exact intended diagnostics against changed, omitted, duplicated, quoted, spaced and extra YAML leaves. The existing independent CI is reachable on PR/push for its own validator path.
+- **Protected-authority check:** All nine canonical protected blob SHAs remained unchanged after the code commit, including Production Status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` (`productionDecision=NO_GO`), canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, mandatory contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and generation/objective/drill/evidence/non-resurrection/promotion registries.
+- **Retry condition:** Revalidate after a material change to the reviewed event group, cancellation semantics, independent CI reachability or negative harness. Avoid unchanged Upload Route wildcard/Quay MinIO HTTP 401 and human-approval blockers.
+
+## OPS-P0-007 boundary
+
+Registered environment generations remain distinct from semantically eligible unsuperseded generations from distinct environments. Preflight requires an explicitly human-approved current recovery objective; reviewed drill requests are planning-only until executable, and generation recovery evidence must bind to a current executable reviewed request. Final candidates require complete typed eight-domain non-resurrection coverage and independent review on top of generation/objective gates. Human production promotion remains separate and non-automatic. Learning cannot satisfy any production gate.
