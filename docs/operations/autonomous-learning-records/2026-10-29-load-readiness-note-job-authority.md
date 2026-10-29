@@ -1,0 +1,16 @@
+# Supplemental OPS learning — load readiness job mapping authority (2026-10-29)
+
+Append-only supplemental learning. Not the canonical learning authority, production/backup/restore/RPO/RTO/skew/drill evidence, credentials, traffic, readiness, generation/objective authority, typed eight-domain non-resurrection coverage, independent review or human promotion.
+
+## Material success
+
+- **Outcome:** [dc65d8c8](https://github.com/m-shogo/memories-project/commit/dc65d8c80504a29fbb7b1e79239bceeb0d8ecce5) adds a fail-closed effective job-mapping and pre-step authority check to the existing independent read-only load-readiness source-negative validator. It separately pins publisher `validate-pr` (read), publisher `reconcile` (write) and independent `source-negative` (read), with 30 exact-diagnostic semantic negatives for conditions, permissions, runner, timeout, continuation and quoted/spaced/duplicate YAML shadows.
+- **Observed evidence:** [Load Readiness Note Source Negative #40834876097](https://github.com/m-shogo/memories-project/actions/runs/40834876097) completed SUCCESS on the exact code SHA. Job 123317207263 logs `PASS: load-readiness job authority (30 exact-diagnostic negatives)`, prior 12 concurrency and 12 root/permission negatives, event trigger matrix, 13 source mutations, 14 identity shell runtime cases and `production evidence generated: false`. Git compare from 17d2bff5 to dc65d8c8 modifies only the read-only validator (82 additions, zero deletions).
+- **Why safe:** No reviewed workflow, production registry, evidence, credential, traffic, real generation, human-approved objective, executable reviewed request, typed eight-domain record, independent review, readiness or human promotion was modified.
+- **Reusable executable mechanism:** Require exact reviewed job mapping names and complete pre-step headers, and independently mutate each condition, permission and execution leaf with exact expected diagnostics. Distinguish read-only PR and independent CI from the authorized publisher writer.
+- **Protected-authority check:** All nine canonical protected blobs remained unchanged after the code commit, including Production Status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` (`productionDecision=NO_GO`), canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, mandatory contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` and generation/objective/drill/evidence/non-resurrection/promotion registries.
+- **Retry condition:** Revalidate after reviewed load-readiness job topology, permissions, conditions, CI triggers or negative harness change. Do not repeat unchanged Upload Route rate-limit wildcard/Quay MinIO HTTP 401 or human-approval blockers.
+
+## OPS-P0-007 boundary
+
+Registered generations are distinct from semantically eligible unsuperseded generations from distinct environments; preflight also requires a current explicitly human-approved recovery objective. Reviewed drill requests are planning-only until executable; new generation recovery evidence binds to a current executable reviewed request. Final candidates additionally require complete typed eight-domain non-resurrection coverage and independent review. Human promotion remains separate and non-automatic. Learning never satisfies production gates.
