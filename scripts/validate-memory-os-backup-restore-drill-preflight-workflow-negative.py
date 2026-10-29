@@ -155,13 +155,18 @@ def prove_guard_trigger_negatives(guard: str) -> None:
                 mutated = prefix + push_marker + suffix.replace(token, "", 1)
             try:
                 validate_guard_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("preflight independent CI accepted missing " + event + " trigger: " + item)
+            except SystemExit as exc:
+                expected = "preflight independent CI " + event + " exact trigger inventory drift"
+                if str(exc) != expected:
+                    raise SystemExit("preflight independent CI wrong missing-trigger diagnostic: "
+                                     + event + "/" + item + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("preflight independent CI accepted missing " + event + " trigger: " + item)
     try:
         validate_guard_trigger_reachability(guard, trigger_paths=GUARD_TRIGGER_PATHS[:-1])
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if str(exc) != "preflight independent CI trigger inventory shortened or duplicated":
+            raise SystemExit("preflight independent CI wrong shortened-inventory diagnostic: " + str(exc)) from exc
     else:
         raise SystemExit("preflight independent CI shortened trigger inventory accepted")
     for event, marker in (
@@ -181,10 +186,14 @@ def prove_guard_trigger_negatives(guard: str) -> None:
                 raise SystemExit("preflight independent CI addition fixture unchanged")
             try:
                 validate_guard_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("preflight independent CI accepted " + event + " addition: " + label)
-    print("PASS: preflight independent CI event-specific trigger reachability (6 removals; 8 additions; 1 shortened inventory negative)")
+            except SystemExit as exc:
+                expected = "preflight independent CI " + event + " exact trigger inventory drift"
+                if str(exc) != expected:
+                    raise SystemExit("preflight independent CI wrong addition diagnostic: "
+                                     + event + "/" + label + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("preflight independent CI accepted " + event + " addition: " + label)
+    print("PASS: preflight independent CI exact-diagnostic event-specific trigger reachability (6 removals; 8 additions; 1 shortened inventory negative)")
 
 
 
