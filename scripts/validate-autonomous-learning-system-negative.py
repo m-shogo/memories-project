@@ -630,6 +630,48 @@ def prove_upload_route_event_sequence_negatives() -> None:
             raise RuntimeError("Upload Route event sequence negative accepted: " + label)
 
 
+def require_reviewed_upload_route_snapshot_functions(
+    source: str, expected: dict[str, str]
+) -> None:
+    """Reject changed recursive authority snapshot/read scope before trigger claims."""
+    for name, digest in expected.items():
+        marker = "def " + name + "("
+        if source.count(marker) != 1:
+            raise RuntimeError("Upload Route reconciler snapshot function changed: " + name)
+        start = source.index(marker)
+        end = source.find("\ndef ", start + len(marker))
+        if end < 0:
+            raise RuntimeError("Upload Route reconciler snapshot function changed: " + name)
+        fragment = source[start:end + 1]
+        if hashlib.sha256(fragment.encode("utf-8")).hexdigest() != digest:
+            raise RuntimeError("Upload Route reconciler snapshot function changed: " + name)
+
+
+def prove_upload_route_snapshot_function_negatives() -> None:
+    base = ("def current_authority_files() -> list[Path]:\n    return []\n\n\n"
+            "def snapshot_authority_files() -> None:\n    pass\n\n\n"
+            "def later():\n    pass\n")
+    expected = {}
+    for name in ("current_authority_files", "snapshot_authority_files"):
+        start = base.index("def " + name + "(")
+        end = base.index("\ndef ", start + 1)
+        expected[name] = hashlib.sha256(base[start:end + 1].encode("utf-8")).hexdigest()
+    require_reviewed_upload_route_snapshot_functions(base, expected)
+    for label, mutated in (
+        ("changed scanner", base.replace("return []", "return [Path('.')]")),
+        ("changed snapshot", base.replace("    pass\n", "    return None\n", 1)),
+        ("removed snapshot", base.replace("def snapshot_authority_files()", "def renamed()")),
+        ("shadowed scanner", base + "def current_authority_files():\n    pass\n"),
+    ):
+        try:
+            require_reviewed_upload_route_snapshot_functions(mutated, expected)
+        except RuntimeError as exc:
+            if not str(exc).startswith("Upload Route reconciler snapshot function changed: "):
+                raise
+        else:
+            raise RuntimeError("Upload Route snapshot function negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -641,6 +683,16 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_input_set_negatives()
     prove_upload_route_python_source_negatives()
     prove_upload_route_event_sequence_negatives()
+    prove_upload_route_snapshot_function_negatives()
+    reconciler = source_root / "scripts/reconcile-memory-os-upload-route-authority.py"
+    require_unaliased_go_path(source_root, reconciler)
+    require_reviewed_upload_route_snapshot_functions(
+        reconciler.read_text(encoding="utf-8"),
+        {
+            "current_authority_files": "5f61d86e5e8b3e97a61a84682e7790725897ce161f26888d7c6604801669882c",
+            "snapshot_authority_files": "6a11c9e680ca9f9499cd145b10ee81d90f9f59ffb2385ef068c36a8e81c7515d",
+        },
+    )
     for relative, count, digest in (
         ("scripts/validate-memory-os-metrics.py", 4,
          "28b4778ad36ea2548201518eae8e53483bf2a1165bafea185b3dc03519ea277f"),
