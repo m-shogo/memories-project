@@ -325,14 +325,48 @@ def main() -> int:
                        for _, token, _ in REQUIRED)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
+        required_label = {
+            "checkout floating": "checkout SHA",
+            "setup floating": "setup SHA",
+            "PR credentials": "PR no credentials",
+            "writer credentials": "publisher credentials",
+        }.get(label, label)
+        expected = {
+            "PR target": "preflight eligibility consistency CI trigger marker drift",
+            "self trigger": "preflight eligibility consistency CI pull_request exact trigger inventory drift",
+            "write scope": "preflight eligibility consistency CI job permission leaf shadow drift",
+        }.get(label, ("preflight eligibility consistency CI complete workflow source drift"
+                      if label in {"inserted Action", "inserted shell"}
+                      else "preflight eligibility consistency CI source drift: " + required_label))
         try:
             validate(mutated, check_blob=not semantic)
-        except SystemExit:
-            continue
-        raise SystemExit("preflight eligibility consistency CI accepted unreviewed mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("preflight eligibility consistency wrong source negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("preflight eligibility consistency CI accepted unreviewed mutation: " + label)
+    # The self-trigger occurs in PR and push: prove the push event separately
+    # rather than repeating the first-occurrence PR removal.
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    self_trigger = REQUIRED[1][1]
+    if source.count(push_marker) != 1:
+        raise SystemExit("preflight eligibility consistency push fixture marker drift")
+    prefix, push_block = source.split(push_marker, 1)
+    if push_block.count(self_trigger) != 1:
+        raise SystemExit("preflight eligibility consistency push self-trigger anchor drift")
+    push_mutated = prefix + push_marker + push_block.replace(self_trigger, "", 1)
+    try:
+        validate(push_mutated, check_blob=False)
+    except SystemExit as exc:
+        expected = "preflight eligibility consistency CI push exact trigger inventory drift"
+        if str(exc) != expected:
+            raise SystemExit("preflight eligibility consistency wrong push diagnostic: " + str(exc)) from exc
+    else:
+        raise SystemExit("preflight eligibility consistency accepted missing push self-trigger")
     if (semantic_count, blob_only_count) != (len(cases) - 2, 2):
         raise SystemExit("preflight eligibility consistency semantic/blob mutation coverage drift")
-    print(f"PASS: preflight eligibility consistency CI workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
+    print(f"PASS: preflight eligibility consistency CI workflow source admission ({semantic_count} semantic plus 1 push-only self-trigger; {blob_only_count} blob-only exact-diagnostic negatives)")
     return 0
 
 
