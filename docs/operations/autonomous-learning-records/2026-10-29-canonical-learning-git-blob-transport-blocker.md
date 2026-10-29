@@ -1,0 +1,19 @@
+# Supplemental OPS learning — canonical Git blob append transport blocker (2026-10-29)
+
+Append-only supplemental failure record only. The canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` remains authoritative. This record cannot satisfy any production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion gate.
+
+## Material failure
+
+- **Symptom:** Attempted to append a bounded 5,288-character section containing four exact-source CI successes and a wildcard-trigger audit to the canonical approximately 4.17 MB learning history using Git Data `create_blob`, rather than the previously failed Contents API full-file `update_file`. The blob creation call failed with `h2 protocol error: error reading a body from connection`.
+- **Observed evidence:** Before the attempt, `so` HEAD was `2dda033204158f19c619fdb3e263c9ac4cabfc3c`, canonical blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` (4,171,820 characters), proposed append-only content 4,177,108 characters. The call returned no new blob SHA. A fresh post-failure read confirmed the same branch HEAD and canonical blob SHA; no ref update, tree creation or commit was attempted.
+- **Verified root cause or explicit unknown:** **Unknown**. The transport error occurred while reading the Git Data blob-creation response/body. It is not verified whether an unattached blob was created server-side; no branch mutation is evidenced. It may reflect connector HTTP/2 payload/response limits, but this is unproven.
+- **Failed approach:** Switching from Contents API to a single full-content Git blob create did not bypass the large-payload transport limitation. Repeating either unchanged 4.17 MB full-content upload is prohibited.
+- **Correction:** Stop the canonical write attempt; retain existing canonical bytes unchanged. The four CI-proven lessons and audit already exist in separate append-only supplemental records. Do not treat supplemental history as the canonical authority or production evidence.
+- **Executable recurrence guard:** Require exact HEAD/blob SHA re-reads before any proposed append, verify original prefix byte-for-byte, require a bounded append-only suffix, and use an expected-head CAS ref update only after a successful verified blob/tree/commit creation. No executable transport guard was added by this failed attempt; the failure itself remains a scoped blocker.
+- **Retry condition:** Retry only after a materially changed tool capability (e.g. verified streaming/chunked append or small-delta server-side Git object construction), documented connector payload limit improvement, or a proven bounded transport path. Do not repeat an unchanged full-content Git blob or Contents API request.
+
+## Material success / protected authority check
+
+- **Outcome/evidence:** Existing supplemental records preserve the successful [Live Object #40841135799](https://github.com/m-shogo/memories-project/actions/runs/40841135799), [Load Foundation #40841254210](https://github.com/m-shogo/memories-project/actions/runs/40841254210), [Live Load concurrency #40841460217](https://github.com/m-shogo/memories-project/actions/runs/40841460217) and [Live Load job authority #40841584505](https://github.com/m-shogo/memories-project/actions/runs/40841584505) CI evidence. No production promotion or evidence was created.
+- **Why safe/reusable mechanism:** The failed blob creation never proceeded to tree, commit or branch-ref writes. Separate append-only supplemental learning can preserve history while canonical transport remains blocked, but cannot replace canonical authority.
+- **Protected-authority check:** Production Status remains `productionDecision=NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED`. Generation/objective/drill/evidence/typed eight-domain/promotion registries remain empty and human production promotion remains separate and non-automatic.
