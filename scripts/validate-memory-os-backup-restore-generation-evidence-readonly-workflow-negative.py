@@ -318,7 +318,17 @@ def main() -> int:
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit("generation evidence readonly negative anchor missing: " + label)
-        mutated = source.replace(old, replacement, 1)
+        if label == "removed push self-trigger":
+            # Removing the first occurrence only probes PR reachability, not push.
+            push_marker = "  push:\n    branches: [so]\n    paths:\n"
+            if source.count(push_marker) != 1:
+                raise SystemExit("generation evidence readonly push mutation marker drift")
+            prefix, push_block = source.split(push_marker, 1)
+            if push_block.count(old) != 1:
+                raise SystemExit("generation evidence readonly push self-trigger anchor drift")
+            mutated = prefix + push_marker + push_block.replace(old, replacement, 1)
+        else:
+            mutated = source.replace(old, replacement, 1)
         if mutated == source:
             raise SystemExit("generation evidence readonly mutation unchanged: " + label)
         semantic = any(mutated.count(token) != source.count(token)
@@ -327,11 +337,22 @@ def main() -> int:
             raise SystemExit("generation evidence readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
+        expected = {
+            "PR target": "generation evidence readonly trigger marker drift",
+            "self-trigger": "generation evidence readonly pull_request exact trigger inventory drift",
+            "removed push self-trigger": "generation evidence readonly push exact trigger inventory drift",
+            "read-only token": "generation evidence readonly permission leaf shadow drift",
+        }.get(label, ("generation evidence readonly complete source drift"
+                      if label in digest_only
+                      else "generation evidence readonly source drift: " + label))
         try:
             validate(mutated, check_blob=not semantic)
-        except SystemExit:
-            continue
-        raise SystemExit("generation evidence readonly accepted forbidden mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit("generation evidence readonly wrong source negative diagnostic: "
+                                 + label + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("generation evidence readonly accepted forbidden mutation: " + label)
     if (semantic_count, blob_only_count) != (19, 2):
         raise SystemExit("generation evidence readonly semantic/blob mutation coverage drift")
     print(f"PASS: generation evidence readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
