@@ -859,6 +859,52 @@ def reconcile_runtime() -> None:
     print("PASS: host-failure source-bound disposable reconcile and atomic rollback negatives")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind reviewed deletion-worker host-failure admission serialization."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = "  group: deletion-worker-host-failure-admission-" + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    expected = group + "  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("deletion host-failure publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("deletion host-failure publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Reject cancellation and group shadows of host-failure admission."""
+    validate_concurrency_authority(publisher)
+    group = "  group: deletion-worker-host-failure-admission-" + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: deletion-worker-host-failure-admission-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("deletion host-failure concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("deletion host-failure unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "deletion host-failure publisher concurrency scope drift":
+                raise SystemExit("deletion host-failure wrong concurrency diagnostic: " + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("deletion host-failure accepted concurrency mutation: " + name)
+    print("PASS: deletion host-failure publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     publisher, independent = source(PUBLISHER), source(INDEPENDENT)
     if blob(source(RECONCILER)) != REVIEWED_RECONCILER or blob(source(RECONCILE_NEGATIVE)) != REVIEWED_RECONCILE_NEGATIVE:
@@ -875,6 +921,7 @@ def main() -> int:
     validate_permission(permission)
     validate_job_authority(publisher, independent, permission)
     prove_job_authority_negatives(publisher, independent, permission)
+    prove_concurrency_authority_negatives(publisher)
     validate_permission_validator(permission_validator)
     permission_validator_negatives(permission_validator)
     permission_negatives(permission)
