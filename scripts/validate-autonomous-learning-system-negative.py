@@ -1173,6 +1173,83 @@ def prove_upload_route_job_execution_negatives() -> None:
             raise RuntimeError("Upload Route job execution negative accepted: " + label)
 
 
+COMMON_UPLOAD_ROUTE_STEPS = (
+    "Set up Go", "Set up Python", "Install validation dependencies",
+    "Start local MinIO", "Confirm exact clean source",
+    "Validate reconcile rollback boundary",
+    "Reconcile registered routes and authority contracts",
+    "Format and verify source diff", "Run focused route and live upload regressions",
+    "Validate metrics, rate-limit and observability contracts",
+    "Confirm reconcile is idempotent",
+)
+
+
+def reviewed_upload_route_steps(event: str) -> tuple[str, ...]:
+    return (("Checkout exact authority source", "Capture validation source", *COMMON_UPLOAD_ROUTE_STEPS,
+             "Commit reconciled route authority") if event == "push" else
+            ("Checkout exact PR head", *COMMON_UPLOAD_ROUTE_STEPS,
+             "Require deterministic whole-worktree authority"))
+
+
+def require_reviewed_upload_route_step_order(source: str, event: str) -> None:
+    """Bind step order and source-output id to the reviewed workflow."""
+    import re
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route step order")
+    names = re.findall(r"(?m)^      - name: ([^\r\n]+)$", source)
+    mentions = re.findall(r"""(?m)^[ \t]*-\s*(?:name|['"]name['"])\s*:""", source)
+    step_keys = re.findall(r"""(?m)^[ \t]*(?:steps|['"]steps['"])\s*:""", source)
+    if (tuple(names) != reviewed_upload_route_steps(event) or len(mentions) != len(names)
+            or len(step_keys) != 1 or source.count("    steps:\n") != 1
+            or re.search(r"""(?m)^[ \t]*-\s*\{[^\r\n]*(?:name|['"]name['"])\s*:""", source)):
+        raise RuntimeError("unreviewed Upload Route step order")
+    id_steps = []
+    for section in re.split(r"(?m)^      - name: ", source)[1:]:
+        if re.search(r"(?m)^        id:", section):
+            id_steps.append(section.splitlines()[0])
+    ids = re.findall(r"(?m)^        id: ([^\r\n]+)$", source)
+    id_mentions = re.findall(r"""(?m)^[ \t]*(?:id|['"]id['"])\s*:""", source)
+    if (ids != (["source"] if event == "push" else [])
+            or id_steps != (["Capture validation source"] if event == "push" else [])
+            or len(id_mentions) != len(ids)):
+        raise RuntimeError("unreviewed Upload Route step order")
+
+
+def prove_upload_route_step_order_negatives() -> None:
+    def fixture(event: str) -> str:
+        return "    steps:\n" + "".join(
+            "      - name: " + name + "\n" +
+            ("        id: source\n" if name == "Capture validation source" else "")
+            for name in reviewed_upload_route_steps(event))
+    base, pr = fixture("push"), fixture("pull_request")
+    require_reviewed_upload_route_step_order(base, "push")
+    require_reviewed_upload_route_step_order(pr, "pull_request")
+    for label, source, event in (
+        ("rename", base.replace("Start local MinIO", "Start MinIO"), "push"),
+        ("swap", base.replace("      - name: Set up Go\n      - name: Set up Python\n",
+                               "      - name: Set up Python\n      - name: Set up Go\n"), "push"),
+        ("remove", base.replace("      - name: Start local MinIO\n", ""), "push"),
+        ("add", base + "      - name: Extra\n", "push"),
+        ("duplicate", base.replace("      - name: Start local MinIO\n",
+                                    "      - name: Start local MinIO\n      - name: Start local MinIO\n"), "push"),
+        ("quoted name", base.replace("      - name: Start local MinIO", "      - 'name': Start local MinIO"), "push"),
+        ("flow name", base + "      - {name: Extra}\n", "push"),
+        ("source id", base.replace("id: source", "id: other"), "push"),
+        ("moved id", base.replace("        id: source\n", "").replace(
+            "      - name: Set up Go\n", "      - name: Set up Go\n        id: source\n"), "push"),
+        ("PR id", pr + "        id: source\n", "pull_request"),
+        ("duplicate steps", base + "    steps:\n", "push"),
+        ("quoted steps", base.replace("    steps:\n", "    'steps':\n"), "push"),
+    ):
+        try:
+            require_reviewed_upload_route_step_order(source, event)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route step order":
+                raise
+        else:
+            raise RuntimeError("Upload Route step-order negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1996,6 +2073,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_container_image_negatives()
     prove_upload_route_permission_negatives()
     prove_upload_route_job_execution_negatives()
+    prove_upload_route_step_order_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -2229,6 +2307,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_container_images(source)
         require_reviewed_upload_route_permissions(source, event)
         require_reviewed_upload_route_job_execution(source, event)
+        require_reviewed_upload_route_step_order(source, event)
         require_reviewed_upload_route_event_set(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
