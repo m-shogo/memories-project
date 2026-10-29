@@ -609,8 +609,15 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
             modules = [(node.module or "").split(".")[0]]
         else:
             modules = []
-        if any(module in {"importlib", "subprocess", "runpy", "ctypes", "builtins"}
-               for module in modules):
+        if any(module in {"importlib", "subprocess", "runpy", "ctypes", "builtins",
+                          "posixpath", "ntpath"} for module in modules):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        # os.path module aliases evade direct os.path.join(...) call matching.
+        if (isinstance(node, ast.Import) and
+                any(alias.name.startswith("os.path") for alias in node.names)):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.ImportFrom) and node.module == "os" and
+                any(alias.name == "path" for alias in node.names)):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         # Reviewed validators import Path directly. Module/constructor aliases
         # can assemble split-root paths without the tracked Path(...) call AST.
@@ -711,6 +718,9 @@ def prove_upload_route_python_source_negatives() -> None:
         ("pathlib module alias", base + 'import pathlib as pl\nY = pl.Path("docs") / "new.md"\n'),
         ("unreviewed pathlib constructor", base + 'from pathlib import PosixPath\nY = PosixPath("services")\n'),
         ("wildcard pathlib import", base + 'from pathlib import *\nY = Path("scripts")\n'),
+        ("os.path module alias", base + 'import os.path as p\nY = p.join("contracts", "new.json")\n'),
+        ("os.path from-import alias", base + 'from os import path as p\nY = p.join("docs", "new.md")\n'),
+        ("posixpath direct import", base + 'from posixpath import join\nY = join("services", "new")\n'),
         ("from os system", base + 'from os import system\nY = system("echo")\n'),
         ("runpy loader", base + "import runpy\n"),
         ("ctypes loader", base + "import ctypes\n"),
