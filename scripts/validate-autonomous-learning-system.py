@@ -282,6 +282,12 @@ def validate(repo_root: Path) -> None:
                     return True
                 # Eager reflective lookup of module execution callables is
                 # unreviewed even when the function is invoked indirectly.
+                # Eager attrgetter construction can defer a module-execution
+                # lookup behind a returned callable; alias closure is unknown.
+                if ((isinstance(node.func, ast.Name) and node.func.id == "attrgetter")
+                        or (isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "attrgetter")):
+                    return True
                 if (((isinstance(node.func, ast.Name) and node.func.id == "getattr")
                      or (isinstance(node.func, ast.Attribute) and node.func.attr == "getattr"))
                         and len(node.args) >= 2
@@ -670,6 +676,12 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 if (isinstance(node.func, ast.Attribute) and
                         node.func.attr in {"import_module", "run_module", "run_path", "exec_module"}):
                     return True
+                # Eager attrgetter construction can defer a module-execution
+                # lookup behind a returned callable; alias closure is unknown.
+                if ((isinstance(node.func, ast.Name) and node.func.id == "attrgetter")
+                        or (isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "attrgetter")):
+                    return True
                 if (((isinstance(node.func, ast.Name) and node.func.id == "getattr")
                      or (isinstance(node.func, ast.Attribute) and node.func.attr == "getattr"))
                         and len(node.args) >= 2
@@ -764,6 +776,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred reflective import", 'def helper():\n    getattr(importlib, "import_module")("math")\n', (2, 0)),
         ("deferred computed reflective import", 'def helper():\n    getattr(importlib, "import_" + "module")("math")\n', (2, 0)),
         ("deferred qualified reflective import", 'def helper():\n    builtins.getattr(importlib, "import_module")("math")\n', (2, 0)),
+        ("deferred attrgetter execution", 'def helper():\n    operator.attrgetter("import_module")(importlib)("math")\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -847,6 +860,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager qualified computed reflection", baseline.replace(
             'if __name__', 'builtins.getattr(loader, method)(None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager operator attrgetter execution", baseline.replace(
+            'if __name__', 'operator.attrgetter("import_module")(importlib)("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct attrgetter execution", baseline.replace(
+            'if __name__', 'attrgetter("import_module")(importlib)("math")\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
