@@ -1,0 +1,21 @@
+# Supplemental OPS learning — derived operability admission inventory publisher concurrency (2026-10-29)
+
+Append-only supplemental history only; not canonical learning, production/backup/restore/RPO/RTO/skew evidence, an approved recovery objective, environment generation, executable reviewed drill, typed eight-domain non-resurrection record, credentials, traffic, readiness, independent review or human promotion.
+
+## Material failure / executable recurrence prevention
+
+- **Symptom:** The operability admission inventory source-negative validator pinned reviewed full Git blobs, event/root/permission YAML, runtime, diagnostic safety and publisher source binding, but did not independently classify the derived inventory publisher's concurrency group or cancellation. Static coverage gap only; no observed production-evidence admission bypass.
+- **Observed evidence:** Reviewed publisher workflow blob `1792edd78dc74c49d22e50145a4b1dc41b61bb24` declares `operability-admission-inventory-so` and `cancel-in-progress: false`. Previous validator blob `22390d7ed18e1d28f5cccbae641cb0cdcd53b4d8` checked the root `concurrency:` key without nested-leaf semantic negatives.
+- **Verified root cause:** Root-key and Git blob checks reject changed bytes without independently identifying group/cancellation overrides or YAML-equivalent shadow leaves.
+- **Failed approach:** Treating a generic digest mismatch as sufficient proof of noncancelling inventory publication.
+- **Correction / recurrence guard:** [Commit `48f2d9d6`](https://github.com/m-shogo/memories-project/commit/48f2d9d699ff57860bdc59bdafdd863fe90e5d24) adds exact reviewed concurrency-block validation and ten expected-diagnostic negatives for global group, enabled cancellation, duplicate/spaced/quoted group and cancellation, extra leaf and removed cancellation. Each requires `operability inventory publisher concurrency scope drift`.
+- **Retry condition:** Revisit only if reviewed concurrency policy changes, a YAML semantic bypass is demonstrated or exact-source CI fails; do not retry unchanged MinIO HTTP 401, canonical-learning transfer, permission or human approval blockers.
+
+## Material success / protected authority
+
+- **Observed outcome/evidence:** [Operability Admission Inventory Source Negative #40809347485](https://github.com/m-shogo/memories-project/actions/runs/40809347485) completed **SUCCESS** at exact code `48f2d9d6`, with ten concurrency negatives, 42 YAML authority negatives, 35 source admission negatives and branch/event runtime checks. [Operability Admission Inventory #40809347516](https://github.com/m-shogo/memories-project/actions/runs/40809347516) also completed **SUCCESS** at that source; its log reports inventory validation exit code 0 at 2026-10-29 03:09 UTC after a roughly twelve-minute validation stage. The publisher was allowed to complete before appending this record to avoid a known stale-source CAS conflict.
+- **Why safe:** Only the CI-reachable read-only Python validator changed. Reviewed workflows, derived inventory, generation registry, production status, backup/recovery evidence, credentials, traffic and human promotion authority were not edited by this work.
+- **Reusable mechanism:** Pin noncancelling derived-inventory serialization separately from full-source digest and root permission checks; wait for an active source-bound publisher to finish before nonurgent learning commits. A derived inventory or CI result cannot become production readiness or human approval.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; environment generation registry blob `bfd1b04561a257d1a288bd127572bdad762bfae5` still has zero generations; autonomous learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged.
+- **Canonical-learning limitation:** The 4.17 MB canonical learning authority returned empty text through the current read path. The unchanged transfer blocker was not retried. This supplemental record does not replace canonical learning or satisfy production, RPO/RTO/skew, drill, credential, traffic, readiness or promotion gates.
+- **Next safe target:** Audit remaining generation-evidence/recovery-review source-negative CI concurrency semantics and existing trigger overlap, without modifying production evidence or human approval.
