@@ -219,8 +219,63 @@ def validate(publisher: str, independent: str, authority_negative: str | None = 
     validate_trigger_reachability(independent, publisher=False)
     validate_yaml_authority(publisher, 'publisher')
     validate_yaml_authority(independent, 'independent')
+    validate_concurrency_authority(publisher)
     check_source("lifecycle negative", read(AUTHORITY_NEGATIVE) if authority_negative is None else authority_negative,
                  AUTHORITY_NEGATIVE_SHA, ())
+
+
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed migration evidence publisher serialization independently of SHA."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: migration-evidence-registry-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    if (publisher.count(marker) != 1 or publisher.count(end) != 1
+            or publisher.split(marker, 1)[1].split(end, 1)[0] != expected):
+        raise SystemExit("migration evidence publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Ten exact-diagnostic negatives for migration evidence noncancellation."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: migration-evidence-registry-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    cases = (
+        ("global group", "  group: migration-evidence-registry-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancellation enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("migration evidence concurrency fixture anchor drift")
+    for name, replacement in cases:
+        changed = publisher.replace(original, replacement, 1)
+        if changed == publisher:
+            raise SystemExit("migration evidence unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "migration evidence publisher concurrency scope drift":
+                raise SystemExit(
+                    "migration evidence wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("migration evidence accepted concurrency mutation: " + name)
+    print("PASS: migration evidence publisher concurrency (10 exact-diagnostic negatives)")
 
 
 def validate_yaml_authority(content: str, kind: str) -> None:
@@ -646,6 +701,7 @@ def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
