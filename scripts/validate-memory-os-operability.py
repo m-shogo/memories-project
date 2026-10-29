@@ -8,9 +8,12 @@ import datetime as dt
 import json
 import math
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 MAX_JSON_BYTES = 1024 * 1024
+MAX_JSON_INTEGER_DIGITS = 128
+MAX_JSON_DEPTH = 64
 
 STATUS_PATH = Path("contracts/operations/production-operability-status.json")
 AUDIT_PATH = Path("docs/memory-os-production-operability-audit-2026-07-24.md")
@@ -83,6 +86,36 @@ def parse_finite_float(value: str) -> float:
     return parsed
 
 
+def parse_bounded_int(value: str) -> int:
+    if len(value.lstrip("-")) > MAX_JSON_INTEGER_DIGITS:
+        raise ValidationFailure("oversized operability JSON integer rejected")
+    return int(value)
+
+
+def enforce_json_depth(source: str) -> None:
+    """Bound structural nesting, ignoring brackets inside escaped JSON strings."""
+    depth = 0
+    quoted = False
+    escaped = False
+    for char in source:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char in "[{":
+            depth += 1
+            if depth > MAX_JSON_DEPTH:
+                raise ValidationFailure("operability JSON nesting exceeds reviewed limit")
+        elif char in "]}":
+            depth -= 1
+    # The JSON decoder independently rejects invalid delimiters and strings.
+
+
 def reject_duplicate_json_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     document: dict[str, Any] = {}
     for key, value in pairs:
@@ -105,17 +138,49 @@ def load_json(path: Path) -> dict[str, Any]:
             raw = source.read(MAX_JSON_BYTES + 1)
         if len(raw) > MAX_JSON_BYTES:
             raise ValidationFailure("operability JSON exceeds reviewed read limit")
+        source = raw.decode("utf-8")
+        enforce_json_depth(source)
         value = json.loads(
-            raw.decode("utf-8"),
+            source,
             parse_constant=reject_nonfinite_constant,
             parse_float=parse_finite_float,
+            parse_int=parse_bounded_int,
             object_pairs_hook=reject_duplicate_json_keys,
         )
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise ValidationFailure("operability JSON unreadable or invalid") from None
     if not isinstance(value, dict):
         raise ValidationFailure("operability JSON root must be object")
     return value
+
+
+def validate_json_reader_negatives() -> int:
+    """Exercise the real loader, not a duplicate permissive JSON parser."""
+    cases = {
+        "duplicate": b'{"x":1,"x":2}',
+        "nested duplicate": b'{"x":{"y":1,"y":2}}',
+        "NaN": b'{"x":NaN}',
+        "Infinity": b'{"x":Infinity}',
+        "float overflow": b'{"x":1e999}',
+        "oversized integer": ('{"x":' + '9' * (MAX_JSON_INTEGER_DIGITS + 1) + '}').encode("ascii"),
+        "deep nesting": ('{"x":' + '[' * MAX_JSON_DEPTH + '0' + ']' * MAX_JSON_DEPTH + '}').encode("ascii"),
+        "invalid UTF-8": b'{"x":"\\xff"}',
+        "oversized bytes": b' ' * (MAX_JSON_BYTES + 1),
+        "nonobject root": b'[1,2]',
+    }
+    with tempfile.TemporaryDirectory(prefix="memory-os-operability-json-negative-") as temp_dir:
+        path = Path(temp_dir) / "authority.json"
+        path.write_bytes(b'{"count":123,"text":"[[{{"}')
+        if load_json(path) != {"count": 123, "text": "[[{{"}:
+            raise ValidationFailure("operability JSON reader positive control failed")
+        for label, payload in cases.items():
+            path.write_bytes(payload)
+            try:
+                load_json(path)
+            except ValidationFailure:
+                continue
+            raise ValidationFailure("operability JSON reader negative accepted: " + label)
+    return len(cases)
 
 
 def string_list(value: Any, field: str, gate: str) -> list[str]:
@@ -388,6 +453,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
+        negatives = validate_json_reader_negatives()
         ready, total, decision = validate(args.repo_root.resolve())
     except ValidationFailure as exc:
         print(f"OPERABILITY VALIDATION FAILED: {exc}", file=sys.stderr)
@@ -397,6 +463,7 @@ def main() -> int:
         return 2
 
     print("Memory OS production-operability validation PASS")
+    print(f"strict JSON reader negatives rejected: {negatives}")
     print(f"ready gates: {ready}/{total}")
     print(f"production decision: {decision}")
     return 0
