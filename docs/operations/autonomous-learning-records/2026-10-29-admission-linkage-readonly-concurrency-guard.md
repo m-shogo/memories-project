@@ -1,0 +1,19 @@
+# Supplemental OPS learning — admission authority linkage readonly concurrency (2026-10-29)
+
+Append-only supplemental learning, not canonical authority or production/backup/restore/RPO/RTO/skew/drill/credential/traffic/readiness/promotion evidence. This record cannot register generations, approve recovery objectives, make drill requests executable, satisfy typed eight-domain coverage, supply independent review, or authorize promotion.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** Admission linkage readonly workflow has a noncancelling PR/so concurrency group, but source-negative validator pinned only the root `concurrency:` and Git blob, without independently classifying nested group/cancellation mutations. This was a static semantic-guard coverage gap, not an observed evidence bypass.
+- **Observed evidence:** Reviewed workflow blob `75c9b02517a27f273f47d72ac18bee6a272bcad8` declares `admission-authority-linkage-readonly` PR/so group and `cancel-in-progress: false`. Prior validator blob `2e5146de965d9be276dc906ad74484e4f2724142` checked YAML root/job/permissions but not concurrency leaves.
+- **Verified root cause:** Digest and root-key checks detect changed source bytes without a dedicated effective serialization/cancellation diagnostic for YAML-equivalent shadow leaves.
+- **Failed approach:** Treating whole-source hash drift as a complete semantic proof of read-only workflow serialization.
+- **Correction / executable recurrence guard:** [Commit `c737be75`](https://github.com/m-shogo/memories-project/commit/c737be757d5ae4bdd7ccc093b4313378df6bea1b) adds a reviewed concurrency block validator and ten exact-diagnostic in-memory negatives for global group, cancellation enabled, duplicate/spaced/quoted leaves, unreviewed leaf and removed cancellation.
+- **Retry condition:** Revisit only if reviewed concurrency policy changes, a bypass is demonstrated, or exact-source CI regresses. Unchanged MinIO 401, canonical learning transfer, workflow-write permission and human approval blockers are not retried.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Admission Authority Linkage Readonly #40816999342](https://github.com/m-shogo/memories-project/actions/runs/40816999342) completed **SUCCESS** at exact code `c737be75`; job log confirms ten new concurrency exact-diagnostic negatives, 18 YAML negatives, 32 trigger removals, eight trigger additions, six branch guard runtime cases and existing 20 semantic/two blob-only source negatives.
+- **Why safe:** Only the existing CI-reachable read-only validator changed (+51 lines, zero deletions). No reviewed workflow, production evidence, protected registry, credentials, traffic, or human promotion authority changed.
+- **Reusable mechanism:** Independently validate workflow concurrency scope and cancellation with expected diagnostics, retaining source SHA, PR/push reachability, read-only permissions and canonical authority postconditions. OPS-P0-007 registered generations remain distinct from semantically eligible unsuperseded generations; approved current objective, executable reviewed request, typed eight-domain coverage, independent review and human promotion remain separate gates.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; autonomous-learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No supplemental learning or CI success can promote readiness.
+- **Canonical learning limitation:** Canonical large-file read still returned empty and raw fetch failed; no retry of unchanged transfer blocker.
+- **Next safe target:** Audit backup restore admission chain readonly concurrency and unrelated push-path-glob overlaps without weakening production gates.
