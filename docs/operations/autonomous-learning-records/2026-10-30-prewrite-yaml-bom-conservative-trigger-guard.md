@@ -1,0 +1,23 @@
+# Supplemental OPS learning — conservative UTF-8 BOM workflow event audit (2026-10-30)
+
+Append-only supplemental learning only. The canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` under mandatory `contracts/operations/autonomous-learning-system.json`. This record is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material semantic defect and correction
+
+- **symptom:** The read-only prewrite workflow fanout parser could silently undercount a valid UTF-8-BOM-prefixed YAML `on` event key, allowing an event-triggered workflow to be omitted from the direct-match inventory.
+- **evidence:** At parent `513a7b5a4ba59d5ec634316781e82897e0242e7b`, `workflow_matches_path` anchored the event regex at `^on:` but read workflow bytes using `encoding="utf-8"`, which preserves a leading U+FEFF; a BOM-prefixed inline `on: push` therefore had no matching root event. The exact-source negative suite previously lacked a BOM CLI fixture. This was a static source/fixture gap, not an observed production incident.
+- **rootCauseOrUnknown:** Verified parser normalization omission for the YAML stream BOM; no external production cause is claimed.
+- **failedApproach:** Trusting an unnormalized UTF-8 workflow source and exact root `^on:` event matching as a complete trigger inventory.
+- **correction:** [`9f42b0dc`](https://github.com/m-shogo/memories-project/commit/9f42b0dc7c5c1fb39a011f7bed41d5f644032963) removes a single leading BOM before event parsing and conservatively treats any remaining BOM as ambiguous, with four synthetic and four actual CLI fixtures (matching, unrelated, unfiltered and midstream ambiguity).
+- **recurrenceGuard:** The CI-reachable `scripts/validate-autonomous-learning-system-negative.py` invokes the real read-only prewrite CLI against BOM-bearing temporary workflow fixtures and reconciles the exact direct match count and identity. The auditor also runs its own synthetic self-test against the checked-out workflow tree.
+- **retryCondition:** If GitHub Actions YAML BOM semantics or the reviewed parser change, first establish an exact-source negative showing a mismatch, then reconcile the reviewed trigger identity inventory before changing parsing or any workflow. Do not retry unchanged external blockers.
+
+## Material success and protected authority
+
+- **outcome:** [Autonomous Learning Guard #40910719715](https://github.com/m-shogo/memories-project/actions/runs/40910719715) completed **SUCCESS** on exact source `9f42b0dc7c5c1fb39a011f7bed41d5f644032963`.
+- **evidence:** Job log reports **174 autonomous-learning fail-closed cases**, **47 prewrite fanout synthetic cases**, **9 direct matches** for the shared entrypoint classified `BLOCKED_KNOWN_WRITER_CAS`, **1,186 helper-ancestor negatives**, canonical learning append-only PASS, contract PASS and clean-source/read-only execution. No matched workflow was executed by the audit.
+- **whySafe:** The change touched only the read-only fanout auditor and its existing CI-bound negative harness (15 added lines, 0 removed), without changing any workflow, production service, credential, external evidence or readiness authority.
+- **reusableMechanism:** Normalize only the stream-leading UTF-8 BOM, reject ambiguous additional BOMs conservatively, and require actual CLI count/identity fixtures rather than regex-only tests.
+- **protectedAuthorityCheck:** The post-change tree preserved canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` and all six generation/objective/drill/evidence/non-resurrection/promotion registries unchanged. `productionDecision=NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED` with zero eligible generations, approved objectives, executable reviewed requests, generation evidence, complete typed eight-domain records, final candidates and human promotion reviews.
+- **limitation:** The canonical learning file is too large for this connector to return nonempty content; its current blob SHA was checked, but this supplemental record is not an update to canonical authority. The full admission chain was not asserted to pass.
+- **nextSafeTarget:** Fail closed on unquoted backslash-containing GitHub minimatch path patterns, which Python `fnmatch` does not interpret identically; add an actual CLI negative without changing any workflow trigger.
