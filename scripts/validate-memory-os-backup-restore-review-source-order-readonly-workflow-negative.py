@@ -307,10 +307,36 @@ def main() -> int:
     digest_only = frozenset({"injected shell command", "injected action"})
     semantic_count = 0
     blob_only_count = 0
+    canonical_labels = {
+        "persist credentials": "no credentials",
+        "PR source checkout": "PR checkout",
+        "PR event admission": "PR event",
+        "PR head SHA": "PR head",
+        "push/dispatch branch": "branch",
+        "unreviewed event rejection": "unreviewed event",
+    }
+    special_diagnostics = {
+        "self-trigger": "review-source-order readonly exact event header drift",
+        "PR target branch": "review-source-order readonly exact event header drift",
+        "removed PR self-trigger": "review-source-order readonly exact event header drift",
+        "root permission escalation": "review-source-order readonly permission leaf shadow drift",
+        "job permission escalation": "review-source-order readonly job key/permission shadow drift",
+        "injected shell command": "readonly workflow complete Git source drift",
+        "injected action": "readonly workflow complete Git source drift",
+    }
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit(f"review-source-order readonly negative anchor missing: {label}")
-        mutated = source.replace(old, replacement, 1)
+        if label == "removed PR self-trigger":
+            marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+            if source.count(marker) != 1:
+                raise SystemExit("review-source-order readonly PR event mutation marker drift")
+            prefix, suffix = source.split(marker, 1)
+            if suffix.count(old) != 1:
+                raise SystemExit("review-source-order readonly PR self-trigger fixture drift")
+            mutated = prefix + marker + suffix.replace(old, replacement, 1)
+        else:
+            mutated = source.replace(old, replacement, 1)
         if mutated == source:
             raise SystemExit(f"review-source-order readonly mutation unchanged: {label}")
         semantic = any(mutated.count(token) != source.count(token)
@@ -319,11 +345,21 @@ def main() -> int:
             raise SystemExit("review-source-order readonly mutation classification drift: " + label)
         semantic_count += int(semantic)
         blob_only_count += int(not semantic)
+        expected = special_diagnostics.get(
+            label,
+            "review-source-order readonly workflow source boundary drift: "
+            + canonical_labels.get(label, label),
+        )
         try:
             validate(mutated, check_blob=not semantic)
-        except SystemExit:
-            continue
-        raise SystemExit(f"review-source-order readonly accepted forbidden mutation: {label}")
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "review-source-order readonly wrong source diagnostic: "
+                    + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit(f"review-source-order readonly accepted forbidden mutation: {label}")
     if (semantic_count, blob_only_count) != (20, 2):
         raise SystemExit("review-source-order readonly semantic/blob mutation coverage drift")
     print(f"PASS: review-source-order readonly workflow source admission ({semantic_count} semantic; {blob_only_count} blob-only negatives)")
