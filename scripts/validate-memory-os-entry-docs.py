@@ -2425,7 +2425,7 @@ def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str |
     }
     if len(script_globs) != 1 or script_globs[0] not in allowed:
         return "upload-route rate-limit trigger pattern drift"
-    if source.count("    paths:\\n") != 1:
+    if source.count("    paths:\n") != 1:
         return "upload-route rate-limit trigger pattern drift"
     if UPLOAD_ROUTE_RATE_LIMIT_CORE not in matches:
         return "upload-route rate-limit core source missing"
@@ -2446,8 +2446,8 @@ def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
     if len(matches) != len(paths):
         failures.append("upload-route rate-limit script path inventory ambiguous")
         return
-    original = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"\\n'
-    narrowed = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"\\n'
+    original = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"\n'
+    narrowed = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"\n'
     for relative in UPLOAD_ROUTE_WORKFLOWS:
         workflow = REPO_ROOT / relative
         if workflow.is_symlink() or not workflow.is_file():
@@ -2469,12 +2469,12 @@ def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
             ("duplicate", source.replace(original, original + original, 1), matches,
              "upload-route rate-limit trigger pattern drift"),
             ("unquoted", source.replace(original,
-             "      - " + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + "\\n", 1), matches,
+             "      - " + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + "\n", 1), matches,
              "upload-route rate-limit trigger pattern drift"),
-            ("broadened", source.replace(original, '      - "scripts/**"\\n', 1),
+            ("broadened", source.replace(original, '      - "scripts/**"\n', 1),
              matches, "upload-route rate-limit trigger pattern drift"),
             ("extra broad", source.replace(original,
-             original + '      - "scripts/**"\\n', 1), matches,
+             original + '      - "scripts/**"\n', 1), matches,
              "upload-route rate-limit trigger pattern drift"),
             ("new matching script", source,
              matches | {"scripts/validate-memory-os-rate-limit-unreviewed.py"},
