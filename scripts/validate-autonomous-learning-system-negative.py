@@ -391,9 +391,58 @@ def prove_upload_route_event_parser_negatives() -> None:
             raise RuntimeError(f"Upload Route event parser negative accepted: {index}")
 
 
+def require_reviewed_go_workspace(source_root: Path) -> None:
+    """Workspace/vendor changes invalidate the reviewed module-only closure."""
+    unsupported = (
+        "go.work", "go.work.sum", "services/import-api/go.work",
+        "services/import-api/go.work.sum", "services/import-api/vendor",
+    )
+    for relative in unsupported:
+        path = source_root / relative
+        if path.exists() or path.is_symlink():
+            raise RuntimeError("unreviewed Go workspace/vendor input: " + relative)
+
+
+def prove_upload_route_go_workspace_negatives() -> None:
+    unsupported = (
+        "go.work", "go.work.sum", "services/import-api/go.work",
+        "services/import-api/go.work.sum", "services/import-api/vendor",
+    )
+    with tempfile.TemporaryDirectory(prefix="upload-go-workspace-positive-") as tmp:
+        require_reviewed_go_workspace(Path(tmp))
+    for relative in unsupported:
+        with tempfile.TemporaryDirectory(prefix="upload-go-workspace-negative-") as tmp:
+            root = Path(tmp)
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if relative.endswith("/vendor"):
+                path.mkdir()
+            else:
+                path.write_text("unreviewed", encoding="utf-8")
+            try:
+                require_reviewed_go_workspace(root)
+            except RuntimeError as exc:
+                if str(exc) != "unreviewed Go workspace/vendor input: " + relative:
+                    raise
+            else:
+                raise RuntimeError("Go workspace/vendor negative accepted: " + relative)
+    with tempfile.TemporaryDirectory(prefix="upload-go-workspace-link-") as tmp:
+        root = Path(tmp)
+        (root / "go.work").symlink_to("missing-workspace")
+        try:
+            require_reviewed_go_workspace(root)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go workspace/vendor input: go.work":
+                raise
+        else:
+            raise RuntimeError("broken Go workspace symlink accepted")
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
+    require_reviewed_go_workspace(source_root)
+    prove_upload_route_go_workspace_negatives()
     target = source_root / "services/import-api/internal/httpserver"
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
     def reject_native(directory: Path) -> None:
