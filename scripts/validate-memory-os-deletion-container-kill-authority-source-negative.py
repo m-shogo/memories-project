@@ -443,6 +443,151 @@ else:
     print(f"PASS: container-kill actual publisher CAS/no-op shell ({len(cases)} cases)")
 
 
+
+def validate_job_authority(publisher: str, independent: str) -> None:
+    """Pin inherited PR read, explicit reconcile write and independent read."""
+    reviewed = (
+        ("publisher", publisher, (
+            ("validate", "    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n",
+             None, 10, False),
+            ("reconcile",
+             "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n",
+             "write", 10, True),
+        )),
+        ("independent", independent, (
+            ("source-negative",
+             "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n",
+             "read", 5, True),
+        )),
+    )
+    for label, content, jobs in reviewed:
+        prefix = "container-authority " + label + " "
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        body = content.split("\njobs:\n", 1)[1]
+        sections: dict[str, list[str]] = {}
+        mappings = []
+        current = None
+        for line in body.splitlines():
+            if (line.startswith("  ") and len(line) > 2 and line[2] != " "
+                    and not line.lstrip().startswith("#")):
+                current = line
+                mappings.append(line)
+                sections[current] = []
+            elif current is not None:
+                sections[current].append(line)
+        if mappings != ["  " + name + ":" for name, *_ in jobs]:
+            raise SystemExit(prefix + "job mapping shadow drift")
+        for name, condition, scope, timeout, explicit in jobs:
+            lines = sections["  " + name + ":"]
+            actual = [line for line in lines
+                      if line.startswith("    ") and len(line) > 4 and line[4] != " "
+                      and not line.lstrip().startswith("#")]
+            expected = [condition.rstrip("\n")]
+            if explicit:
+                expected.append("    permissions:")
+            expected += ["    runs-on: ubuntu-latest",
+                         "    timeout-minutes: " + str(timeout), "    steps:"]
+            if actual != expected:
+                raise SystemExit(prefix + name + " job key shadow drift")
+            section = "\n".join(lines) + "\n"
+            boundary = "    permissions:\n" if explicit else "    runs-on: ubuntu-latest\n"
+            if section.split(boundary, 1)[0] != condition:
+                raise SystemExit(prefix + name + " job condition drift")
+            if explicit:
+                leaves = []
+                for line in section.split("    permissions:\n", 1)[1].splitlines():
+                    if line.startswith("    ") and len(line) > 4 and line[4] != " ":
+                        break
+                    if line.strip() and not line.lstrip().startswith("#"):
+                        leaves.append(line)
+                if leaves != ["      contents: " + scope]:
+                    raise SystemExit(prefix + name + " job permission leaf shadow drift")
+
+
+def prove_job_authority_negatives(publisher: str, independent: str) -> None:
+    """Reject 36 nested job mutations with their expected semantic diagnostics."""
+    validate_job_authority(publisher, independent)
+    reviewed = (
+        ("publisher", publisher, independent, (
+            ("validate", "    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n",
+             None, 10, False),
+            ("reconcile",
+             "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n",
+             "write", 10, True),
+        ), True),
+        ("independent", independent, publisher, (
+            ("source-negative",
+             "    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n",
+             "read", 5, True),
+        ), False),
+    )
+    total = 0
+    for label, content, other, jobs, is_publisher in reviewed:
+        for name, condition, scope, timeout, explicit in jobs:
+            header = "  " + name + ":\n"
+            if content.count(header) != 1:
+                raise SystemExit("container-authority job mutation header drift: " + label + "/" + name)
+
+            def mutate(old: str, new: str) -> str:
+                prefix, suffix = content.split(header, 1)
+                if old not in suffix:
+                    raise SystemExit("container-authority job mutation anchor drift: " + label + "/" + name)
+                return prefix + header + suffix.replace(old, new, 1)
+
+            runner = "    runs-on: ubuntu-latest\n"
+            limit = "    timeout-minutes: " + str(timeout) + "\n"
+            steps = "    steps:\n"
+            cases = [
+                ("duplicate mapping", content + "\n" + header + runner, "job mapping shadow drift"),
+                ("quoted mapping", content.replace(header, "  '" + name + "':\n", 1), "job mapping shadow drift"),
+                ("spaced mapping", content.replace(header, "  " + name + " :\n", 1), "job mapping shadow drift"),
+                ("condition shadow", mutate(condition, condition + "    if : true\n"), name + " job key shadow drift"),
+                ("runner shadow", mutate(runner, runner + "    runs-on : ubuntu-latest\n"), name + " job key shadow drift"),
+                ("timeout shadow", mutate(limit, limit + "    timeout-minutes : 1\n"), name + " job key shadow drift"),
+                ("steps shadow", mutate(steps, "    steps : []\n" + steps), name + " job key shadow drift"),
+                ("continuation override", mutate(steps, "    continue-on-error: true\n" + steps), name + " job key shadow drift"),
+            ]
+            if explicit:
+                leaf = "    permissions:\n      contents: " + scope + "\n"
+                cases += [
+                    ("permission shadow", mutate(leaf, leaf + "    permissions :\n      contents: write\n"), name + " job key shadow drift"),
+                    ("direct permission", mutate(leaf, leaf.replace(
+                        "contents: " + scope, "contents: " + ("read" if scope == "write" else "write"))),
+                     name + " job permission leaf shadow drift"),
+                    ("spaced permission leaf", mutate(leaf, leaf + "      contents : write\n"), name + " job permission leaf shadow drift"),
+                    ("quoted permission leaf", mutate(leaf, leaf + "      'contents': write\n"), name + " job permission leaf shadow drift"),
+                ]
+            else:
+                cases += [
+                    ("injected write permission", mutate(runner, "    permissions:\n      contents: write\n" + runner),
+                     name + " job key shadow drift"),
+                    ("spaced permission", mutate(runner, "    permissions :\n      contents: write\n" + runner),
+                     name + " job key shadow drift"),
+                    ("quoted permission", mutate(runner, "    'permissions':\n      contents: write\n" + runner),
+                     name + " job key shadow drift"),
+                    ("unreviewed env", mutate(steps, "    env:\n      TOKEN: unsafe\n" + steps),
+                     name + " job key shadow drift"),
+                ]
+            for mutation, changed, diagnostic in cases:
+                if changed == content:
+                    raise SystemExit("container-authority unchanged job fixture: " + mutation)
+                try:
+                    validate_job_authority(changed, other) if is_publisher else validate_job_authority(other, changed)
+                except SystemExit as exc:
+                    expected = "container-authority " + label + " " + diagnostic
+                    if str(exc) != expected:
+                        raise SystemExit("container-authority wrong job diagnostic: "
+                                         + label + "/" + name + "/" + mutation + ": " + str(exc)) from exc
+                else:
+                    raise SystemExit("container-authority accepted job shadow: "
+                                     + label + "/" + name + "/" + mutation)
+                total += 1
+    if total != 36:
+        raise SystemExit("container-authority job negative inventory drift")
+    print("PASS: container-authority publisher/independent nested jobs (36 exact-diagnostic negatives)")
+
+
 def main() -> None:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     for marker in (PUBLISHER, INDEPENDENT, SELF, RECONCILER, RECONCILE_NEGATIVE, CROSS_NEGATIVE, CHECKOUT, SETUP,
@@ -460,6 +605,8 @@ def main() -> None:
     container_kill_trigger_matrix_negatives(publisher, independent)
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
+    validate_job_authority(publisher, independent)
+    prove_job_authority_negatives(publisher, independent)
     policy(publisher)
     mutations(publisher)
     identity(publisher, "Capture exact PR source", False)
