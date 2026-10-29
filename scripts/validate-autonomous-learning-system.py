@@ -275,7 +275,7 @@ def validate(repo_root: Path) -> None:
                 # binding through imported code without a local Name(Store).
                 # This is conservative lexical rejection, not alias closure.
                 if (isinstance(node.func, ast.Name)
-                        and node.func.id == "__import__"):
+                        and node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
                     return True
                 if (isinstance(node.func, ast.Attribute)
                         and node.func.attr in {"import_module", "run_module", "run_path"}):
@@ -656,7 +656,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 # code with namespace side effects. This is a bounded lexical
                 # rejection, not a complete alias or import-graph proof.
                 if (isinstance(node.func, ast.Name) and
-                        node.func.id in {"__import__"}):
+                        node.func.id in {"__import__", "import_module", "run_module", "run_path"}):
                     return True
                 if (isinstance(node.func, ast.Attribute) and
                         node.func.attr in {"import_module", "run_module", "run_path"}):
@@ -742,6 +742,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
         ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
+        ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
+        ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -795,6 +797,15 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager runpy module", baseline.replace(
             'if __name__', 'runpy.run_module("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct-name import", baseline.replace(
+            'if __name__', 'import_module("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct-name runpy module", baseline.replace(
+            'if __name__', 'run_module("math")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct-name runpy path", baseline.replace(
+            'if __name__', 'run_path("fixture.py")\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
