@@ -763,7 +763,12 @@ def require_reviewed_upload_route_python_imports(source: str, count: int,
     """Pin imported module names, aliases and relative levels, not just path literals."""
     import ast
     entries = []
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    top_level_imports = {id(node) for node in tree.body
+                         if isinstance(node, (ast.Import, ast.ImportFrom))}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)) and id(node) not in top_level_imports:
+            raise RuntimeError("unreviewed Upload Route Python nested import")
         if isinstance(node, ast.Import):
             entries.extend(f"import:{alias.name}:{alias.asname or ''}" for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
@@ -786,11 +791,17 @@ def prove_upload_route_python_import_negatives() -> None:
         ("relative import", base + "from . import helper\n"),
         ("wildcard import", base.replace("from pathlib import Path", "from pathlib import *")),
         ("duplicate import", base + "import json\n"),
+        ("nested if import", base.replace("import json\n", "if False:\n    import json\n")),
+        ("nested function import", base.replace("import json\n", "def helper():\n    import json\n")),
+        ("nested class import", base.replace("import json\n", "class Helper:\n    import json\n")),
+        ("nested try import", base.replace("import json\n", "try:\n    import json\nexcept ImportError:\n    pass\n")),
+        ("nested from import", base.replace("from pathlib import Path\n", "def helper():\n    from pathlib import Path\n")),
     ):
         try:
             require_reviewed_upload_route_python_imports(candidate, 2, digest)
         except RuntimeError as exc:
             if str(exc) not in {"unreviewed Upload Route Python duplicate import",
+                                "unreviewed Upload Route Python nested import",
                                 "upload route reviewed input identity changed; review required"}:
                 raise
         else:
