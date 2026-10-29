@@ -317,22 +317,38 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     if len(packages) < 21:
         raise RuntimeError("upload route local Go package inventory shrank without review")
     inputs = {p.relative_to(source_root).as_posix() for p in go_files}
-    for package in packages:
-        if not package.startswith("internal/"):
-            raise RuntimeError("unexpected local Go package: " + package)
+    pending = list(packages)
+    visited: set[str] = set()
+    while pending:
+        package = pending.pop()
+        if package in visited:
+            continue
+        if len(visited) >= 64 or not package.startswith("internal/"):
+            raise RuntimeError("unreviewed Go local import closure")
+        visited.add(package)
         directory = source_root / "services/import-api" / package
         files = list(directory.glob("*.go")) if directory.is_dir() else []
         files = [p for p in files if not p.name.endswith("_test.go")]
         if not files:
-            raise RuntimeError("missing direct Go compile package: " + package)
-        inputs.update(p.relative_to(source_root).as_posix() for p in files)
+            raise RuntimeError("missing Go import closure package: " + package)
+        for file in files:
+            inputs.add(file.relative_to(source_root).as_posix())
+            for dependency in upload_route_local_go_imports(file.read_text(encoding="utf-8")):
+                if dependency not in visited:
+                    pending.append(dependency)
+                    packages.add(dependency)
+        if len(inputs) > 512:
+            raise RuntimeError("Go local import closure exceeds reviewed file budget")
+    if len(visited) < 22:
+        raise RuntimeError("reviewed transitive Go package missing from closure")
     for path in ("services/import-api/go.mod", "services/import-api/go.sum",
                  "requirements-security-validation.txt"):
         if not (source_root / path).is_file():
             raise RuntimeError("missing upload route setup input: " + path)
         inputs.add(path)
     if not {"services/import-api/internal/metrics/recorder.go",
-            "services/import-api/internal/reqid/reqid.go"}.issubset(inputs):
+            "services/import-api/internal/reqid/reqid.go",
+            "services/import-api/internal/preview/atomic_materializer.go"}.issubset(inputs):
         raise RuntimeError("known direct Go compile inputs vanished from inventory")
     # These six additional runtime inputs are read by the invoked Python
     # metrics, rate-limit, and observability validators, not by Go compilation.
@@ -396,7 +412,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("duplicate/empty upload route paths: " + workflow)
         uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
                              for path in inputs))
-    if len(inputs) < 107 or any(count < 79 for count in uncovered):
+    if len(inputs) < 109 or any(count < 81 for count in uncovered):
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
