@@ -559,11 +559,23 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     return True
             # A module-level reflective namespace call or immediately invoked
             # lambda can rebind main without a lexical Store/Del node.
+            if (isinstance(node, ast.Attribute) and node.attr == "main"
+                    and isinstance(node.ctx, (ast.Store, ast.Del))):
+                return True
+            if (isinstance(node, ast.Subscript) and
+                    isinstance(node.ctx, (ast.Store, ast.Del)) and
+                    isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
+                return True
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Lambda):
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"globals", "vars", "locals", "exec", "eval"}):
+                    return True
+                if (isinstance(node.func, ast.Name) and
+                        node.func.id in {"setattr", "delattr"} and
+                        len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
+                        and node.args[1].value == "main"):
                     return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 return any(
@@ -622,6 +634,7 @@ def prove_prewrite_python_negatives() -> None:
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
         ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
+        ("function-local attribute", 'def helper():\n    module.main = 1\n', (2, 0)),
         ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
     )
@@ -665,6 +678,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("module attribute main shadow", baseline.replace(
+            'if __name__', 'module.main = lambda: 1\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module subscript main shadow", baseline.replace(
+            'if __name__', 'namespace["main"] = lambda: 1\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module setattr main shadow", baseline.replace(
+            'if __name__', 'setattr(module, "main", lambda: 1)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module delattr main shadow", baseline.replace(
+            'if __name__', 'delattr(module, "main")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("reflective globals shadow", baseline.replace(
             'if __name__', 'globals()["main"] = lambda: 1\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
