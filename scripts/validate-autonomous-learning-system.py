@@ -569,7 +569,8 @@ def validate_prewrite_files(baseline_path: Path, candidate_path: Path,
                             max_removed: int) -> tuple[int, int]:
     sources = []
     for path in (baseline_path, candidate_path):
-        if path.is_symlink() or not path.is_file():
+        # A non-symlink leaf below a symlinked parent is still an alias.
+        if any(part.is_symlink() for part in (path, *path.parents)) or not path.is_file():
             raise ValidationFailure("prewrite input missing or symlinked")
         if path.stat().st_size > PREWRITE_MAX_SOURCE_BYTES:
             raise ValidationFailure("prewrite input exceeds byte limit")
