@@ -363,6 +363,58 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
     print("PASS: migration operation publisher/independent YAML event/root/job/permission authority (48 exact-diagnostic negatives)")
 
 
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind reviewed publisher serialization/cancellation independently of blob SHA."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: migration-operation-evidence-${{ github.event.pull_request.number || 'so' }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("migration operation publisher concurrency scope drift")
+    if publisher.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("migration operation publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Ten exact-diagnostic negative cases for effective concurrency YAML."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: migration-operation-evidence-${{ github.event.pull_request.number || 'so' }}\n"
+        "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: migration-operation-evidence-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("migration operation concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = publisher.replace(original, changed_block, 1)
+        if changed == publisher:
+            raise SystemExit("migration operation unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "migration operation publisher concurrency scope drift":
+                raise SystemExit("migration operation wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("migration operation accepted concurrency mutation: " + name)
+    print("PASS: migration operation publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def negative_proofs(publisher: str, independent: str) -> None:
     cases = (
         ("publisher PR base", True, PR_BASE, "true"),
@@ -430,6 +482,7 @@ def main() -> int:
     publisher, independent = read(PUBLISHER), read(INDEPENDENT)
     validate(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_trigger_reachability_negatives(publisher, independent)
     negative_proofs(publisher, independent)
     runtime_proofs()
