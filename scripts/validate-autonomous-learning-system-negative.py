@@ -33,6 +33,9 @@ REVIEWED_REFLECTIVE_EXECUTION = (
     ("eager-direct-attrgetter", 'attrgetter("import_module")(importlib)("math")'),
     ("eager-operator-methodcaller", 'operator.methodcaller("import_module", "math")(importlib)'),
     ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
+    ("eager-direct-reload", 'reload(importlib)'),
+    ("eager-importlib-reload", 'importlib.reload(importlib)'),
+    ("eager-getattr-reload", 'getattr(importlib, "reload")(importlib)'),
 )
 
 # CLI labels must bind to the same exact mutation payloads as the CI cases.
@@ -45,6 +48,9 @@ REVIEWED_REFLECTIVE_CLI_LABELS = (
     ("direct attrgetter execution", "eager-direct-attrgetter"),
     ("operator methodcaller execution", "eager-operator-methodcaller"),
     ("direct methodcaller execution", "eager-direct-methodcaller"),
+    ("direct reload execution", "eager-direct-reload"),
+    ("importlib reload execution", "eager-importlib-reload"),
+    ("reflective reload execution", "eager-getattr-reload"),
 )
 
 
@@ -3182,6 +3188,15 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("direct methodcaller execution", baseline.replace(
                 'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
+            ("direct reload execution", baseline.replace(
+                'if __name__', 'reload(importlib)\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("importlib reload execution", baseline.replace(
+                'if __name__', 'importlib.reload(importlib)\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("reflective reload execution", baseline.replace(
+                'if __name__', 'getattr(importlib, "reload")(importlib)\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
             ("diff budget", candidate.replace("    # safe edit\n", "    # a\n    # b\n").encode(),
              "prewrite diff exceeds reviewed line budget", ["--max-added-lines", "1"]),
         )
@@ -3683,7 +3698,8 @@ def main() -> int:
             ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
         ):
             if (kind.startswith(("eager-reflective-", "eager-qualified-"))
-                    or kind.endswith(("attrgetter", "methodcaller"))):
+                    or kind.endswith(("attrgetter", "methodcaller"))
+                    or kind.endswith("-reload")):
                 reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",
