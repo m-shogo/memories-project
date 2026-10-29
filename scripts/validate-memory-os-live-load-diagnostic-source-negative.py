@@ -324,6 +324,74 @@ def live_load_trigger_negatives(writer: str, pr: str, independent: str) -> None:
           + str(len(topology)) + " event topology/schedule negatives")
 
 
+
+LIVE_LOAD_CONCURRENCY_HEADERS = [{"label":"writer","original":"  group: reconcile-live-load-authority-v2-so\n  cancel-in-progress: false\n"},{"label":"PR","original":"  group: validate-live-load-authority-v2-pr-${{ github.event.pull_request.number }}\n  cancel-in-progress: true\n"}]
+
+
+def live_load_concurrency_authority(writer: str, pr: str) -> None:
+    """Pin distinct reviewed writer and PR concurrency serialization."""
+    for label, content in (("writer", writer), ("PR", pr)):
+        marker = "\nconcurrency:\n"
+        diagnostic = "live-load " + label + " concurrency authority drift"
+        if content.count(marker) != 1 or content.count("\njobs:\n") != 1:
+            raise AssertionError(diagnostic)
+        observed = content.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+        expected = next(item["original"] for item in LIVE_LOAD_CONCURRENCY_HEADERS
+                        if item["label"] == label)
+        if observed != expected:
+            raise AssertionError(diagnostic)
+
+
+def live_load_concurrency_negatives(writer: str, pr: str) -> None:
+    """Reject 24 exact-diagnostic YAML concurrency shadow and policy mutations."""
+    live_load_concurrency_authority(writer, pr)
+    total = 0
+    for item in LIVE_LOAD_CONCURRENCY_HEADERS:
+        label, original = item["label"], item["original"]
+        content = writer if label == "writer" else pr
+        marker = "\nconcurrency:\n"
+        anchor = marker + original + "\njobs:\n"
+        if content.count(anchor) != 1:
+            raise AssertionError("live-load concurrency fixture anchor drift: " + label)
+        group = original.splitlines(keepends=True)[0]
+        cancel = next(line for line in original.splitlines(keepends=True)
+                      if line.startswith("  cancel-in-progress: "))
+        opposite = "true" if "false" in cancel else "false"
+        cases = (
+            ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+            ("missing group", original.replace(group, "", 1)),
+            ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+            ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+            ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+            ("extra group leaf", original.replace(group, group + "  unreviewed: true\n", 1)),
+            ("changed cancellation", original.replace(cancel, "  cancel-in-progress: " + opposite + "\n", 1)),
+            ("missing cancellation", original.replace(cancel, "", 1)),
+            ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: " + opposite + "\n", 1)),
+            ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': " + opposite + "\n", 1)),
+            ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : " + opposite + "\n", 1)),
+            ("extra cancellation leaf", original.replace(cancel, cancel + "  unreviewed: true\n", 1)),
+        )
+        for name, replacement in cases:
+            changed = content.replace(anchor, marker + replacement + "\njobs:\n", 1)
+            if changed == content:
+                raise AssertionError("live-load unchanged concurrency fixture: " + label + "/" + name)
+            try:
+                if label == "writer":
+                    live_load_concurrency_authority(changed, pr)
+                else:
+                    live_load_concurrency_authority(writer, changed)
+            except AssertionError as exc:
+                expected = "live-load " + label + " concurrency authority drift"
+                if str(exc) != expected:
+                    raise AssertionError("live-load wrong concurrency diagnostic: "
+                                         + label + "/" + name + ": " + str(exc)) from exc
+            else:
+                raise AssertionError("live-load accepted concurrency mutation: " + label + "/" + name)
+            total += 1
+    if total != 24:
+        raise AssertionError("live-load concurrency fixture inventory drift")
+    print("PASS: live-load writer/PR concurrency (24 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -550,6 +618,8 @@ def main() -> None:
     live_load_trigger_matrix(publisher, pr, independent)
     live_load_trigger_negatives(publisher, pr, independent)
     live_load_yaml_shadow_negatives(publisher, pr, independent)
+    live_load_concurrency_authority(publisher, pr)
+    live_load_concurrency_negatives(publisher, pr)
     mutations(publisher)
     writer_runtime(publisher)
     validator_shell_runtime(publisher)
