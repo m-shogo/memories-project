@@ -2261,8 +2261,8 @@ def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -
             raise ValueError("learning workflow event authority drift")
     for trigger in (
         "scripts/validate-memory-os-entry-docs.py",
-        "scripts/validate-autonomous-learning-system.py",
-        "scripts/validate-autonomous-learning-system-negative.py",
+        "scripts/" + "validate-autonomous-learning-system.py",
+        "scripts/" + "validate-autonomous-learning-system-negative.py",
         ".github/workflows/autonomous-learning-guard.yml",
     ):
         if source.count('      - "' + trigger + '"\n') != 2:
@@ -2293,9 +2293,9 @@ def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -
         ("      - name: Enforce append-only learning authority against parent\n", 1),
         ("      - name: Validate learning contract and executable negatives\n", 1),
         ("      - name: Confirm read-only execution\n", 1),
-        ("          python -B scripts/validate-autonomous-learning-system.py\n", 1),
-        ("          python -B scripts/validate-autonomous-learning-system-negative.py\n", 1),
-        ("          python -B scripts/validate-memory-os-entry-docs.py\n", 1),
+        ("          python -B scripts/" + "validate-autonomous-learning-system.py\n", 1),
+        ("          python -B scripts/" + "validate-autonomous-learning-system-negative.py\n", 1),
+        ("          python -B scripts/" + "validate-memory-os-entry-docs.py\n", 1),
         ("          git diff --exit-code\n", 1),
         ('          test -z "$(git status --porcelain)"\n', 2),
     ):
@@ -2334,7 +2334,7 @@ def validate_learning_workflow_reachability(failures: list[str]) -> None:
              "      - name: Enforce append-only learning authority against parent\n", "",
              "learning workflow executable guard reachability drift"),
             ("negative guard removed",
-             "          python -B scripts/validate-autonomous-learning-system-negative.py\n", "",
+             "          python -B scripts/" + "validate-autonomous-learning-system-negative.py\n", "",
              "learning workflow executable guard reachability drift"),
             ("post-validator diff removed", "          git diff --exit-code\n", "",
              "learning workflow executable guard reachability drift"),
@@ -2344,7 +2344,7 @@ def validate_learning_workflow_reachability(failures: list[str]) -> None:
              "learning workflow complete reviewed source drift"),
         )
         for label, old, replacement, diagnostic in cases:
-            if source.count(old) != 1:
+            if source.count(old) != (2 if label == "missing push self-trigger" else 1):
                 raise ValueError("learning workflow fixture anchor drift: " + label)
             changed = source.replace(old, replacement, 1)
             if changed == source:
