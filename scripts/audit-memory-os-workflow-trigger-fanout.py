@@ -125,6 +125,10 @@ def workflow_matches_path(source: str, relative: str) -> bool:
                     return True  # Unquoted YAML alias/scalar ambiguity.
             if not pattern:
                 return True
+            # Plain YAML scalars preserve backslashes, while GitHub minimatch
+            # may interpret them as escapes. fnmatch would undercount.
+            if "\\" in pattern:
+                return True
             # GitHub minimatch supports constructs fnmatch does not; never
             # mistake unsupported grammar for a proven non-match.
             if any(char in pattern for char in "{}") or re.search(r"[@+?!]\(", pattern):
@@ -229,8 +233,11 @@ def self_test(repo_root: Path) -> None:
          "scripts/a.py", True),
         ("plain inline comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n',
          "scripts/a.py", True),
-        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n',
+        ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
+        ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
+         "scripts/[a].py", True),
+
         ("duplicate paths", 'on:\n  push:\n    paths:\n      - "docs/**"\n    paths:\n      - "scripts/a.py"\n',
          "scripts/a.py", True),
         ("extglob", 'on:\n  push:\n    paths:\n      - "scripts/!(b).py"\n',

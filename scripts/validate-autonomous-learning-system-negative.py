@@ -1215,7 +1215,9 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("event alias", 'on: *events\n', 1),
         ("quoted comment", 'on:\n  push:\n    paths:\n      - "scripts/a.py" # note\n', 1),
         ("plain comment", 'on:\n  push:\n    paths:\n      - scripts/a.py # note\n', 1),
-        ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n', 1),
+        ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n', 1),
+        ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n', 1),
+
         ("unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n', 0),
         ("dispatch only", 'on: workflow_dispatch\n', 0),
         ("spaced on key", 'on : push\n', 1),
