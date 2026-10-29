@@ -1,0 +1,24 @@
+# Supplemental OPS learning — nested eager class control flow and class-local main scope (2026-10-30)
+
+Append-only supplemental history only. Canonical learning authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` under mandatory `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent review or human promotion evidence.
+
+## Material failure — prospective prewrite class-body bypass
+
+- **Symptom:** A Python prewrite candidate could mutate the module's `main` binding from a nested eager class-body `if`, `for` or `try` block, while the previous AST guard only inspected class decorators, bases and direct expression/assignment values. Conversely, treating all class-body `main` stores as module stores would falsely reject legitimate class-local methods and assignments.
+- **Observed evidence:** At baseline `c3290a73f0eddc732948ff0f1c72dbeaef04233a`, the `ClassDef` visitor appended only direct `Expr`, `Assign` and `AnnAssign` values to its eager list, not nested statement bodies. The checked-in isolated negative controls did not include nested class-body control flow or `global main`. This is a prospective static admission gap, not observed production execution.
+- **Verified root cause:** The eager/deferred visitor did not propagate Python's distinct class-local binding scope through nested control-flow AST nodes.
+- **Failed approach:** Assuming direct class-body expression coverage also covered nested eager control flow; alternatively, applying module-scope `Name(Store)` rules to ordinary class-local assignments.
+- **Correction:** [`4bd7cdb1`](https://github.com/m-shogo/memories-project/commit/4bd7cdb19b36cad9800ffc2dd7e18f1148190c1d) propagates `class_local` through eager AST traversal, recursively checks all class-body statements, and rejects a class-level `global main` declaration. Deferred function bodies remain excluded.
+- **Executable recurrence guard:** Five new prewrite negatives reject conditional, loop, exception-handler, explicit-global and class-method-decorator mutations; three new positive controls admit a class-local conditional assignment, a method named `main` and a nested class named `main`. Existing isolated prewrite cases continue to run in the CI-reachable learning validator.
+- **Retry condition:** Revisit when the prewrite AST visitor or Python class-scope semantics change, with both positive and negative fixtures, exact-source CI and fresh branch/blob CAS. Do not retry unchanged MinIO HTTP 401, workflow-write permission, canonical large-file append or human promotion blockers.
+
+## Material success
+
+- **Outcome/evidence:** [Autonomous Learning Guard #40960181866](https://github.com/m-shogo/memories-project/actions/runs/40960181866) completed **SUCCESS** for exact source `4bd7cdb19b36cad9800ffc2dd7e18f1148190c1d`. Its append-only, contract/negative, entrypoint, helper-ancestor and clean-source/read-only steps completed successfully. The commit changed only `scripts/validate-autonomous-learning-system.py` (+41/-23 lines); the eight added isolated prewrite controls are not a claim of production integration execution.
+- **Why safe:** This was a read-only AST validation change with no workflow, service, credential, traffic, recovery evidence, generation, objective, drill, typed eight-domain, independent review or promotion mutation.
+- **Reusable mechanism:** Model eager execution and lexical binding scope independently; preserve positive controls for legitimate local names while failing closed on reflective module mutation and explicit global declarations.
+- **Protected-authority check:** The code commit preserved canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6`, generation registry `bfd1b04561a257d1a288bd127572bdad762bfae5`, objective registry `f4d74f333a4884f9aba2284a31ac011aae8b71bd` and promotion registry `99cb895fbefb5b459d461926851186dbed742f88`. `productionDecision=NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED` with registered/eligible generations 0/0 and no approved current objective, executable reviewed request, request-bound evidence, complete typed eight-domain record, final candidate or human promotion.
+
+## Next safe target
+
+Inspect decorator lambda bodies that execute when applied to a function or class, without misclassifying an ordinary deferred lambda as eager. Keep source-change CI reachability and complete Upload Route dependency closure as separately unresolved boundaries.
