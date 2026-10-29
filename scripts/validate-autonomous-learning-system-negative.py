@@ -556,6 +556,52 @@ def prove_upload_route_input_set_negatives() -> None:
             raise RuntimeError("Upload Route input identity negative accepted: " + label)
 
 
+def require_reviewed_upload_route_python_source(source: str, count: int,
+                                                expected_sha256: str) -> None:
+    """Fail closed on changed static path literals or dynamic loader mechanisms."""
+    import ast
+    import re
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules = [alias.name.split(".")[0] for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            modules = [(node.module or "").split(".")[0]]
+        else:
+            modules = []
+        if any(module in {"importlib", "subprocess"} for module in modules):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"__import__", "eval", "exec"}):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+    literals = set(re.findall(r"""["']((?:contracts|docs|scripts|services)/[^"'\s]+)["']""", source))
+    require_reviewed_upload_route_input_set(literals, count, expected_sha256)
+
+
+def prove_upload_route_python_source_negatives() -> None:
+    base = 'from pathlib import Path\nX = "contracts/operations/a.json"\n'
+    digest = hashlib.sha256(b"contracts/operations/a.json\n").hexdigest()
+    require_reviewed_upload_route_python_source(base, 1, digest)
+    for label, candidate in (
+        ("same-count literal swap", base.replace("a.json", "b.json")),
+        ("added path literal", base + 'Y = "docs/b.md"\n'),
+        ("dynamic import", base + "import importlib\n"),
+        ("subprocess import", base + "from subprocess import run\n"),
+        ("builtin loader", base + 'Y = __import__("os")\n'),
+        ("builtin eval", base + 'Y = eval("1")\n'),
+    ):
+        try:
+            require_reviewed_upload_route_python_source(candidate, 1, digest)
+        except RuntimeError as exc:
+            if str(exc) not in {
+                "unreviewed Upload Route Python dynamic dependency",
+                "upload route reviewed input identity changed; review required",
+            }:
+                raise
+        else:
+            raise RuntimeError("Upload Route Python source negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -565,6 +611,21 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_go_embed_negatives()
     prove_upload_route_path_parity_negatives()
     prove_upload_route_input_set_negatives()
+    prove_upload_route_python_source_negatives()
+    for relative, count, digest in (
+        ("scripts/validate-memory-os-metrics.py", 4,
+         "28b4778ad36ea2548201518eae8e53483bf2a1165bafea185b3dc03519ea277f"),
+        ("scripts/validate-memory-os-rate-limit.py", 5,
+         "201afd7d79854a23e62fefea5c0032f2d8668c928f54e18e8ac210037e57740f"),
+        ("scripts/validate-memory-os-observability.py", 6,
+         "e075e8466606397fc9f373fb45e74793c1e2d55564bdeb48b3ebbfde368ad6a9"),
+        ("scripts/validate-memory-os-operability.py", 11,
+         "e6b898667d7b8210a2087fa45a75ba5b3640690444d8992e20b947c15dd66259"),
+    ):
+        require_unaliased_go_path(source_root, source_root / relative)
+        require_reviewed_upload_route_python_source(
+            (source_root / relative).read_text(encoding="utf-8"), count, digest
+        )
     target = source_root / "services/import-api/internal/httpserver"
     require_unaliased_go_path(source_root, target)
     native_suffixes = {".c", ".h", ".s", ".cc", ".cpp", ".syso", ".swig", ".swigcxx"}
