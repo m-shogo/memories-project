@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 import subprocess
 import sys
@@ -2221,6 +2222,152 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
               f"{EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT} negative fixtures")
 
 
+
+# The autonomous learning workflow is itself a CI authority. Unlike the 52
+# source-negative workflows, it has a dispatch event and an append-only step.
+# Bind that reviewed execution path separately so its guard cannot disappear.
+LEARNING_WORKFLOW_SOURCE = REPO_ROOT / ".github/workflows/autonomous-learning-guard.yml"
+LEARNING_WORKFLOW_REVIEWED_BLOB = "732d664fb157cbe2d25309d2030906d6386cc97c"
+
+
+def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -> None:
+    """Require the reviewed read-only learning/append-only CI path."""
+    roots = [
+        line for line in source.splitlines()
+        if line.strip() and not line[0].isspace()
+        and not line.lstrip().startswith("#")
+    ]
+    if roots != [
+        "name: Autonomous Learning Guard", "on:", "permissions:",
+        "concurrency:", "jobs:",
+    ]:
+        raise ValueError("learning workflow root authority drift")
+    if not source.startswith("name: Autonomous Learning Guard\n\non:\n"):
+        raise ValueError("learning workflow event authority drift")
+    events = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+    event_rows = [
+        line for line in events.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if event_rows != ["  push:", "  pull_request:", "  workflow_dispatch:"]:
+        raise ValueError("learning workflow event authority drift")
+    for marker in (
+        "  push:\n    branches: [so]\n    paths:\n",
+        "  pull_request:\n    branches: [so]\n    paths:\n",
+        "  workflow_dispatch:\n",
+    ):
+        if source.count(marker) != 1:
+            raise ValueError("learning workflow event authority drift")
+    for trigger in (
+        "scripts/validate-memory-os-entry-docs.py",
+        "scripts/validate-autonomous-learning-system.py",
+        "scripts/validate-autonomous-learning-system-negative.py",
+        ".github/workflows/autonomous-learning-guard.yml",
+    ):
+        if source.count('      - "' + trigger + '"\n') != 2:
+            raise ValueError("learning workflow self-trigger authority drift")
+    permission = source.split("\npermissions:\n", 1)[1].split("\nconcurrency:\n", 1)[0]
+    if permission != "  contents: read\n":
+        raise ValueError("learning workflow read-only permission drift")
+    concurrency = source.split("\nconcurrency:\n", 1)[1].split("\njobs:\n", 1)[0]
+    group = "  group: autonomous-learning-guard-" + chr(36) + "{{ github.sha }}\n"
+    if concurrency != group + "  cancel-in-progress: false\n":
+        raise ValueError("learning workflow concurrency authority drift")
+    jobs = source.split("\njobs:\n", 1)[1]
+    job_rows = [
+        line for line in jobs.splitlines()
+        if line.startswith("  ") and not line.startswith("   ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    job_keys = [
+        line for line in jobs.splitlines()
+        if line.startswith("    ") and not line.startswith("     ")
+        and line.strip() and not line.lstrip().startswith("#")
+    ]
+    if job_rows != ["  validate:"] or job_keys != [
+        "    runs-on: ubuntu-latest", "    timeout-minutes: 10", "    steps:",
+    ]:
+        raise ValueError("learning workflow job execution authority drift")
+    for required, count in (
+        ("      - name: Enforce append-only learning authority against parent\n", 1),
+        ("      - name: Validate learning contract and executable negatives\n", 1),
+        ("      - name: Confirm read-only execution\n", 1),
+        ("          python -B scripts/validate-autonomous-learning-system.py\n", 1),
+        ("          python -B scripts/validate-autonomous-learning-system-negative.py\n", 1),
+        ("          python -B scripts/validate-memory-os-entry-docs.py\n", 1),
+        ("          git diff --exit-code\n", 1),
+        ('          test -z "$(git status --porcelain)"\n', 2),
+    ):
+        if source.count(required) != count:
+            raise ValueError("learning workflow executable guard reachability drift")
+    if check_blob:
+        payload = source.encode("utf-8")
+        digest = hashlib.sha1(
+            b"blob " + str(len(payload)).encode("ascii") + b"\0" + payload
+        ).hexdigest()
+        if digest != LEARNING_WORKFLOW_REVIEWED_BLOB:
+            raise ValueError("learning workflow complete reviewed source drift")
+
+
+def validate_learning_workflow_reachability(failures: list[str]) -> None:
+    """Exercise distinct semantic negatives before accepting the reviewed blob."""
+    try:
+        source = LEARNING_WORKFLOW_SOURCE.read_text(encoding="utf-8")
+        validate_learning_workflow_source(source)
+        cases = (
+            ("extra event", "on:\n", "on:\n  issues:\n",
+             "learning workflow event authority drift"),
+            ("missing push self-trigger",
+             '      - "scripts/validate-memory-os-entry-docs.py"\n', "",
+             "learning workflow self-trigger authority drift"),
+            ("permission escalation", "permissions:\n  contents: read\n",
+             "permissions:\n  contents: write\n",
+             "learning workflow read-only permission drift"),
+            ("cancel active run", "  cancel-in-progress: false\n",
+             "  cancel-in-progress: true\n",
+             "learning workflow concurrency authority drift"),
+            ("job permission shadow", "    runs-on: ubuntu-latest\n",
+             "    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n",
+             "learning workflow job execution authority drift"),
+            ("append-only step removed",
+             "      - name: Enforce append-only learning authority against parent\n", "",
+             "learning workflow executable guard reachability drift"),
+            ("negative guard removed",
+             "          python -B scripts/validate-autonomous-learning-system-negative.py\n", "",
+             "learning workflow executable guard reachability drift"),
+            ("post-validator diff removed", "          git diff --exit-code\n", "",
+             "learning workflow executable guard reachability drift"),
+            ("unreviewed executable step",
+             "      - name: Confirm read-only execution\n",
+             "      - run: echo unreviewed\n      - name: Confirm read-only execution\n",
+             "learning workflow complete reviewed source drift"),
+        )
+        for label, old, replacement, diagnostic in cases:
+            if source.count(old) != 1:
+                raise ValueError("learning workflow fixture anchor drift: " + label)
+            changed = source.replace(old, replacement, 1)
+            if changed == source:
+                raise ValueError("learning workflow unchanged negative: " + label)
+            try:
+                validate_learning_workflow_source(
+                    changed, check_blob=label == "unreviewed executable step"
+                )
+            except ValueError as exc:
+                if str(exc) != diagnostic:
+                    raise ValueError(
+                        "learning workflow wrong negative diagnostic: "
+                        + label + ": " + str(exc)
+                    ) from exc
+            else:
+                raise ValueError("learning workflow mutation accepted: " + label)
+    except (OSError, UnicodeError, ValueError) as exc:
+        failures.append("autonomous learning workflow guard failed: " + str(exc))
+    else:
+        print("autonomous learning workflow source verified: 9 exact-diagnostic negatives")
+
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -2243,6 +2390,7 @@ def main() -> int:
             failures.append(f"{relative}: unqualified production-ready wording")
 
     validate_learning_guards(failures)
+    validate_learning_workflow_reachability(failures)
     validate_source_negative_ci_reachability(failures)
 
     if failures:
