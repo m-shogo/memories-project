@@ -1150,7 +1150,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             counts[0] != len(workflows) or not workflows or
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
-    print("prewrite rate-limit possible matches sample: " + ", ".join(workflows[:10]))
+    # Preserve the single-line stdout contract required by the entrypoint verifier.
     return len(cases) + 2
 
 
