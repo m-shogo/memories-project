@@ -309,12 +309,67 @@ def prove_trigger_reachability_negatives(publisher: str, independent: str) -> No
     print("PASS: environment generation publisher/independent CI event-specific triggers (48 removals; 16 additions; 2 shortened inventory negatives)")
 
 
+
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed generation publisher serialization independently of blob SHA."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: production-equivalent-environment-generation-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    if (publisher.count(marker) != 1 or publisher.count(end) != 1
+            or publisher.split(marker, 1)[1].split(end, 1)[0] != expected):
+        raise SystemExit("environment generation publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Reject ten changes to the reviewed noncancelling generation scope."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: production-equivalent-environment-generation-" + chr(36)
+        + "{{ github.event.pull_request.number || 'so' }}\n"
+        + "  cancel-in-progress: false\n"
+    )
+    variants = (
+        ("global group", "  group: production-equivalent-environment-generation-global\n"
+         "  cancel-in-progress: false\n"),
+        ("cancellation enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: false\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("environment generation concurrency fixture anchor drift")
+    for name, replacement in variants:
+        mutated = publisher.replace(original, replacement, 1)
+        if mutated == publisher:
+            raise SystemExit("environment generation unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(mutated)
+        except SystemExit as exc:
+            if str(exc) != "environment generation publisher concurrency scope drift":
+                raise SystemExit(
+                    "environment generation wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("environment generation accepted concurrency mutation: " + name)
+    print("PASS: environment generation publisher concurrency (10 exact-diagnostic negatives)")
+
+
 def validate(
     publisher: str, independent: str, *,
     check_publisher_blob: bool = True, check_independent_blob: bool = True,
 ) -> None:
     validate_trigger_reachability(publisher, "publisher")
     validate_trigger_reachability(independent, "independent")
+    validate_concurrency_authority(publisher)
     validate_job_authority(publisher, independent)
     for name, source, required, reviewed in (
         ("publisher", publisher, PUBLISHER_REQUIRED, PUBLISHER_SHA),
@@ -706,6 +761,7 @@ def main() -> int:
     independent = read(INDEPENDENT)
     validate(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     diagnostic_runtime(publisher)
