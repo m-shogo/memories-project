@@ -30,6 +30,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
+    source = re.sub(r"""(?m)^  (['"])(push|pull_request)\1:""", r"  \2:", source)
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
     if inline and re.search(r"\b(?:push|pull_request)\b", inline.group(1)):
         return True
@@ -120,6 +121,10 @@ def self_test(repo_root: Path) -> None:
         ("inline-map", "on: {pull_request: {paths: ['scripts/a.py']}}\n",
          "scripts/a.py", True),
         ("scalar-dispatch", "on: workflow_dispatch\n", "scripts/a.py", False),
+        ("quoted-push-event", "on:\n  'push':\n    paths:\n      - scripts/a.py\n",
+         "scripts/a.py", True),
+        ("quoted-pr-event", 'on:\n  "pull_request":\n    paths:\n      - scripts/a.py\n',
+         "scripts/a.py", True),
     )
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
