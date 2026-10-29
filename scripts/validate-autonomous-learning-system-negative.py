@@ -657,6 +657,27 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id in {"__import__", "eval", "exec"}):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
+        # F-strings and format calls can assemble runtime inputs without
+        # introducing a complete static repository-relative path literal.
+        if isinstance(node, ast.JoinedStr):
+            pieces = "".join(part.value for part in node.values
+                             if isinstance(part, ast.Constant) and isinstance(part.value, str))
+            if re.search(r"(?:^|[/\\])(?:contracts|docs|scripts|services)(?:[/\\]|$)", pieces):
+                raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.Call) and
+                ((isinstance(node.func, ast.Name) and node.func.id in {"Path", "PurePath", "open"}) or
+                 (isinstance(node.func, ast.Attribute) and node.func.attr in {"joinpath", "open"})) and
+                any(isinstance(arg, ast.JoinedStr) for arg in node.args)):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)
+                and isinstance(node.right, ast.JoinedStr)):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "format"
+                and isinstance(node.func.value, ast.Constant)
+                and isinstance(node.func.value.value, str)
+                and re.search(r"(?:^|[/\\])(?:contracts|docs|scripts|services)(?:[/\\]|$)", node.func.value.value)):
+            raise RuntimeError("unreviewed Upload Route Python composed input path")
         # A split repository root bypasses the fingerprint of complete
         # "contracts/..." / "docs/..." literals. Refuse unreviewed joins.
         roots = {"contracts", "docs", "scripts", "services"}
@@ -698,6 +719,9 @@ def prove_upload_route_python_source_negatives() -> None:
         base + 'from pathlib import Path\nY = Path("tmp") / "local.txt"\n',
         1, digest,
     )
+    require_reviewed_upload_route_python_source(
+        base + 'Y = f"missing file: {path}"\n', 1, digest
+    )
     for label, candidate in (
         ("same-count literal swap", base.replace("a.json", "b.json")),
         ("added path literal", base + 'Y = "docs/b.md"\n'),
@@ -714,6 +738,12 @@ def prove_upload_route_python_source_negatives() -> None:
         ("operator root join", base + 'Y = ROOT / "docs" / "fixtures/new.json"\n'),
         ("joinpath root", base + 'Y = ROOT.joinpath("services", "import-api")\n'),
         ("os.path root join", base + 'import os\nY = os.path.join("scripts", "new.py")\n'),
+        ("f-string absolute root", base + 'Y = Path(f"{ROOT}/contracts/operations/new.json")\n'),
+        ("f-string root segment", base + 'Y = f"{ROOT}/services/import-api/go.mod"\n'),
+        ("f-string dynamic Path", base + 'Y = Path(f"{ROOT}/{kind}/{name}")\n'),
+        ("f-string path division", base + 'Y = ROOT / f"{name}.json"\n'),
+        ("f-string joinpath", base + 'Y = ROOT.joinpath(f"{kind}.json")\n'),
+        ("format root segment", base + 'Y = "{}/docs/fixtures/new.json".format(ROOT)\n'),
         ("Path alias", base + 'from pathlib import Path as P\nY = P("contracts") / "operations/new.json"\n'),
         ("pathlib module alias", base + 'import pathlib as pl\nY = pl.Path("docs") / "new.md"\n'),
         ("unreviewed pathlib constructor", base + 'from pathlib import PosixPath\nY = PosixPath("services")\n'),
