@@ -1,0 +1,24 @@
+# Supplemental OPS learning — Upload Route execution-environment closure (2026-10-30)
+
+Append-only supplemental history only. Canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md` under mandatory `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review, or promotion evidence.
+
+## Material failure — prospective execution-environment bypass
+
+- **Symptom:** The reviewed Upload Route workflows could acquire shell-startup, dynamic-library, pip index/config, Go module/proxy/cache or interpreter-path overrides without changing the existing 13-token environment guard or the pinned 109-file direct/static input inventory.
+- **Observed evidence:** At source `41d26d96ed43909698ac2e18e2806a83e82acbc5`, the CI-reachable negative validator rejected 13 environment tokens, but did not reject `BASH_ENV`, `SHELLOPTS`, `LD_PRELOAD`, `PIP_INDEX_URL`, `GOPROXY`, `GITHUB_PATH`, or `PATH`. Both actual Publisher and PR workflow sources contained none of the 24 newly reviewed tokens. This is a prospective drift escape, not observed production compromise.
+- **Verified root cause:** Static Go/Python import and direct-command fingerprints do not bind the runner's shell startup, interpreter search path, package resolver, or module proxy environment.
+- **Failed approach:** Treating unchanged source imports and the initial 13 workflow environment identifiers as complete execution-input closure.
+- **Correction:** [`49054cee`](https://github.com/m-shogo/memories-project/commit/49054cee54bd32f1fcb817e9d673df427177dc40) extends the read-only workflow source guard by 24 tokens and adds 24 corresponding negative cases. A normal database URL environment remains a positive control; both actual workflows are checked. Only `scripts/validate-autonomous-learning-system-negative.py` changed (+12 lines).
+- **Executable recurrence guard:** Reject changes introducing `PYTHONUSERBASE`, `PYTHONWARNINGS`, `PYTHONNOUSERSITE`, `PIP_CONFIG_FILE`, `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `PIP_NO_INDEX`, `PIP_TRUSTED_HOST`, `GOPROXY`, `GOSUMDB`, `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB`, `GO111MODULE`, `GOROOT`, `GOCACHE`, `BASH_ENV`, `ENV`, `SHELLOPTS`, `BASHOPTS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, `GITHUB_PATH`, or `PATH` as standalone identifiers in either workflow. This lexical fail-closed guard is not a complete dynamic shell or dependency graph proof.
+- **Retry condition:** Permit a legitimate new execution environment only after explicit review of its dependency effects, deterministic baseline update, exact-source CI, and protected-authority verification. Do not retry unchanged Quay MinIO 401, large canonical-learning transport, workflow-write permission or human promotion blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40945627012](https://github.com/m-shogo/memories-project/actions/runs/40945627012) completed **SUCCESS** on exact source `49054cee54bd32f1fcb817e9d673df427177dc40`. Logs confirm append-only PASS, contract PASS, 201 canonical fail-closed negatives, 74 fanout synthetic cases, entry-document PASS, 1,186 helper-ancestor negative mutations and clean/read-only execution. The 24 nested environment cases are not separately included in the printed 201.
+- **Why safe:** No workflow YAML, production code, traffic, credentials, readiness, recovery, generation/objective, drill, non-resurrection or promotion authority was written. The change is CI-reachable read-only negative validation.
+- **Reusable mechanism:** Bind shell and resolver environment drift separately from import declarations, runtime command strings, checkout refs and action inputs; test each prohibited override and preserve a normal environment positive control.
+- **Protected-authority check:** Comparison of `41d26d96` to `49054cee` shows exactly one changed file, the read-only negative validator. Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` and mandatory contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` are unchanged; protected production/OPS-P0-007 registries and snapshot were not edited. `productionDecision=NO_GO`; registered generations remain distinct from semantically preflight-eligible generations, with no synthetic approvals or evidence. OPS-P0-007 strictness, request-bound recovery, typed eight-domain coverage, independent review and human promotion remain mandatory.
+
+## Next safe target
+
+Bind Upload Route job-level execution controls (runner, timeout, skip conditions, shell/default overrides, continue-on-error, concurrency) with negative controls without modifying workflow YAML or narrowing incomplete Go/Python trigger closure.
