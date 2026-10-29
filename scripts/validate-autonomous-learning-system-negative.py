@@ -3229,6 +3229,7 @@ def main() -> int:
         ("deferred generator body", "(globals().__setitem__('main', None) for _ in (0,))\n"),
         ("comprehension-local target", "[0 for main in (0,)]\n"),
         ("deferred lambda body", "(lambda: globals().__setitem__('main', None))\n"),
+        ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
         ("decorator lambda local main", "@(lambda fn: (main := fn))\ndef eager():\n    pass\n"),
         ("decorator lambda local learning guard", "@(lambda fn: (validate_learning_guards := fn))\ndef eager():\n    pass\n"),
     ):
@@ -3521,6 +3522,9 @@ def main() -> int:
             # Wildcard imports have an unbounded module export set; annotation
             # expressions may run at definition time without postponement.
             ("wildcard-import", "from math import *"),
+            ("module-attribute-store", f"sys.modules[__name__].{symbol} = None"),
+            ("module-attribute-delete", f"del sys.modules[__name__].{symbol}"),
+            ("module-dict-store", f"sys.modules[__name__].__dict__['{symbol}'] = None"),
             ("parameter-annotation", f"def eager(value: globals().__setitem__('{symbol}', None)):\n    pass"),
             ("return-annotation", f"def eager() -> globals().__setitem__('{symbol}', None):\n    pass"),
             ("function-decorator", f"@lambda fn: (globals().__setitem__('{symbol}', None), fn)[1]\ndef eager():\n    pass"),
