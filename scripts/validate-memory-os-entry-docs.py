@@ -2645,6 +2645,27 @@ def main() -> int:
     validate_source_negative_ci_reachability(failures)
     validate_upload_route_rate_limit_trigger_scope(failures)
     validate_upload_route_rate_limit_contract_scope(failures)
+    # A pre-write fanout audit is CI-bound so high-risk trigger topology
+    # cannot silently lose its executable diagnostic. It never runs MinIO.
+    fanout_guard = REPO_ROOT / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    if fanout_guard.is_symlink() or not fanout_guard.is_file():
+        failures.append("missing or symlinked prewrite workflow trigger fanout guard")
+    else:
+        try:
+            fanout_result = subprocess.run(
+                [sys.executable, str(fanout_guard), "--self-test",
+                 "--repo-root", str(REPO_ROOT)],
+                cwd=REPO_ROOT, capture_output=True, text=True,
+                timeout=30, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            failures.append("prewrite workflow trigger fanout guard unavailable")
+        else:
+            if fanout_result.returncode != 0:
+                failures.append("prewrite workflow trigger fanout guard failed: "
+                                + fanout_result.stderr[:300])
+            else:
+                print(fanout_result.stdout.strip())
 
     if failures:
         print("ENTRYPOINT DOCUMENT VALIDATION FAILED", file=sys.stderr)
