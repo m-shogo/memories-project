@@ -763,6 +763,11 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
                  (isinstance(node.right, ast.Call) and isinstance(node.right.func, ast.Attribute) and
                   node.right.func.attr == "format"))):
             raise RuntimeError("unreviewed Upload Route Python composed input path")
+        # Traversal through an already reviewed Path import can discover
+        # untracked inputs without changing any static path or import digest.
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"glob", "rglob", "iterdir", "walk"}):
+            raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         # A split repository root bypasses the fingerprint of complete
         # "contracts/..." / "docs/..." literals. Refuse unreviewed joins.
         roots = {"contracts", "docs", "scripts", "services"}
@@ -813,6 +818,9 @@ def prove_upload_route_python_source_negatives() -> None:
     require_reviewed_upload_route_python_source(
         base + 'Y = "a" + "b"\n', 1, digest
     )
+    require_reviewed_upload_route_python_source(
+        base + 'Y = Path("tmp").read_text()\n', 1, digest
+    )
     for label, candidate in (
         ("same-count literal swap", base.replace("a.json", "b.json")),
         ("added path literal", base + 'Y = "docs/b.md"\n'),
@@ -847,6 +855,10 @@ def prove_upload_route_python_source_negatives() -> None:
         ("Path indirect format", base + 'Y = Path("{}/{}".format(ROOT, name))\n'),
         ("division indirect format", base + 'Y = ROOT / "{}".format(name)\n'),
         ("os.path concatenated root", base + 'import os\nY = os.path.join("scr" + "ipts", "new.py")\n'),
+        ("glob discovery", base + 'Y = Path.cwd().glob("*.json")\n'),
+        ("recursive glob discovery", base + 'Y = Path(".").rglob("*.py")\n'),
+        ("directory iterator discovery", base + 'Y = Path(".").iterdir()\n'),
+        ("directory walk discovery", base + 'Y = Path(".").walk()\n'),
         ("Path alias", base + 'from pathlib import Path as P\nY = P("contracts") / "operations/new.json"\n'),
         ("pathlib module alias", base + 'import pathlib as pl\nY = pl.Path("docs") / "new.md"\n'),
         ("unreviewed pathlib constructor", base + 'from pathlib import PosixPath\nY = PosixPath("services")\n'),
