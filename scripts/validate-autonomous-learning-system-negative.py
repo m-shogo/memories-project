@@ -1092,6 +1092,9 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("dispatch only", 'on: workflow_dispatch\n', 0),
         ("blank unrelated", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n', 0),
         ("blank then matching", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n      - "scripts/a.py"\n', 1),
+        ("target filtered", 'on:\n  pull_request_target:\n    paths:\n      - "scripts/a.py"\n', 1),
+        ("target unrelated", 'on:\n  pull_request_target:\n    paths:\n      - "docs/**"\n', 0),
+        ("target unfiltered", 'on:\n  pull_request_target:\n', 1),
     )
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:

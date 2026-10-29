@@ -30,7 +30,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
-    source = re.sub(r"""(?m)^  (['"])(push|pull_request)\1:""", r"  \2:", source)
+    source = re.sub(r"""(?m)^  (['"])(push|pull_request_target|pull_request)\1:""", r"  \2:", source)
     # Duplicate YAML mappings and unresolved event aliases can replace a
     # reviewed path filter. Treat ambiguity as potentially unfiltered.
     if len(re.findall(r"(?m)^on:", source)) > 1:
@@ -38,20 +38,20 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     if re.search(r"(?m)^on:[ \t]*[&*|>!]", source):
         return True
     if any(len(re.findall(r"(?m)^  " + event + ":", source)) > 1
-           for event in ("push", "pull_request")):
+           for event in ("push", "pull_request_target", "pull_request")):
         return True
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
-    if inline and re.search(r"\b(?:push|pull_request)\b", inline.group(1)):
+    if inline and re.search(r"\b(?:push|pull_request_target|pull_request)\b", inline.group(1)):
         return True
-    if re.search(r"(?m)^on:\s*\[[^\]]*\b(?:push|pull_request)\b", source):
+    if re.search(r"(?m)^on:\s*\[[^\]]*\b(?:push|pull_request_target|pull_request)\b", source):
         return True
     section = re.search(
         r"(?ms)^on:\s*\n(.*?)(?=^[A-Za-z_][\w-]*:|\Z)", source
     )
     if section is None:
-        return bool(re.search(r"(?m)^  (?:push|pull_request):", source))
+        return bool(re.search(r"(?m)^  (?:push|pull_request_target|pull_request):", source))
     block = section.group(1)
-    for event in ("push", "pull_request"):
+    for event in ("push", "pull_request_target", "pull_request"):
         match = re.search(
             r"(?ms)^  " + event + r":\s*\n(.*?)(?=^  [A-Za-z_][\w-]*:|\Z)",
             block,
@@ -182,6 +182,16 @@ def self_test(repo_root: Path) -> None:
         ("blank inside matching list", 'on:\n  push:\n    paths:\n      - "docs/**"\n\n      - "scripts/a.py"\n',
          "scripts/a.py", True),
         ("unreviewed trailing mapping", 'on:\n  push:\n    paths:\n      - "docs/**"\n    types:\n      - opened\n',
+         "scripts/a.py", True),
+        ("target filtered", 'on:\n  pull_request_target:\n    paths:\n      - "scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("target unrelated", 'on:\n  pull_request_target:\n    paths:\n      - "docs/**"\n',
+         "scripts/a.py", False),
+        ("target unfiltered", 'on:\n  pull_request_target:\n',
+         "scripts/a.py", True),
+        ("target quoted", 'on:\n  "pull_request_target":\n    paths:\n      - "scripts/a.py"\n',
+         "scripts/a.py", True),
+        ("target duplicate", 'on:\n  pull_request_target:\n    paths:\n      - "docs/**"\n  pull_request_target:\n    paths:\n      - "scripts/a.py"\n',
          "scripts/a.py", True),
     )
     for name, source, path, expected in cases:
