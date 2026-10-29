@@ -322,8 +322,13 @@ def upload_route_event_paths(source: str, event: str) -> tuple[str, ...]:
                 (lines[i] and not lines[i].startswith((" ", "#")))), len(lines))
     block = lines[start + 1:end]
     positions = [i for i, line in enumerate(block) if line == "    paths:"]
-    if len(positions) != 1 or block.count("    branches:") > 1:
+    if len(positions) != 1:
         raise RuntimeError("ambiguous Upload Route event path authority")
+    branch_rows = block[:positions[0]]
+    if event == "push" and branch_rows != ["    branches:", "      - so"]:
+        raise RuntimeError("Upload Route publisher must target only so")
+    if event == "pull_request" and branch_rows:
+        raise RuntimeError("Upload Route PR branch filter unreviewed")
     patterns = []
     for line in block[positions[0] + 1:]:
         if not line.startswith("      - "):
@@ -341,13 +346,26 @@ def prove_upload_route_event_parser_negatives() -> None:
     base = 'on:\n  push:\n    branches:\n      - so\n    paths:\n      - "a/**"\n'
     if upload_route_event_paths(base, "push") != ("a/**",):
         raise RuntimeError("Upload Route event parser positive fixture failed")
+    pr = 'on:\n  pull_request:\n    paths:\n      - "a/**"\n'
+    if upload_route_event_paths(pr, "pull_request") != ("a/**",):
+        raise RuntimeError("Upload Route PR event parser positive fixture failed")
     mutations = (
         base + "on:\n",
         base.replace("    paths:\n", "    paths-ignore:\n"),
         base.replace('      - "a/**"\n', '      - "a/**"\n      - "a/**"\n'),
         base.replace("  push:\n", "  pull_request:\n"),
         base.replace("    branches:\n", "    branches-ignore:\n"),
+        base.replace("      - so\n", "      - main\n"),
+        base.replace("    branches:\n      - so\n", ""),
+        base.replace("      - so\n", "      - so\n      - main\n"),
     )
+    try:
+        upload_route_event_paths(pr.replace("    paths:\n",
+                                           "    branches:\n      - main\n    paths:\n"), "pull_request")
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("Upload Route PR branch negative accepted")
     for index, source in enumerate(mutations):
         try:
             upload_route_event_paths(source, "push")
