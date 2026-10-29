@@ -1,0 +1,19 @@
+# Supplemental OPS learning — Upload Route snapshot symlink guard (2026-10-29)
+
+Append-only supplemental learning only. Canonical authority `docs/operations/AUTONOMOUS-OPS-LEARNING.md`; mandatory contract `contracts/operations/autonomous-learning-system.json`. This history is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material failure / identified risk
+
+- **Symptom:** A recursive file inventory using `Path.is_file()` can follow a symlinked file to a target outside the reviewed authority tree, while an ordinary file-count check might still pass. This is a potential unsafe alias/extra-read mechanism, not an observed incident.
+- **Observed evidence:** The Upload Route reconciler's reviewed `current_authority_files()` recursively scans contracts, scripts, Go service, workflows and docs and snapshots selected files with `read_bytes()`. The previous read-only inventory guard mirrored file selection but did not reject a symlink before `is_file()`. The reviewed Git tree currently has no symlinks under those roots.
+- **Verified root cause:** File-existence checks alone do not prove that a selected path is a regular non-aliased authority file.
+- **Failed approach:** Assuming a recursive `is_file()` inventory and broad lower-bound count prevent symlink substitution.
+- **Correction / executable recurrence guard:** [3b6618a2](https://github.com/m-shogo/memories-project/commit/3b6618a2f73df2b5ecdb51b36b9ebca1c2f2f052) rejects any symlink encountered by the read-only snapshot inventory before `is_file()` evaluation. Three temporary-fixture negatives cover a file alias, directory alias and broken alias. The guard is additive; it does not change the production reconciler or claim direct CI coverage on workflow-only edits.
+- **Retry condition:** Review any legitimate snapshot symlink or scan topology change before changing the guard; do not accept an alias solely because a path exists. Unchanged workflow-write, Quay MinIO HTTP 401, canonical learning append and human-promotion blockers remain scoped and are not retried.
+
+## Material success
+
+- **Outcome / evidence:** [Autonomous Learning Guard #40892885926](https://github.com/m-shogo/memories-project/actions/runs/40892885926) completed SUCCESS on exact code source `3b6618a2f73df2b5ecdb51b36b9ebca1c2f2f052`. Logs confirm 146 canonical learning negatives, 52 source-negative workflows / 63 Python commands / 204 reachability fixtures, 16 prewrite fanout fixtures, entrypoint validation, 1186 helper ancestor negatives, append-only and clean-source checks PASS.
+- **Why safe / reusable mechanism:** Only the CI-bound read-only learning negative validator changed (+19 lines). The guard scans file metadata, not file contents; no Upload Route reconciliation, MinIO, credentials, production traffic, evidence or promotion was executed.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `NO_GO`; canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` unchanged. OPS-P0-007 is `PREREQUISITES_BLOCKED`, with no registered/semantically eligible generations, human-approved objectives, executable reviewed requests, generation-bound recovery evidence, complete typed eight-domain records, final candidates or human promotion.
+- **Next safe target:** Audit the gap between the learning guard's push/PR event path filters and Upload Route workflow/dependency/snapshot inputs; do not claim that an executable guard's successful invocation proves it will be triggered by every future workflow-only change.
