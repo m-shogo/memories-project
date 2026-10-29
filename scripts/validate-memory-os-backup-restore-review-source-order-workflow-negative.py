@@ -74,6 +74,19 @@ def validate_trigger_reachability(
 def prove_trigger_reachability_negatives(source: str) -> None:
     pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
     push_marker = "  push:\n    branches: [so]\n    paths:\n"
+
+    def expect_trigger_rejected(mutated: str, expected: str, case: str) -> None:
+        try:
+            validate_trigger_reachability(mutated)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "review source-order CI wrong trigger diagnostic: "
+                    + case + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("review source-order CI accepted " + case)
+
     for event in ("push", "pull_request"):
         for path in TRIGGER_PATHS:
             token = "      - '" + path + "'\n"
@@ -84,11 +97,10 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             else:
                 prefix, suffix = source.split(pr_marker, 1)
                 mutated = prefix + pr_marker + suffix.replace(token, "", 1)
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("review source-order CI accepted missing " + event + " trigger: " + path)
+            expect_trigger_rejected(
+                mutated, "review source-order CI " + event + " exact trigger inventory drift",
+                event + " missing " + path,
+            )
         marker = push_marker if event == "push" else pr_marker
         for label, injected in (
             ("quoted extra", "      - 'unreviewed/**'\n"),
@@ -101,15 +113,18 @@ def prove_trigger_reachability_negatives(source: str) -> None:
             mutated = source.replace(marker, marker + injected, 1)
             if mutated == source:
                 raise SystemExit("review source-order CI addition fixture unchanged")
-            try:
-                validate_trigger_reachability(mutated)
-            except SystemExit:
-                continue
-            raise SystemExit("review source-order CI accepted " + event + " addition: " + label)
+            expect_trigger_rejected(
+                mutated, "review source-order CI " + event + " exact trigger inventory drift",
+                event + " addition " + label,
+            )
     try:
         validate_trigger_reachability(source, trigger_paths=TRIGGER_PATHS[:-1])
-    except SystemExit:
-        pass
+    except SystemExit as exc:
+        if str(exc) != "review source-order CI trigger inventory shortened or duplicated":
+            raise SystemExit(
+                "review source-order CI wrong shortened-inventory diagnostic: "
+                + str(exc)
+            ) from exc
     else:
         raise SystemExit("review source-order CI shortened inventory accepted")
     print("PASS: review source-order CI event-specific triggers (24 removals; 8 additions; 1 shortened inventory negative)")
