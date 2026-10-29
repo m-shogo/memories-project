@@ -1,0 +1,23 @@
+# Supplemental OPS learning — Upload Route focused Go test target identity (2026-10-30)
+
+Append-only supplemental history only. Canonical learning authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md`; mandatory policy remains `contracts/operations/autonomous-learning-system.json`. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review, or human-promotion gates.
+
+## Material failure — prospective false-green Go test selection
+
+- **Symptom:** A pinned `go test -run` selector can return success with zero matching tests if a selected Go test is renamed, moved, given an invalid `testing.T` signature, skipped, or stripped of assertions; the workflow's previously pinned command and step body would remain unchanged.
+- **Observed evidence:** The reviewed Upload Route workflows select exactly four named tests. Read-only inspection located two in `route_authority_test.go` and two in `server_live_test.go`. Previous workflow shell-body and Go import/build-tag guards did not independently prove that those test declarations remained present and non-skipped. This is a prospective guard gap, **not** an observed passing production test.
+- **Verified root cause:** Command fingerprinting proves invocation bytes, not test discovery or test-body viability. GitHub Actions' success for a read-only validator is not Go/MinIO runtime evidence.
+- **Failed approach:** Treating unchanged `go test -run` arguments as proof that the selected Go tests still exist and execute.
+- **Correction / executable recurrence guard:** [`fece3dd7`](https://github.com/m-shogo/memories-project/commit/fece3dd7ae44241ca574c2a459588b96b071367c) adds a CI-reachable read-only guard binding the exact four selector names to their reviewed source files, top-level `func Test...(t *testing.T)` signatures, unique declarations, absence of direct `t.Skip` calls in each selected body, and presence of a failure assertion. Five nested negative mutations cover rename, duplicate, wrong signature, direct skip and removed assertion.
+- **Retry condition:** A legitimate focused-test rename/move/signature change must be reviewed together with the workflow selector, Go test behavior, build constraints, exact-source CI and protected-authority checks. Do not infer complete runtime test execution or transitive dependency/trigger closure from this static proof.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40950874060](https://github.com/m-shogo/memories-project/actions/runs/40950874060) completed **SUCCESS** on exact source `fece3dd7ae44241ca574c2a459588b96b071367c`. Logs show append-only PASS, 201 printed fail-closed cases, helper-ancestor negative PASS (1,186), and successful read-only job completion. The five focused-test negatives are nested checks and are not separately included in the printed 201.
+- **Why safe:** The code commit modified only `scripts/validate-autonomous-learning-system-negative.py` (+77 lines); no Upload Route workflow YAML, Go service source, credentials, traffic, readiness, evidence, registry, or promotion authority changed.
+- **Reusable mechanism:** Independently bind test selection to real top-level declarations and non-skipped assertion-bearing bodies; preserve the distinction between static test discoverability and an actual executed integration test.
+- **Protected-authority check:** Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, mandatory contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` and OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remain unchanged. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/eligible generations 0/0; no approved objective, executable reviewed request, request-bound generation evidence, complete typed eight-domain record, final candidate or human promotion.
+
+## Newly discovered independent safe target
+
+The selected HTTP tests call `newLiveServer(t)`, whose helper currently invokes `t.Skip` if either required database/S3 environment variable is missing. Existing workflow environment fingerprints protect the reviewed values, but the helper's skip precondition is not yet independently bound. Add a bounded read-only negative guard for the helper's exact conditional skip boundary and the selected tests' helper calls; do not alter MinIO or external credentials. The known Quay MinIO 401 remains a separate unchanged blocker.
