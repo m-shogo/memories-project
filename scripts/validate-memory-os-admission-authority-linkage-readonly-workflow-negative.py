@@ -245,6 +245,7 @@ def prove_trigger_reachability_negatives(source: str) -> None:
 def validate(source: str, *, check_blob: bool = True) -> None:
     validate_trigger_reachability(source)
     validate_yaml_authority(source)
+    validate_concurrency_authority(source)
     for label, token, expected in REQUIRED:
         if source.count(token) != expected:
             raise SystemExit(f"admission linkage readonly workflow source boundary drift: {label}")
@@ -272,12 +273,62 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: admission linkage readonly PR/push branch guard runtime (6 cases)")
 
 
+def validate_concurrency_authority(source: str) -> None:
+    """Independently pin admission-linkage readonly noncancelling concurrency."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = ("  group: admission-authority-linkage-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    expected = group + "  cancel-in-progress: false\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("admission linkage readonly concurrency scope drift")
+    if source.split(marker, 1)[1].split(end, 1)[0] != expected:
+        raise SystemExit("admission linkage readonly concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(source: str) -> None:
+    """Prove ten exact-diagnostic readonly concurrency shadow negatives."""
+    validate_concurrency_authority(source)
+    group = ("  group: admission-authority-linkage-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: admission-authority-linkage-readonly-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if source.count(original) != 1 or len(cases) != 10:
+        raise SystemExit("admission linkage readonly concurrency fixture anchor drift")
+    for label, replacement in cases:
+        mutated = source.replace(original, replacement, 1)
+        if mutated == source:
+            raise SystemExit("admission linkage readonly inert concurrency fixture: " + label)
+        try:
+            validate_concurrency_authority(mutated)
+        except SystemExit as exc:
+            if str(exc) != "admission linkage readonly concurrency scope drift":
+                raise SystemExit(
+                    "admission linkage readonly wrong concurrency diagnostic: " + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("admission linkage readonly accepted concurrency mutation: " + label)
+    print("PASS: admission linkage readonly concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
+    prove_concurrency_authority_negatives(source)
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
