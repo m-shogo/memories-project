@@ -21,6 +21,16 @@ KNOWN_EXTERNAL_BLOCKED_WORKFLOWS = {
     ".github/workflows/reconcile-upload-route-authority.yml",
     ".github/workflows/reconcile-upload-route-authority-pr.yml",
 }
+# These publisher workflows have reviewed contents:write and source-SHA CAS
+# commit/push paths. Even a bounded fanout can invalidate a running writer.
+KNOWN_WRITER_CAS_WORKFLOWS = {
+    ".github/workflows/diagnose-metrics-alerting.yml",
+    ".github/workflows/rate-limit-operation-evidence.yml",
+    ".github/workflows/reconcile-backup-restore.yml",
+    ".github/workflows/reconcile-metrics-scrape-status.yml",
+    ".github/workflows/reconcile-observability-access.yml",
+    ".github/workflows/reconcile-rate-limit-operations.yml",
+}
 
 
 class AuditFailure(RuntimeError):
@@ -154,6 +164,8 @@ def classify(matches: list[str]) -> str:
         return "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"
     if len(matches) > MAX_REVIEWED_DIRECT_FANOUT:
         return "BLOCKED_HIGH_FANOUT"
+    if set(matches) & KNOWN_WRITER_CAS_WORKFLOWS:
+        return "BLOCKED_KNOWN_WRITER_CAS"
     return "BOUNDED_DIRECT_MATCH_ONLY"
 
 
@@ -238,6 +250,9 @@ def self_test(repo_root: Path) -> None:
     if classify([".github/workflows/reconcile-upload-route-authority.yml"]) != (
             "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"):
         raise AuditFailure("known MinIO-coupled trigger negative failed")
+    if classify([".github/workflows/reconcile-metrics-scrape-status.yml"]) != (
+            "BLOCKED_KNOWN_WRITER_CAS"):
+        raise AuditFailure("known source-SHA writer CAS trigger negative failed")
     high = matching_workflows(repo_root, "scripts/validate-memory-os-operability.py")
     rate = matching_workflows(
         repo_root, "scripts/validate-memory-os-rate-limit-operations-source-negative.py"
@@ -268,8 +283,9 @@ def self_test(repo_root: Path) -> None:
             len(entry_docs) != len(reviewed_entry_docs)):
         raise AuditFailure("shared entrypoint direct workflow identity changed; review required")
     entry_risk = classify(entry_docs)
-    if entry_risk != "BOUNDED_DIRECT_MATCH_ONLY":
-        raise AuditFailure("shared entrypoint direct workflow risk changed; review required")
+    if (entry_risk != "BLOCKED_KNOWN_WRITER_CAS" or
+            set(entry_docs) & KNOWN_WRITER_CAS_WORKFLOWS != KNOWN_WRITER_CAS_WORKFLOWS):
+        raise AuditFailure("shared entrypoint writer CAS risk changed; review required")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
