@@ -1319,13 +1319,24 @@ def prove_upload_route_test_environment_negatives(source_root: Path) -> None:
 
 
 REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256 = "5f1334748c3ac7088d02a976fd4dfa781a08a6ad6a6e34a035dd98da339472fb"
+REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS = {
+    "Format and verify source diff": "0df62db20de9cdd9fc079ec3212a2afdb85fba17939bacf10e5017775427d52c",
+    "Confirm reconcile is idempotent": "4c1fe3a742bdc8a99cb34fb2e882b10cc2d139927671118a7bd0bd463ce32e75",
+    "Validate reconcile rollback boundary": "4b627dcae963062ebf4f7bb1abae852e4646696df58696502df1b0653e89a59f",
+    "Reconcile registered routes and authority contracts": "940537c1b9fcde7243db49446c7a2817c98b355edf4e6eb4de3fb7ae09c26a91",
+    "Validate metrics, rate-limit and observability contracts": "1f69d1450219c350f12fdf449d112303a1683fbfc92c988a8a4398143cf92afc",
+}
+
+
 REVIEWED_UPLOAD_ROUTE_CRITICAL_STEPS = {
     "push": {
+        **REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS,
         "Start local MinIO": REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256,
         "Confirm exact clean source": "ef005ca7e8a13416a66b7101565a9cd738cca2b2b3a40d1340ec4c4da09bbed1",
         "Commit reconciled route authority": "eff8b093bc5e626f2005493cd37cf71c36969ecfdcd45e4e5a753dac3a30658e",
     },
     "pull_request": {
+        **REVIEWED_UPLOAD_ROUTE_SHARED_CRITICAL_STEPS,
         "Start local MinIO": REVIEWED_UPLOAD_ROUTE_MINIO_STEP_SHA256,
         "Confirm exact clean source": "67b258528a940f3905da352cd42172d2e45be14c789799c047d9cf77d455921e",
         "Require deterministic whole-worktree authority": "631e27fa9ac80db93efa83ac15d75621752365311c172233edd1fc7e3d835e85",
@@ -1359,6 +1370,16 @@ def prove_upload_route_critical_step_negatives(source_root: Path) -> None:
             ("MinIO wait", "for attempt in $(seq 1 60)", "for attempt in $(seq 1 1)"),
             ("MinIO endpoint", "/minio/health/live", "/other"),
             ("MinIO failure exit", "          exit 1\n", "          exit 0\n"),
+            ("format write", "gofmt -w internal/httpserver/observability.go", "gofmt -w other.go"),
+            ("format check", 'test -z "$(gofmt -l internal/httpserver/observability.go',
+             'test -z "$(echo internal/httpserver/observability.go'),
+            ("idempotence check", 'test -z "$(gofmt -l services/import-api/internal/httpserver/observability.go',
+             'test -z "$(echo services/import-api/internal/httpserver/observability.go'),
+            ("rollback validation", "run: python scripts/validate-memory-os-upload-route-reconcile-rollback.py",
+             "run: echo skipped"),
+            ("reconcile authority", "run: python scripts/reconcile-memory-os-upload-route-authority.py",
+             "run: echo skipped"),
+            ("observability", "python scripts/validate-memory-os-observability.py", "echo skipped"),
         ]
         if event == "push":
             cases += [
