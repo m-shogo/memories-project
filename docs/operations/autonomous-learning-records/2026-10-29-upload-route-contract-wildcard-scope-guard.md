@@ -1,0 +1,18 @@
+# Supplemental OPS learning — rate-limit contract wildcard CI scope (2026-10-29)
+
+Append-only supplemental learning; `docs/operations/AUTONOMOUS-OPS-LEARNING.md` remains canonical. Not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, recovery evidence, independent review or promotion authority.
+
+## Material success: outcome, evidence, safety, reusable mechanism, authority
+
+- **Outcome/evidence:** [7d0da281](https://github.com/m-shogo/memories-project/commit/7d0da281173474b04dc844d789cfe6fb5d66bb90) bounded the separate `contracts/operations/rate-limit*.json` path glob in both reviewed upload-route workflows. [Autonomous Learning Guard #40848671218](https://github.com/m-shogo/memories-project/actions/runs/40848671218) completed SUCCESS on exact source, logging seven existing contract matches, 14 exact-diagnostic negatives, the earlier 25-script/14-negative scope guard, 128 canonical learning negatives, 52 source-negative workflows, 63 direct Python commands and 204 reachability fixtures.
+- **Why safe:** Only `scripts/validate-memory-os-entry-docs.py` changed (+98 lines). No reviewed workflow, contract, registry, credentials, traffic, MinIO image access or human promotion authority was changed. The CI-reachable guard is read-only and does not start MinIO.
+- **Reusable mechanism:** Require the core `contracts/operations/rate-limit-policy-contract.v1.json`; bound the wildcard to the observed seven contract files; reject newly coupled contracts and broadened, duplicated, unquoted, missing or extra contract globs. Permit a future separately reviewed exact-core narrowing. The upload-route reconciler invokes the canonical rate-limit validator, which reads that core policy contract. Other six matches are not direct inputs of reviewed workflow commands; transitive closure is not yet proven.
+- **Protected-authority check:** Production Status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`. OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`, with zero registered/eligible generations, approved current recovery objectives, executable reviewed requests, request-bound generation evidence, complete typed eight-domain records or final candidates. Canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628` and learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` are unchanged. Independent review and human production promotion remain separate.
+
+## Known blocker and recurrence prevention
+
+- **Symptom/evidence:** The unchanged upload-route workflow previously failed pulling MinIO from Quay with HTTP 401 and Docker exit 125; no retry occurred. The canonical 4.17 MB learning append transport remains blocked by recorded HTTP/2 errors.
+- **Root cause or unknown:** The broad script/contract globs are verified cross-workflow trigger-coupling causes; the Quay authorization and large-payload transport root causes remain explicitly unknown.
+- **Failed approach/correction:** Assuming a narrowly scoped validator or contract change cannot launch unrelated MinIO-dependent CI was unsafe. The two executable match-inventory guards now detect newly coupled files without changing reviewed workflow authority.
+- **Recurrence guard/retry condition:** Revalidate when reviewed trigger topology, matching file inventory or transitive dependency changes. Do not retry unchanged MinIO or canonical-learning transport blockers without a verified changed precondition.
+- **Next safe target:** Prove Python/Go transitive dependency closure and obtain separate authorization for narrow push/PR triggers; keep reviewed workflow unchanged until then.
