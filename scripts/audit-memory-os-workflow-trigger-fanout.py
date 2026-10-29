@@ -114,7 +114,8 @@ def workflow_matches_path(source: str, relative: str) -> bool:
 
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
-            or any(part in ("", ".", "..") for part in relative.split("/"))):
+            or any(part in ("", ".", "..") for part in relative.split("/"))
+            or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)):
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
@@ -144,6 +145,20 @@ def classify(matches: list[str]) -> str:
 
 
 def self_test(repo_root: Path) -> None:
+    for label, path in (
+        ("newline", "scripts/a\nb.py"),
+        ("tab", "scripts/a\tb.py"),
+        ("NUL", "scripts/a\x00b.py"),
+        ("DEL", "scripts/a\x7fb.py"),
+        ("C1 control", "scripts/a\u0085b.py"),
+    ):
+        try:
+            validate_relative_path(path)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite path must be a safe repository-relative path":
+                raise
+        else:
+            raise AuditFailure("prewrite control-character path negative accepted: " + label)
     cases = (
         ("exact", 'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("glob", 'on:\n  pull_request:\n    paths:\n      - "scripts/validate-memory-os-rate-limit*.py"\n',
@@ -233,7 +248,7 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("symlinked workflow parent negative accepted")
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 3)
+        "prewrite fanout audit PASS: " + str(len(cases) + 8)
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; known MinIO coupling flagged; no workflow executed"

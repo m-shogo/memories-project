@@ -1171,7 +1171,20 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         if (result.returncode != 1 or result.stdout or
                 result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow directory missing or symlinked\n"):
             raise RuntimeError("prewrite fanout CLI accepted symlinked workflow parent")
-    return len(cases) + 3
+    for label, unsafe in (
+        ("newline", "scripts/a\nb.py"),
+        ("tab", "scripts/a\tb.py"),
+        ("DEL", "scripts/a\x7fb.py"),
+    ):
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(source_root),
+             "--path", unsafe],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (result.returncode != 1 or result.stdout or
+                result.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite path must be a safe repository-relative path\n"):
+            raise RuntimeError("prewrite fanout CLI accepted control-character path: " + label)
+    return len(cases) + 6
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
