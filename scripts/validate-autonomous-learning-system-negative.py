@@ -3538,6 +3538,12 @@ def main() -> int:
             ("generator-iterable", f"(None for _ in (globals().__setitem__('{symbol}', None) or (0,)))"),
             ("immediate-lambda", f"(lambda: globals().__setitem__('{symbol}', None))()"),
             ("lambda-in-comprehension", f"[(lambda: globals().__setitem__('{symbol}', None))() for _ in (0,)]"),
+            # Imported module code can have eager namespace side effects even
+            # when the current AST contains no lexical protected-name store.
+            ("eager-builtin-import", '__import__("math")'),
+            ("eager-importlib-module", 'importlib.import_module("math")'),
+            ("eager-runpy-path", 'runpy.run_path("fixture.py")'),
+            ("eager-runpy-module", 'runpy.run_module("math")'),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
