@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import difflib
+import hashlib
 import json
 import math
 import sys
@@ -464,6 +466,7 @@ def validate(repo_root: Path) -> None:
     ):
         raise ValidationFailure("source-negative CI guard lost executable negative proof")
 
+    prove_prewrite_python_negatives()
     try:
         learning = (repo_root / LEARNING).read_text(encoding="utf-8")
     except FileNotFoundError as exc:
@@ -479,11 +482,129 @@ def validate(repo_root: Path) -> None:
             raise ValidationFailure(f"learning authority lost invariant: {phrase}")
 
 
+PREWRITE_MAX_SOURCE_BYTES = 512 * 1024
+PREWRITE_MAX_ADDED_LINES = 80
+PREWRITE_MAX_REMOVED_LINES = 40
+
+
+def validate_prewrite_python(baseline: str, candidate: str, *,
+                             expected_sha256: str, max_added: int = 40,
+                             max_removed: int = 20) -> tuple[int, int]:
+    """Fail closed before proposing a bounded, main-bearing Python source edit."""
+    if not (1 <= max_added <= PREWRITE_MAX_ADDED_LINES
+            and 0 <= max_removed <= PREWRITE_MAX_REMOVED_LINES):
+        raise ValidationFailure("prewrite diff budget outside reviewed bounds")
+    if len(baseline.encode("utf-8")) > PREWRITE_MAX_SOURCE_BYTES or (
+            len(candidate.encode("utf-8")) > PREWRITE_MAX_SOURCE_BYTES):
+        raise ValidationFailure("prewrite Python source exceeds byte limit")
+    if hashlib.sha256(baseline.encode("utf-8")).hexdigest() != expected_sha256:
+        raise ValidationFailure("prewrite baseline SHA-256 mismatch")
+    if baseline == candidate:
+        raise ValidationFailure("prewrite candidate has no changes")
+    for label, source in (("baseline", baseline), ("candidate", candidate)):
+        try:
+            tree = ast.parse(source)
+        except (SyntaxError, ValueError, RecursionError) as exc:
+            raise ValidationFailure("prewrite " + label + " Python syntax invalid") from exc
+        mains = [node for node in tree.body
+                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                 and node.name == "main"]
+        if len(mains) != 1 or not isinstance(mains[0], ast.FunctionDef):
+            raise ValidationFailure("prewrite " + label + " must have one sync main")
+        entry_guard = ast.dump(ast.parse(
+            'if __name__ == "__main__":\n    raise SystemExit(main())\n'
+        ).body[0], include_attributes=False)
+        if sum(ast.dump(node, include_attributes=False) == entry_guard
+               for node in tree.body) != 1:
+            raise ValidationFailure("prewrite " + label + " must have one live main guard")
+    added = removed = 0
+    matcher = difflib.SequenceMatcher(
+        None, baseline.splitlines(), candidate.splitlines(), autojunk=False
+    )
+    for op, a, b, c, d in matcher.get_opcodes():
+        if op in ("replace", "delete"):
+            removed += b - a
+        if op in ("replace", "insert"):
+            added += d - c
+        if added > max_added or removed > max_removed:
+            raise ValidationFailure("prewrite diff exceeds reviewed line budget")
+    return added, removed
+
+
+def prove_prewrite_python_negatives() -> None:
+    baseline = ('def main() -> int:\n    return 0\n\n'
+                'if __name__ == "__main__":\n    raise SystemExit(main())\n')
+    sha = hashlib.sha256(baseline.encode("utf-8")).hexdigest()
+    candidate = baseline.replace('    return 0\n', '    # bounded change\n    return 0\n')
+    if validate_prewrite_python(baseline, candidate, expected_sha256=sha,
+                                max_added=1, max_removed=0) != (1, 0):
+        raise ValidationFailure("prewrite positive control failed")
+    with_comment = baseline.replace('    return 0\n', '    # removable\n    return 0\n')
+    cases = (
+        ("unchanged", baseline, sha, 40, 20, "no changes", baseline),
+        ("bad baseline hash", candidate, "0" * 64, 40, 20, "SHA-256 mismatch", baseline),
+        ("syntax", baseline + 'def broken(:\n', sha, 40, 20, "syntax invalid", baseline),
+        ("duplicate main", baseline + '\ndef main():\n    pass\n', sha, 40, 20, "one sync main", baseline),
+        ("removed guard", baseline.replace('    raise SystemExit(main())\n',
+                                           '    pass\n'), sha, 40, 20, "live main guard", baseline),
+        ("added overflow", baseline.replace('    return 0\n',
+              '    # a\n    # b\n    return 0\n'), sha, 1, 20, "diff exceeds", baseline),
+        ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
+         40, 0, "diff exceeds", with_comment),
+        ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+    )
+    for label, changed, expected, add, remove, diagnostic, original in cases:
+        try:
+            validate_prewrite_python(original, changed, expected_sha256=expected,
+                                     max_added=add, max_removed=remove)
+        except ValidationFailure as exc:
+            if diagnostic not in str(exc):
+                raise ValidationFailure("prewrite wrong diagnostic: " + label) from exc
+        else:
+            raise ValidationFailure("prewrite negative accepted: " + label)
+
+
+def validate_prewrite_files(baseline_path: Path, candidate_path: Path,
+                            expected_sha256: str, max_added: int,
+                            max_removed: int) -> tuple[int, int]:
+    sources = []
+    for path in (baseline_path, candidate_path):
+        if path.is_symlink() or not path.is_file():
+            raise ValidationFailure("prewrite input missing or symlinked")
+        if path.stat().st_size > PREWRITE_MAX_SOURCE_BYTES:
+            raise ValidationFailure("prewrite input exceeds byte limit")
+        try:
+            sources.append(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError) as exc:
+            raise ValidationFailure("prewrite input unreadable or invalid UTF-8") from exc
+    return validate_prewrite_python(
+        sources[0], sources[1], expected_sha256=expected_sha256,
+        max_added=max_added, max_removed=max_removed,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--prewrite-baseline", type=Path)
+    parser.add_argument("--prewrite-candidate", type=Path)
+    parser.add_argument("--prewrite-baseline-sha256")
+    parser.add_argument("--max-added-lines", type=int, default=40)
+    parser.add_argument("--max-removed-lines", type=int, default=20)
     args = parser.parse_args()
     try:
+        prewrite = (args.prewrite_baseline, args.prewrite_candidate,
+                    args.prewrite_baseline_sha256)
+        if any(value is not None for value in prewrite):
+            if not all(value is not None for value in prewrite):
+                raise ValidationFailure("prewrite requires baseline, candidate and SHA-256")
+            added, removed = validate_prewrite_files(
+                args.prewrite_baseline, args.prewrite_candidate,
+                args.prewrite_baseline_sha256, args.max_added_lines,
+                args.max_removed_lines,
+            )
+            print(f"Prewrite Python AST and diff-budget validation PASS: +{added} -{removed}")
+            return 0
         validate(args.repo_root.resolve())
     except ValidationFailure as exc:
         print(f"AUTONOMOUS LEARNING VALIDATION FAILED: {exc}", file=sys.stderr)
