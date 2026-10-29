@@ -409,11 +409,61 @@ def prove_admission_chain_negative_trigger_negatives() -> None:
     print("PASS: admission chain negative event-specific trigger reachability (152 removals; 8 additions; 1 shortened inventory negative)")
 
 
+def validate_admission_readonly_concurrency(source: str) -> None:
+    """Pin reviewed admission readonly cancellation policy without a blob-only shortcut."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = ("  group: backup-restore-admission-chain-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    expected = group + "  cancel-in-progress: true\n"
+    require(source.count(marker) == 1 and source.count(end) == 1,
+            "admission readonly concurrency scope drift")
+    require(source.split(marker, 1)[1].split(end, 1)[0] == expected,
+            "admission readonly concurrency scope drift")
+
+
+def prove_admission_readonly_concurrency_negatives() -> None:
+    """Reject ten exact-diagnostic group/cancellation shadow mutations."""
+    require(ADMISSION_READONLY_PATH.is_file() and not ADMISSION_READONLY_PATH.is_symlink(),
+            "admission readonly concurrency source missing or substituted")
+    source = ADMISSION_READONLY_PATH.read_text(encoding="utf-8")
+    validate_admission_readonly_concurrency(source)
+    group = ("  group: backup-restore-admission-chain-readonly-"
+             + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n")
+    original = group + "  cancel-in-progress: true\n"
+    cases = (
+        ("global group", "  group: backup-restore-admission-chain-readonly-global\n  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    require(source.count(original) == 1 and len(cases) == 10,
+            "admission readonly concurrency fixture anchor drift")
+    for label, replacement in cases:
+        mutated = source.replace(original, replacement, 1)
+        require(mutated != source, "admission readonly inert concurrency fixture: " + label)
+        try:
+            validate_admission_readonly_concurrency(mutated)
+        except Fail as exc:
+            require(str(exc) == "admission readonly concurrency scope drift",
+                    "admission readonly wrong concurrency diagnostic: " + label + ": " + str(exc))
+        else:
+            raise Fail("admission readonly accepted concurrency mutation: " + label)
+    print("PASS: admission readonly concurrency scope (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     module = load_validator()
     canonical = module.exact_workflow()
     prove_admission_readonly_trigger_negatives()
     prove_admission_chain_negative_trigger_negatives()
+    prove_admission_readonly_concurrency_negatives()
 
     cases = (
         (
