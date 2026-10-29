@@ -130,6 +130,11 @@ def workflow_matches_path(source: str, relative: str) -> bool:
             # may interpret them as escapes. fnmatch would undercount.
             if "\\" in pattern:
                 return True
+            # GitHub Actions treats ? and + as quantifiers on the preceding
+            # character, unlike Python fnmatch's ? wildcard and literal +.
+            # Do not claim a non-match without a compatible minimatch engine.
+            if "?" in pattern or "+" in pattern:
+                return True
             # GitHub minimatch supports constructs fnmatch does not; never
             # mistake unsupported grammar for a proven non-match.
             if any(char in pattern for char in "{}") or re.search(r"[@+?!]\(", pattern):
@@ -236,6 +241,12 @@ def self_test(repo_root: Path) -> None:
          "scripts/a.py", True),
         ("brace glob", 'on:\n  push:\n    paths:\n      - "scripts/{a,b}.py"\n',
          "scripts/a.py", True),
+        ("optional suffix quantifier", 'on:\n  push:\n    paths:\n      - "scripts/a.py?"\n',
+         "scripts/a.py", True),
+        ("repeat char quantifier", 'on:\n  push:\n    paths:\n      - "scripts/a+.py"\n',
+         "scripts/a.py", True),
+        ("optional preceding char", 'on:\n  push:\n    paths:\n      - "scripts/aa?.py"\n',
+         "scripts/a.py", True),
         ("plain escaped literal", 'on:\n  push:\n    paths:\n      - scripts/\\a.py\n',
          "scripts/a.py", True),
         ("plain escaped bracket", 'on:\n  push:\n    paths:\n      - scripts/\\[a].py\n',
@@ -264,9 +275,9 @@ def self_test(repo_root: Path) -> None:
     )
     # Pin the ordered fixture identities: an equal-count substitution must
     # not silently remove a previously reviewed negative.
-    if (len(cases) != 39 or hashlib.sha256(
+    if (len(cases) != 42 or hashlib.sha256(
             "\n".join(case[0] for case in cases).encode("utf-8")
-    ).hexdigest() != "a018d606ec665db0a787d5e33c376f753e482aeeee4b0c1350c4a8006a5e600b"):
+    ).hexdigest() != "35e5a45a7e8d89ce7f37b6fc50bd7fcb0e2573b946f337670256d3a56461fe82"):
         raise AuditFailure("prewrite fanout synthetic fixture identity drift")
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
