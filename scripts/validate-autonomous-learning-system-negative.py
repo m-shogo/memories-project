@@ -3554,6 +3554,8 @@ def main() -> int:
             ("eager-loader-exec-module", 'loader.exec_module(None)'),
             ("eager-reflective-import-module", 'getattr(importlib, "import_module")("math")'),
             ("eager-reflective-builtin-import", 'getattr(builtins, "__import__")("math")'),
+            ("eager-reflective-computed-import", 'getattr(importlib, "import_" + "module")("math")'),
+            ("eager-reflective-dynamic-loader", 'getattr(loader, method)(None)'),
         ):
             cases.append((
                 f"dynamic {label} {kind}",
