@@ -432,6 +432,38 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import parser accepted invalid import fixture")
 
 
+def require_reviewed_upload_route_go_package(relative: str, source: str) -> None:
+    """An unchanged Go import path does not prove the source package identity."""
+    import re
+    parts = Path(relative).parts
+    if len(parts) != 5 or parts[:3] != ("services", "import-api", "internal"):
+        raise RuntimeError("unreviewed Go package identity")
+    declarations = re.findall(r"(?m)^package[ \t]+([A-Za-z_]\w*)[ \t]*$", source)
+    if declarations != [parts[3]]:
+        raise RuntimeError("unreviewed Go package identity")
+
+
+def prove_upload_route_go_package_negatives() -> None:
+    path = "services/import-api/internal/httpserver/server.go"
+    require_reviewed_upload_route_go_package(path, "package httpserver\n")
+    require_reviewed_upload_route_go_package(path, "//go:build linux\n\npackage httpserver\n")
+    for label, relative, source in (
+        ("renamed package", path, "package changed\n"),
+        ("external test package", path, "package httpserver_test\n"),
+        ("missing package", path, "import \"fmt\"\n"),
+        ("duplicate declaration", path, "package httpserver\npackage httpserver\n"),
+        ("relocated package", "services/import-api/internal/metrics/server.go", "package httpserver\n"),
+        ("nested path", "services/import-api/internal/httpserver/subdir/server.go", "package httpserver\n"),
+    ):
+        try:
+            require_reviewed_upload_route_go_package(relative, source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go package identity":
+                raise
+        else:
+            raise RuntimeError("Go package identity negative accepted: " + label)
+
+
 def require_reviewed_upload_route_go_build_constraints(relative: str, source: str) -> None:
     """Pin compile-time Go build constraints independently of path/import identity."""
     stems = ("reconcile", "records", "seal", "storage", "verifier", "writer")
@@ -1298,6 +1330,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
     prove_upload_route_go_build_constraint_negatives()
+    prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
     prove_go_linkname_negatives()
@@ -1391,6 +1424,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     for file in go_files:
         require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
+        require_reviewed_upload_route_go_package(file.relative_to(source_root).as_posix(), source)
         require_reviewed_upload_route_go_build_constraints(file.relative_to(source_root).as_posix(), source)
         reject_unreviewed_go_embeds(source)
         reject_unreviewed_go_linknames(source)
@@ -1425,6 +1459,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             require_unaliased_go_path(source_root, file)
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
+            require_reviewed_upload_route_go_package(file.relative_to(source_root).as_posix(), source)
             require_reviewed_upload_route_go_build_constraints(file.relative_to(source_root).as_posix(), source)
             reject_unreviewed_go_embeds(source)
             reject_unreviewed_go_linknames(source)
