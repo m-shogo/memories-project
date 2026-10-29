@@ -277,6 +277,8 @@ def upload_route_local_go_imports(source: str) -> set[str]:
             match = re.fullmatch(r'\s*(?:[A-Za-z_.]\w*\s+)?"([^"]+)"\s*(?://.*)?', line)
             if match is None:
                 raise RuntimeError("unreviewed Go import block entry")
+            if match.group(1) == "C":
+                raise RuntimeError("unreviewed Go CGo import")
             paths.append(match.group(1))
     for block in reversed(blocks):
         source = source[:block.start()] + source[block.end():]
@@ -285,6 +287,8 @@ def upload_route_local_go_imports(source: str) -> set[str]:
             match = re.fullmatch(r'[ \t]*import[ \t]+(?:[A-Za-z_.]\w*[ \t]+)?"([^"]+)"[ \t]*(?://.*)?', line)
             if match is None:
                 raise RuntimeError("unreviewed single-line Go import")
+            if match.group(1) == "C":
+                raise RuntimeError("unreviewed Go CGo import")
             paths.append(match.group(1))
     return {path[len(module):] for path in paths if path.startswith(module)}
 
@@ -296,6 +300,17 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import block positive fixture failed")
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
+    for label, candidate in (
+        ("tab-separated CGo", 'import\t"C"\n'),
+        ("grouped CGo", 'import (\n  "C"\n)\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go CGo import":
+                raise
+        else:
+            raise RuntimeError("Go CGo import negative accepted: " + label)
     try:
         upload_route_local_go_imports('import (\n  not_a_go_import\n)\n')
     except RuntimeError:
