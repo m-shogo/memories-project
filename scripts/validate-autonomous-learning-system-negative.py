@@ -938,7 +938,9 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
         if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
                 and ((node.value.id == "os" and
                       node.attr in {"__dict__", "__getattribute__", "__class__"}) or
-                     (node.value.id == "sys" and node.attr == "modules"))):
+                     (node.value.id == "sys" and
+                      node.attr in {"modules", "path", "meta_path",
+                                    "path_hooks", "path_importer_cache"}))):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.ImportFrom) and node.module == "os"
                 and any(alias.name in {"system", "popen"} or
@@ -949,7 +951,9 @@ def require_reviewed_upload_route_python_source(source: str, count: int,
                     for alias in node.names)):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.ImportFrom) and node.module == "sys" and
-                any(alias.name == "modules" for alias in node.names)):
+                any(alias.name in {"modules", "path", "meta_path",
+                                   "path_hooks", "path_importer_cache"}
+                    for alias in node.names)):
             raise RuntimeError("unreviewed Upload Route Python dynamic dependency")
         if (isinstance(node, ast.Import) and
                 any(alias.name == "sys" and alias.asname not in (None, "sys")
@@ -1097,6 +1101,14 @@ def prove_upload_route_python_source_negatives() -> None:
         ("os class launcher", base + 'import os\nY = os.__class__.__getattribute__(os, "system")("echo")\n'),
         ("sys modules launcher", base + 'import sys\nY = sys.modules["os"].system("echo")\n'),
         ("sys modules from import", base + 'from sys import modules\nY = modules["os"].system("echo")\n'),
+        ("sys path insertion", base + 'import sys\nsys.path.insert(0, "other")\n'),
+        ("sys meta path replacement", base + 'import sys\nsys.meta_path = []\n'),
+        ("sys path hooks append", base + 'import sys\nsys.path_hooks.append(None)\n'),
+        ("sys importer cache clear", base + 'import sys\nsys.path_importer_cache.clear()\n'),
+        ("from sys path", base + 'from sys import path\nY = path\n'),
+        ("from sys meta path", base + 'from sys import meta_path\nY = meta_path\n'),
+        ("from sys path hooks", base + 'from sys import path_hooks\nY = path_hooks\n'),
+        ("from sys importer cache", base + 'from sys import path_importer_cache\nY = path_importer_cache\n'),
         ("sys alias modules", base + 'import sys as s\nY = s.modules["os"].system("echo")\n'),
         ("Path root join", base + 'from pathlib import Path\nY = Path("contracts") / "operations/new.json"\n'),
         ("operator root join", base + 'Y = ROOT / "docs" / "fixtures/new.json"\n'),
