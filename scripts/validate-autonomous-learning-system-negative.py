@@ -304,6 +304,77 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import parser accepted invalid import fixture")
 
 
+def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
+    """Report a compile-input lower bound; never claim transitive trigger closure."""
+    import re
+    target = source_root / "services/import-api/internal/httpserver"
+    go_files = sorted(target.glob("*.go"))
+    if len(go_files) < 27 or not any(p.name.endswith("_test.go") for p in go_files):
+        raise RuntimeError("upload route Go compilation surface shrank without review")
+    packages: set[str] = set()
+    for file in go_files:
+        packages.update(upload_route_local_go_imports(file.read_text(encoding="utf-8")))
+    if len(packages) < 21:
+        raise RuntimeError("upload route local Go package inventory shrank without review")
+    inputs = {p.relative_to(source_root).as_posix() for p in go_files}
+    for package in packages:
+        if not package.startswith("internal/"):
+            raise RuntimeError("unexpected local Go package: " + package)
+        directory = source_root / "services/import-api" / package
+        files = list(directory.glob("*.go")) if directory.is_dir() else []
+        files = [p for p in files if not p.name.endswith("_test.go")]
+        if not files:
+            raise RuntimeError("missing direct Go compile package: " + package)
+        inputs.update(p.relative_to(source_root).as_posix() for p in files)
+    for path in ("services/import-api/go.mod", "services/import-api/go.sum",
+                 "requirements-security-validation.txt"):
+        if not (source_root / path).is_file():
+            raise RuntimeError("missing upload route setup input: " + path)
+        inputs.add(path)
+    if not {"services/import-api/internal/metrics/recorder.go",
+            "services/import-api/internal/reqid/reqid.go"}.issubset(inputs):
+        raise RuntimeError("known direct Go compile inputs vanished from inventory")
+
+    def matches(path: str, pattern: str) -> bool:
+        if pattern.startswith("!") or any(c in pattern for c in "?[]{}"):
+            raise RuntimeError("unsupported upload route path filter")
+        if pattern.endswith("/**") and pattern.count("*") == 2:
+            return path.startswith(pattern[:-2])
+        if "**" in pattern:
+            raise RuntimeError("unreviewed recursive path filter")
+        return re.fullmatch(re.escape(pattern).replace(r"\*", "[^/]*"), path) is not None
+
+    if not matches("services/import-api/internal/httpserver/server.go",
+                   "services/import-api/internal/httpserver/**"):
+        raise RuntimeError("upload route recursive positive fixture failed")
+    if matches("services/import-api/internal/metrics/recorder.go",
+               "services/import-api/internal/httpserver/**") or matches(
+            "scripts/validate-memory-os-rate-limit/nested.py",
+            "scripts/validate-memory-os-rate-limit*.py"):
+        raise RuntimeError("upload route path-negative fixture failed")
+    uncovered = []
+    for workflow in ("reconcile-upload-route-authority.yml",
+                     "reconcile-upload-route-authority-pr.yml"):
+        lines = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8").splitlines()
+        positions = [i for i, line in enumerate(lines) if line == "    paths:"]
+        if len(positions) != 1:
+            raise RuntimeError("ambiguous upload route event paths: " + workflow)
+        patterns = []
+        for line in lines[positions[0] + 1:]:
+            if not line.startswith("      - "):
+                break
+            match = re.fullmatch(r'      - "([^"]+)"', line)
+            if match is None:
+                raise RuntimeError("unreviewed upload route path: " + workflow)
+            patterns.append(match.group(1))
+        if not patterns or len(patterns) != len(set(patterns)):
+            raise RuntimeError("duplicate/empty upload route paths: " + workflow)
+        uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
+                             for path in inputs))
+    if len(inputs) < 95 or any(count < 67 for count in uncovered):
+        raise RuntimeError("upload route direct input trigger gap changed; review required")
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -789,6 +860,7 @@ def main() -> int:
         require_failure(source_root, name, mutate)
 
     prove_upload_route_go_import_parser()
+    prove_upload_route_go_direct_inputs(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases} fail-closed cases)")
     return 0
