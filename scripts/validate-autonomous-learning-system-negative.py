@@ -307,6 +307,23 @@ def prove_upload_route_go_import_parser() -> None:
     if upload_route_local_go_imports(sample, include_external=True) != {
             "fmt", module + "internal/metrics"}:
         raise RuntimeError("Go complete import path positive fixture failed")
+    sample_entries = {
+        "services/import-api/internal/httpserver/a.go\tfmt",
+        "services/import-api/internal/httpserver/a.go\t" + module + "internal/metrics",
+    }
+    sample_digest = "5af039209052f569a5e26c8aa8ea0caa6fccf5dfd0886ae59cb8afc5168cd55f"
+    require_reviewed_upload_route_input_set(sample_entries, 2, sample_digest)
+    for label, candidate in (
+        ("external import swap", {next(iter(sample_entries)), "a.go\tother/external"}),
+        ("import file move", {entry.replace("/a.go\t", "/b.go\t") for entry in sample_entries}),
+    ):
+        try:
+            require_reviewed_upload_route_input_set(candidate, 2, sample_digest)
+        except RuntimeError as exc:
+            if str(exc) != "upload route reviewed input identity changed; review required":
+                raise
+        else:
+            raise RuntimeError("Go import identity negative accepted: " + label)
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
     for label, candidate in (
@@ -1281,11 +1298,11 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             raise RuntimeError("Go local import closure exceeds reviewed file budget")
     if len(visited) < 22:
         raise RuntimeError("reviewed transitive Go package missing from closure")
-    # CI-only bounded baseline discovery. Pin the observed digest after review;
-    # do not treat this diagnostic as a completed import-graph authority guard.
-    import_canonical = "".join(entry + "\n" for entry in sorted(import_entries))
-    print("Upload Route Go import inventory baseline: " + str(len(import_entries)) +
-          " sha256=" + hashlib.sha256(import_canonical.encode("utf-8")).hexdigest())
+    # Pin exact per-file Go imports, including external modules. The CI
+    # baseline was independently observed before this enforcement change.
+    require_reviewed_upload_route_input_set(
+        import_entries, 722, "66a22b030f30e6a127445fbd63f659c9f1ca89c0a85b9cb5988ff7829e029da6"
+    )
     for path in ("services/import-api/go.mod", "services/import-api/go.sum",
                  "requirements-security-validation.txt"):
         if not (source_root / path).is_file():
