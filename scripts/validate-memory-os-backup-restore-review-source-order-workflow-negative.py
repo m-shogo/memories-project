@@ -296,15 +296,40 @@ def main() -> int:
     blob_only = {"injected shell command", "injected executable action"}
     if len(cases) != 21 or sum(label in blob_only for label, _, _ in cases) != 2:
         raise SystemExit("review source-order CI negative inventory drift")
+    special_diagnostics = {
+        "PR target": "review source-order CI exact event header drift",
+        "self-trigger": "review source-order CI exact event header drift",
+        "removed PR self-trigger": "review source-order CI exact event header drift",
+        "read-only token": "review source-order CI permission leaf shadow drift",
+        "injected shell command": "review source-order CI complete source drift",
+        "injected executable action": "review source-order CI complete source drift",
+    }
     for label, old, replacement in cases:
         if old not in source:
             raise SystemExit("review source-order CI negative anchor missing: " + label)
-        mutated = source.replace(old, replacement, 1)
+        if label == "removed PR self-trigger":
+            marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+            if source.count(marker) != 1:
+                raise SystemExit("review source-order CI PR event mutation marker drift")
+            prefix, suffix = source.split(marker, 1)
+            if suffix.count(old) != 1:
+                raise SystemExit("review source-order CI PR self-trigger fixture drift")
+            mutated = prefix + marker + suffix.replace(old, replacement, 1)
+        else:
+            mutated = source.replace(old, replacement, 1)
+        if mutated == source:
+            raise SystemExit("review source-order CI unchanged source mutation: " + label)
+        expected = special_diagnostics.get(label, "review source-order CI source drift: " + label)
         try:
             validate(mutated, check_blob=label in blob_only)
-        except SystemExit:
-            continue
-        raise SystemExit("review source-order CI accepted forbidden mutation: " + label)
+        except SystemExit as exc:
+            if str(exc) != expected:
+                raise SystemExit(
+                    "review source-order CI wrong source diagnostic: "
+                    + label + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("review source-order CI accepted forbidden mutation: " + label)
     print(f"PASS: review source-order CI source admission ({len(cases) - 2} semantic anchor + 2 blob-only negatives)")
     return 0
 
