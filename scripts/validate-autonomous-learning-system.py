@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -34,16 +35,61 @@ class ValidationFailure(RuntimeError):
     pass
 
 
+MAX_LEARNING_CONTRACT_BYTES = 1024 * 1024
+
+
 def load_object(path: Path) -> dict[str, Any]:
+    """Read the learning contract with bounded, unambiguous JSON semantics."""
+    if not path.is_file():
+        raise ValidationFailure(f"missing authority: {path}")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing authority: {path}") from exc
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_LEARNING_CONTRACT_BYTES + 1)
+    except OSError:
+        raise ValidationFailure(f"unreadable authority: {path}") from None
+    if len(raw) > MAX_LEARNING_CONTRACT_BYTES:
+        raise ValidationFailure(f"oversized JSON authority: {path}")
+    try:
+        source = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValidationFailure(f"invalid UTF-8: {path}") from None
+
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValidationFailure(f"duplicate JSON key: {path}")
+            value[key] = item
+        return value
+
+    def reject_constant(_value: str) -> None:
+        raise ValidationFailure(f"nonfinite JSON number: {path}")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValidationFailure(f"nonfinite JSON number: {path}")
+        return number
+
+    def bounded_int(value: str) -> int:
+        if len(value.lstrip("-")) > 128:
+            raise ValidationFailure(f"oversized JSON integer: {path}")
+        return int(value)
+
+    try:
+        value = json.loads(
+            source, object_pairs_hook=unique_keys,
+            parse_constant=reject_constant, parse_float=finite_float,
+            parse_int=bounded_int,
+        )
     except json.JSONDecodeError as exc:
-        raise ValidationFailure(f"invalid JSON: {path}: {exc}") from exc
+        raise ValidationFailure(f"invalid JSON: {path}: {exc}") from None
+    except (ValueError, OverflowError, RecursionError):
+        raise ValidationFailure(f"invalid JSON: {path}: parser rejected value") from None
     if not isinstance(value, dict):
         raise ValidationFailure(f"root must be an object: {path}")
     return value
+
 
 
 def exact_string_set(value: Any, expected: set[str], field: str) -> None:
