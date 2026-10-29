@@ -648,6 +648,60 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: generation independent review PR/push branch guard runtime (6 cases)")
 
 
+def validate_concurrency_authority(source: str) -> None:
+    """Pin reviewed generation independent-review noncancelling concurrency."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = (
+        "  group: backup-restore-generation-independent-review-negative-"
+        + chr(36) + "{{ github.event.pull_request.number || github.sha }}\n"
+    )
+    expected = group + "  cancel-in-progress: false\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("generation independent review concurrency scope drift")
+    actual = source.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("generation independent review concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(source: str) -> None:
+    """Prove ten exact-diagnostic independent-review concurrency shadows."""
+    validate_concurrency_authority(source)
+    group = (
+        "  group: backup-restore-generation-independent-review-negative-"
+        + chr(36) + "{{ github.event.pull_request.number || github.sha }}\n"
+    )
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: backup-restore-generation-independent-review-negative-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if source.count(original) != 1:
+        raise SystemExit("generation independent review concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = source.replace(original, block, 1)
+        if changed == source:
+            raise SystemExit("generation independent review unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "generation independent review concurrency scope drift":
+                raise SystemExit(
+                    "generation independent review wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("generation independent review accepted concurrency mutation: " + name)
+    print("PASS: generation independent review concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     prove_bounded_reader()
     try:
@@ -657,6 +711,7 @@ def main() -> int:
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
+    prove_concurrency_authority_negatives(source)
     helper_source = read_bounded_regular(HELPER)
     validate_helper_source(helper_source)
     transport_source = read_bounded_regular(TRANSPORT)
