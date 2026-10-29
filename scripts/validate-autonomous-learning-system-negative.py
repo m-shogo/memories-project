@@ -743,7 +743,7 @@ def reject_unreviewed_upload_route_shell_dispatch(source: str) -> None:
     patterns = (
         r"(?m)^\s*(?:run:\s*)?(?:env|command|sudo)\s+(?:python(?:3(?:\.\d+)?)?|go)\b",
         r"(?m)\b(?:bash|sh)\s+-c\b",
-        r"(?m)(?:&&|;|\|)\s*(?:python(?:3(?:\.\d+)?)?|go)\b",
+        r"(?m)(?:&&|;|\|)[ \t]*(?:python(?:3(?:\.\d+)?)?|go)\b",
         r"(?m)^\s*(?:run:\s*)?python3(?:\.\d+)?\b",
         r"\$\(\s*(?:python|go)\b",
     )
@@ -755,6 +755,11 @@ def prove_upload_route_shell_dispatch_negatives() -> None:
     reject_unreviewed_upload_route_shell_dispatch(
         "run: python scripts/validate-memory-os-metrics.py\n"
         "run: go test ./internal/httpserver\n"
+    )
+    # YAML's run: | block scalar is not a shell pipe to the next command.
+    reject_unreviewed_upload_route_shell_dispatch(
+        "run: |\n  python scripts/validate-memory-os-metrics.py\n"
+        "run: |\n  go test ./internal/httpserver\n"
     )
     for label, source in (
         ("env Python", "run: env python scripts/new.py"),
