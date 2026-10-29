@@ -301,6 +301,59 @@ def prove_yaml_authority_negatives(publisher: str, independent: str) -> None:
 
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin the reviewed writer's cancellation scope independently of blob identity."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    expected = (
+        "  group: local-migration-recovery-artifact-\u0024{{ github.event_name }}-\u0024{{ github.ref }}\n"
+        "  cancel-in-progress: true\n"
+    )
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("local recovery publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("local recovery publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Exercise cancellation disabling, shadow keys and unreviewed group scope."""
+    validate_concurrency_authority(publisher)
+    original = (
+        "  group: local-migration-recovery-artifact-\u0024{{ github.event_name }}-\u0024{{ github.ref }}\n"
+        "  cancel-in-progress: true\n"
+    )
+    variants = (
+        ("global group", "  group: local-migration-recovery-artifact-global\n"
+         "  cancel-in-progress: true\n"),
+        ("cancel disabled", original.replace("true", "false")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: false\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : false\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': false\n"),
+        ("unreviewed leaf", original + "  max-parallel: 100\n"),
+        ("removed cancellation", original.replace("  cancel-in-progress: true\n", "")),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("local recovery concurrency mutation anchor drift")
+    for name, changed_block in variants:
+        changed = publisher.replace(original, changed_block, 1)
+        if changed == publisher:
+            raise SystemExit("local recovery unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "local recovery publisher concurrency scope drift":
+                raise SystemExit(
+                    "local recovery wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("local recovery accepted concurrency mutation: " + name)
+    print("PASS: local recovery publisher concurrency cancellation scope (10 exact-diagnostic negatives)")
+
+
 def validate_job_authority(publisher: str, independent: str) -> None:
     """Bind reviewed job identities, multi-line writer scope and nested permissions."""
     reviewed = (
@@ -459,6 +512,7 @@ def validate(publisher: str, independent: str) -> None:
     validate_yaml_authority(publisher, publisher=True)
     validate_yaml_authority(independent, publisher=False)
     validate_job_authority(publisher, independent)
+    validate_concurrency_authority(publisher)
     check_source("publisher", publisher, PUBLISHER_SHA, PUBLISHER_REQUIRED)
     check_source("independent", independent, INDEPENDENT_SHA, INDEPENDENT_REQUIRED)
     check_source("local reconcile negative", read(LOCAL_NEGATIVE), LOCAL_NEGATIVE_SHA, ())
@@ -728,6 +782,7 @@ def main() -> int:
     prove_trigger_reachability_negatives(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     negative_proofs(publisher, independent)
     runtime_proofs()
     diagnostic_runtime(publisher)
