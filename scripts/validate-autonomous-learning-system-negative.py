@@ -1250,6 +1250,73 @@ def prove_upload_route_step_order_negatives() -> None:
             raise RuntimeError("Upload Route step-order negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_ENV_DIGESTS = {
+    "push": "b8be75551ac269930a24024724251ad10456d50c876bebb4349ebf62a1b2db4c",
+    "pull_request": "a7185d987d322b52e5e3de7bb1597ef4eb9495ed89a7d1e65b382bb368e1cf29",
+}
+
+
+def require_reviewed_upload_route_test_environment(source: str, event: str) -> None:
+    """Pin localhost-only test service and job/step environment identity."""
+    import re
+    if event not in REVIEWED_UPLOAD_ROUTE_ENV_DIGESTS:
+        raise RuntimeError("unreviewed Upload Route test environment")
+    service = re.findall(r"(?ms)^    services:\n(.*?)(?=^    [a-z-]+:|\Z)", source)
+    job_env = re.findall(r"(?ms)^    env:\n(.*?)(?=^    [a-z-]+:|\Z)", source)
+    step_env = re.findall(r"(?m)^        env:\n((?:          [^\r\n]+\n)+)", source)
+    if (len(service) != 1 or len(job_env) != 1 or len(step_env) != 2
+            or len(re.findall(r"""(?m)^[ \t]*(?:services|['"]services['"])\s*:""", source)) != 1
+            or len(re.findall(r"""(?m)^[ \t]*(?:env|['"]env['"])\s*:""", source)) != 3):
+        raise RuntimeError("unreviewed Upload Route test environment")
+    digest = hashlib.sha256("\0".join([service[0], job_env[0], *step_env]).encode()).hexdigest()
+    if digest != REVIEWED_UPLOAD_ROUTE_ENV_DIGESTS[event]:
+        raise RuntimeError("unreviewed Upload Route test environment")
+
+
+def prove_upload_route_test_environment_negatives(source_root: Path) -> None:
+    for workflow, event in (
+        ("reconcile-upload-route-authority.yml", "push"),
+        ("reconcile-upload-route-authority-pr.yml", "pull_request"),
+    ):
+        source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
+        require_reviewed_upload_route_test_environment(source, event)
+        cases = [
+            ("database endpoint", "127.0.0.1:5432", "db.example.invalid:5432"),
+            ("S3 endpoint", "http://127.0.0.1:9000", "https://s3.example.invalid"),
+            ("S3 secret", "MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin", "MEMORY_OS_TEST_S3_SECRET_KEY: other"),
+            ("Postgres port", "5432:5432", "5433:5432"),
+            ("Postgres DB", "POSTGRES_DB: memory_os_security", "POSTGRES_DB: other"),
+            ("health retries", "--health-retries 30", "--health-retries 1"),
+            ("extra job env", "      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin\n",
+             "      MEMORY_OS_TEST_S3_SECRET_KEY: minioadmin\n      EXTRA: unsafe\n"),
+            ("quoted job env", "    env:\n      MEMORY_OS_TEST_DATABASE_URL",
+             "    'env':\n      MEMORY_OS_TEST_DATABASE_URL"),
+            ("quoted services", "    services:\n      postgres:",
+             "    'services':\n      postgres:"),
+            ("extra service", "    services:\n      postgres:",
+             "    services:\n      extra:\n      postgres:"),
+            ("Postgres image", "postgres:16-alpine", "postgres:17-alpine"),
+            ("service env", "        env:\n          POSTGRES_PASSWORD",
+             "        'env':\n          POSTGRES_PASSWORD"),
+        ]
+        if event == "push":
+            cases.append(("source SHA binding", "          SOURCE_SHA: ${{ steps.source.outputs.sha }}",
+                          "          SOURCE_SHA: unsafe"))
+        else:
+            cases.append(("PR head SHA binding", "          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+                          "          PR_HEAD_SHA: unsafe"))
+        for label, before, after in cases:
+            if source.count(before) != 1:
+                raise RuntimeError("Upload Route test environment fixture anchor changed: " + label)
+            try:
+                require_reviewed_upload_route_test_environment(source.replace(before, after, 1), event)
+            except RuntimeError as exc:
+                if str(exc) != "unreviewed Upload Route test environment":
+                    raise
+            else:
+                raise RuntimeError("Upload Route test environment negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -2074,6 +2141,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_permission_negatives()
     prove_upload_route_job_execution_negatives()
     prove_upload_route_step_order_negatives()
+    prove_upload_route_test_environment_negatives(source_root)
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -2308,6 +2376,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_permissions(source, event)
         require_reviewed_upload_route_job_execution(source, event)
         require_reviewed_upload_route_step_order(source, event)
+        require_reviewed_upload_route_test_environment(source, event)
         require_reviewed_upload_route_event_set(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
