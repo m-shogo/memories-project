@@ -487,16 +487,16 @@ def prove_unaliased_go_path_negatives() -> None:
 def reject_unreviewed_go_embeds(source: str) -> None:
     """Go embed assets are extra compile inputs absent from the import graph."""
     import re
-    if re.search(r"(?m)^[ \\t]*//go:embed(?:[ \\t]|$)", source):
+    if re.search(r"(?m)^[ \t]*//go:embed(?:[ \t]|$)", source):
         raise RuntimeError("unreviewed Go embedded asset input")
 
 
 def prove_go_embed_negatives() -> None:
-    reject_unreviewed_go_embeds("// go:embed is not a directive\\n")
+    reject_unreviewed_go_embeds("// go:embed is not a directive\n")
     for label, source in (
-        ("direct", "//go:embed static/*\\nvar assets embed.FS\\n"),
-        ("indented", "    //go:embed assets/config.json\\n"),
-        ("empty", "//go:embed\\n"),
+        ("direct", "//go:embed static/*\nvar assets embed.FS\n"),
+        ("indented", "    //go:embed assets/config.json\n"),
+        ("empty", "//go:embed\n"),
     ):
         try:
             reject_unreviewed_go_embeds(source)
