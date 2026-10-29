@@ -450,10 +450,8 @@ def prove_job_authority_negatives(publisher: str, independent: str) -> None:
                 return prefix + header + suffix.replace(before, after, 1)
 
             permission = "    permissions:\n      contents: " + scope + "\n"
-            runner = ("    runs-on: ubuntu-24.04
-" if name == "rehearse"
-                      else "    runs-on: ubuntu-latest
-")
+            runner = ("    runs-on: ubuntu-24.04\n" if name == "rehearse"
+                      else "    runs-on: ubuntu-latest\n")
             time_limit = "    timeout-minutes: " + str(timeout) + "\n"
             steps = "    steps:\n"
             cases = [
