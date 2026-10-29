@@ -1303,6 +1303,19 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     entry_reports = [match for match in entry_reports if match is not None]
     entry_workflows = [line[2:] for line in entry_lines
                        if line.startswith("- .github/workflows/")]
+    reviewed_entry_workflows = {
+        ".github/workflows/autonomous-learning-guard.yml",
+        ".github/workflows/diagnose-metrics-alerting.yml",
+        ".github/workflows/operability-contracts.yml",
+        ".github/workflows/rate-limit-operation-evidence.yml",
+        ".github/workflows/reconcile-backup-restore.yml",
+        ".github/workflows/reconcile-metrics-scrape-status-pr.yml",
+        ".github/workflows/reconcile-metrics-scrape-status.yml",
+        ".github/workflows/reconcile-observability-access.yml",
+        ".github/workflows/reconcile-rate-limit-operations.yml",
+    }
+    if set(entry_workflows) != reviewed_entry_workflows:
+        raise RuntimeError("prewrite entrypoint fanout reviewed identities changed")
     if (entry.stderr or len(entry_reports) != 1 or
             int(entry_reports[0].group(2)) != len(entry_workflows) or
             len(entry_workflows) != len(set(entry_workflows)) or
