@@ -668,6 +668,7 @@ def prove_upload_route_python_source_negatives() -> None:
         except RuntimeError as exc:
             if str(exc) not in {
                 "unreviewed Upload Route Python dynamic dependency",
+                "unreviewed Upload Route Python composed input path",
                 "upload route reviewed input identity changed; review required",
             }:
                 raise
