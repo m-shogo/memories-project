@@ -1,0 +1,16 @@
+# Supplemental OPS learning — load foundation cancellable concurrency (2026-10-29)
+
+Append-only supplemental operational learning. This record is not the canonical learning authority, production/backup/restore/RPO/RTO/skew/drill evidence, credentials, traffic, readiness, generation/objective authority, typed eight-domain non-resurrection coverage, independent review or human promotion.
+
+## Material success
+
+- **Outcome:** [5c35a0d9](https://github.com/m-shogo/memories-project/commit/5c35a0d9e975c1a311b0403ad09ec12f1eb7ade1) adds a fail-closed effective YAML concurrency guard and 12 exact-diagnostic negative fixtures to the independent read-only `scripts/validate-memory-os-load-foundation-diagnostic-source-negative.py`. It preserves the reviewed per-PR `reconcile-load-foundation-authorities-${{ github.event.pull_request.number || 'so' }}` group and, importantly, `cancel-in-progress: true` (unlike noncancelling publishers).
+- **Observed evidence:** [Load Foundation Diagnostic Source Negative #40834582240](https://github.com/m-shogo/memories-project/actions/runs/40834582240) completed SUCCESS on exact source. Job 123316266782 logs 12/12 concurrency negatives, existing root/permission negatives, 24 source negatives, 28 event/ref/SHA shell cases, two raw-log suppression cases, and `production evidence generated: false`. Git compare from 4094e6c0 to 5c35a0d9 changes only the read-only validator (58 added lines, zero deleted).
+- **Why safe:** No reviewed publisher or independent workflow, production evidence, credentials, traffic, real generation, approved objective, executable reviewed request, typed eight-domain record, readiness or promotion was changed.
+- **Reusable executable mechanism:** Compare the effective YAML concurrency mapping to the exact reviewed cancellation/group semantics. Require exact diagnostics for changed, missing, duplicate, quoted, spaced or extra leaves; do not apply the noncancelling default to a legitimately cancellable workflow. Existing independent source-negative CI triggers on the validator's PR/push path.
+- **Protected-authority check:** All nine canonical protected blobs remained unchanged after the code commit, including Production Status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` (`productionDecision=NO_GO`), canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, mandatory contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, generation/objective/drill/evidence/non-resurrection/promotion registries.
+- **Retry condition:** Revalidate after material publisher cancellation/group, CI path or negative harness changes. Do not retry unchanged Upload Route wildcard/Quay MinIO HTTP 401 or human-approval blockers.
+
+## OPS-P0-007 boundary
+
+Registered environment generations remain separate from semantically eligible unsuperseded generations in distinct environments. Preflight additionally requires an explicitly human-approved current recovery objective. Reviewed drill requests are planning-only; new recovery evidence is bound to a current executable reviewed request. Final candidates need existing generation/objective gates, complete typed eight-domain non-resurrection coverage and independent review. Human production promotion remains separate/non-automatic. Learning is never production evidence.
