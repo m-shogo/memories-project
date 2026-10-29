@@ -504,6 +504,9 @@ def negative_proofs(publisher: str, independent: str) -> None:
             if label in {"publisher event scope", "independent event scope"}:
                 require(reason == expected,
                         "negative rejected for wrong trigger reason: " + label + ": " + reason)
+            elif label == "publisher writer scope":
+                require(reason == "local recovery publisher rehearse job key shadow drift",
+                        "negative rejected for wrong writer job reason: " + label + ": " + reason)
             else:
                 require(reason.startswith("local migration recovery CI source guard: ")
                         and expected in reason,
