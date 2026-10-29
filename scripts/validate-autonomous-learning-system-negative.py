@@ -509,6 +509,31 @@ def prove_go_embed_negatives() -> None:
             raise RuntimeError("Go embed negative accepted: " + label)
 
 
+def reject_unreviewed_go_linknames(source: str) -> None:
+    """Go linkname can bind unimported symbols outside the static import graph."""
+    import re
+    if re.search(r"(?m)^[ \\t]*//go:linkname(?:[ \\t]|$)", source):
+        raise RuntimeError("unreviewed Go linkname symbol dependency")
+
+
+def prove_go_linkname_negatives() -> None:
+    reject_unreviewed_go_linknames("// go:linkname is only documentation\n")
+    for label, source in (
+        ("direct", "//go:linkname local external/pkg.symbol\n"),
+        ("indented", "    //go:linkname local external/pkg.symbol\n"),
+        ("tab indent", "\t//go:linkname local external/pkg.symbol\n"),
+        ("tab separator", "//go:linkname\tlocal external/pkg.symbol\n"),
+        ("empty", "//go:linkname\n"),
+    ):
+        try:
+            reject_unreviewed_go_linknames(source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go linkname symbol dependency":
+                raise
+        else:
+            raise RuntimeError("Go linkname negative accepted: " + label)
+
+
 def require_upload_route_event_path_parity(publisher: tuple[str, ...],
                                           pr: tuple[str, ...]) -> None:
     if publisher != pr:
@@ -933,6 +958,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_go_workspace_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
+    prove_go_linkname_negatives()
     prove_upload_route_path_parity_negatives()
     prove_upload_route_input_set_negatives()
     prove_upload_route_python_source_negatives()
@@ -996,6 +1022,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_unaliased_go_path(source_root, file)
         source = file.read_text(encoding="utf-8")
         reject_unreviewed_go_embeds(source)
+        reject_unreviewed_go_linknames(source)
         if 'import "C"' in source:
             raise RuntimeError("unreviewed Go CGo import")
         packages.update(upload_route_local_go_imports(source))
@@ -1024,6 +1051,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
             reject_unreviewed_go_embeds(source)
+            reject_unreviewed_go_linknames(source)
             if 'import "C"' in source:
                 raise RuntimeError("unreviewed Go CGo import")
             for dependency in upload_route_local_go_imports(source):
