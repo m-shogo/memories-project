@@ -1,0 +1,15 @@
+# Supplemental OPS learning — promotion source-order exact source diagnostics and PR fixture (2026-10-29)
+
+Append-only supplemental learning only. This is not canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` or production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, typed eight-domain non-resurrection, or human promotion evidence.
+
+## Material success
+
+- **Observed outcome:** [`09efe2c1`](https://github.com/m-shogo/memories-project/commit/09efe2c1b737e3b39002993ebda06f615124655b) changed only `scripts/validate-memory-os-backup-restore-promotion-review-source-order-workflow-negative.py`. Its 22 source-admission cases now demand the first-failing canonical diagnostic instead of accepting arbitrary `SystemExit`; the separately named `removed PR self-trigger` case now actually removes the PR path, rather than duplicating the push-path removal.
+- **Evidence:** [Backup Restore Promotion Review Source Order #40799601278](https://github.com/m-shogo/memories-project/actions/runs/40799601278) completed **SUCCESS** on exact source `09efe2c1`. Job `123204250155` logged 26 PR/push trigger removal negatives, one shortened inventory, eight additions, nine YAML exact-diagnostic negatives, six branch runtime cases and 20 semantic plus two blob-only source-admission negatives. [Backup Restore Admission Chain #40799601261](https://github.com/m-shogo/memories-project/actions/runs/40799601261) also completed **SUCCESS** on that source.
+- **Why safe:** Only an existing CI-reachable read-only Python negative validator changed. All negative mutations operate on in-memory workflow strings. No reviewed workflow, production/recovery contract, registry, evidence, credentials, traffic, readiness or human promotion authority changed.
+- **Reusable mechanism:** Bind each case to the first canonical guard: exact event header, permission leaf, named REQUIRED source inventory, `no contents write permission` for a nested job escalation, or whole-source Git blob drift for blob-only cases. Distinguish push and PR self-trigger removals by explicit event-scoped replacement.
+- **Protected-authority check:** Production status blob `3ab8092c7e3fec2b48d62fb2728f024151f610c5` remains `productionDecision=NO_GO`. OPS-P0-007 snapshot blob `dbaa36b082366737dca2461d15748103b9740ef6` remains `PREREQUISITES_BLOCKED`: registered/semantically eligible generations 0/0, approved objectives 0, executable reviewed requests 0, generation recovery evidence 0, complete typed eight-domain records 0 and final candidates 0. Learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged; human production promotion was not performed.
+
+## Next safe target
+
+Audit the independent `backup-restore-review-source-order-readonly` trigger negative suite for generic rejection acceptance, without touching protected production authority. The previously observed redacted local migration rehearsal failure remains unresolved and is not retried without changed execution preconditions.
