@@ -330,6 +330,9 @@ def main() -> int:
             "setup floating": "setup SHA",
             "PR credentials": "PR no credentials",
             "writer credentials": "publisher credentials",
+            # The PR-SHA mutation duplicates the writer-SHA token, so the
+            # earlier REQUIRED writer-SHA cardinality guard rejects first.
+            "PR SHA": "writer SHA",
         }.get(label, label)
         expected = {
             "PR target": "preflight eligibility consistency CI trigger marker drift",
