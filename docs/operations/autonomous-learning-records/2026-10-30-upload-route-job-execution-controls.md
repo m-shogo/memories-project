@@ -1,0 +1,23 @@
+# Supplemental OPS learning — Upload Route job execution and concurrency controls (2026-10-30)
+
+Append-only supplemental learning/history only; canonical authority is `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory policy is `contracts/operations/autonomous-learning-system.json`. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, human-approved recovery-objective, executable reviewed-request, request-bound recovery-evidence, typed eight-domain non-resurrection, independent review or human promotion.
+
+## Material failure — prospective workflow execution-authority bypass
+
+- **Symptom:** Upload Route Publisher/PR could change the runner, job timeout, job skip condition, concurrency cancellation/group, or introduce `shell`, `defaults`, `continue-on-error`, `strategy`, `container`, `needs` or `environment` without changing reviewed Go/Python command/import fingerprints.
+- **Observed evidence:** Read-only inspection of both actual workflows showed one `ubuntu-latest` job with a 20-minute timeout; Publisher job `reconcile` has the reviewed push-loop-prevention `if` expression and concurrency group `reconcile-upload-route-authority-so`; PR job `validate` has no `if` and group `validate-upload-route-authority-pr-${{ github.event.pull_request.number }}`; both have `cancel-in-progress: true`. Prior guards pinned permissions, action refs/inputs and commands, but did not bind these job execution controls. This is a prospective bypass, not observed production behavior.
+- **Verified root cause:** Direct runtime command identity does not imply that jobs execute, run in the same environment, enforce failure, or retain single-writer concurrency.
+- **Failed approach:** Treating stable workflow command strings and action inputs as proof of unchanged job-level execution authority.
+- **Correction / executable recurrence guard:** [`0f7acde9`](https://github.com/m-shogo/memories-project/commit/0f7acde91d7731dd38f4098c779c197da5762968) adds a CI-reachable read-only validator for both real workflows, with two positive controls and 18 negative controls for runner, timeout, shell/defaults, failure handling, strategy/container/needs/environment, skip, concurrency and job identity drift. The change is +77 lines in `scripts/validate-autonomous-learning-system-negative.py`, with no workflow YAML modifications.
+- **Retry condition:** Only change job execution or concurrency after explicit review of actual YAML semantics, runner and single-writer effects, dependency/trigger reachability, updated deterministic negatives, exact-source CI and protected-authority verification. Do not retry unchanged external/permission/human-approval blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40946104040](https://github.com/m-shogo/memories-project/actions/runs/40946104040) completed **SUCCESS** for exact source `0f7acde91d7731dd38f4098c779c197da5762968`. Logs confirm append-only and contract PASS, 201 printed fail-closed cases, 74 fanout synthetic, entry-document PASS, 1,186 helper-ancestor negative mutations, and clean/read-only execution. The 18 nested job-control negatives are additional to the printed 201.
+- **Why safe:** Only a read-only, already CI-reachable negative validator changed. No Upload Route workflow, production source, credentials, traffic, readiness, recovery, generation/objective, drill, typed eight-domain evidence, independent review or promotion authority was changed.
+- **Reusable mechanism:** Pin job execution semantics separately from commands/imports: expected job ID, runner, timeout, complete job `if`, concurrency group/cancellation, and absence of execution-bypassing YAML keys.
+- **Protected-authority check:** The code commit changed exactly one read-only validator file. Canonical learning SHA `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, and OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` remained unchanged. `productionDecision=NO_GO`; registered/semantically eligible generations remain 0/0, with zero approved recovery objectives, executable reviewed requests, request-bound evidence, final candidates or human promotion. Learning is not production evidence.
+
+## Next safe target
+
+Pin the Upload Route `on` event set and reject extra hidden event sources (schedule, workflow_call, pull_request_target, or PR manual dispatch), without modifying actual workflow YAML or narrowing incomplete Go/Python trigger closure.
