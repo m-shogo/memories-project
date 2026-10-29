@@ -600,6 +600,49 @@ def prove_upload_route_event_parser_negatives() -> None:
             raise RuntimeError(f"Upload Route event parser negative accepted: {index}")
 
 
+def require_reviewed_upload_route_event_set(source: str, event: str) -> None:
+    """Reject added or hidden Upload Route workflow event sources."""
+    import re
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route event set")
+    blocks = re.findall(r"(?ms)^on:\n(.*?)(?=^[A-Za-z_][\w-]*:|\Z)", source)
+    if len(blocks) != 1:
+        raise RuntimeError("unreviewed Upload Route event set")
+    events = [line for line in blocks[0].splitlines()
+              if line.startswith("  ") and not line.startswith(("   ", "  #"))]
+    expected = ["  push:", "  workflow_dispatch:"] if event == "push" else ["  pull_request:"]
+    if events != expected:
+        raise RuntimeError("unreviewed Upload Route event set")
+
+
+def prove_upload_route_event_set_negatives() -> None:
+    base = ('on:\n  push:\n    paths:\n      - "a/**"\n  workflow_dispatch:\n\n'
+            'permissions:\n  contents: write\n')
+    pr = ('on:\n  pull_request:\n    paths:\n      - "a/**"\n\n'
+          'permissions:\n  contents: read\n')
+    require_reviewed_upload_route_event_set(base, "push")
+    require_reviewed_upload_route_event_set(pr, "pull_request")
+    for label, source, event in (
+        ("schedule", base.replace("  workflow_dispatch:", "  schedule:\n    - cron: '0 0 * * *'\n  workflow_dispatch:"), "push"),
+        ("workflow call", base.replace("  workflow_dispatch:", "  workflow_call:\n  workflow_dispatch:"), "push"),
+        ("PR target", pr.replace("  pull_request:", "  pull_request_target:\n  pull_request:"), "pull_request"),
+        ("extra push", pr.replace("  pull_request:", "  push:\n  pull_request:"), "pull_request"),
+        ("PR dispatch", pr.replace("\npermissions:", "  workflow_dispatch:\n\npermissions:"), "pull_request"),
+        ("missing dispatch", base.replace("  workflow_dispatch:\n", ""), "push"),
+        ("quoted push", base.replace("  push:", "  'push':"), "push"),
+        ("duplicate push", base.replace("  push:", "  push:\n  push:"), "push"),
+        ("scalar on", base.replace("on:\n", "on: push\n"), "push"),
+        ("inline dispatch", base.replace("  workflow_dispatch:", "  workflow_dispatch: {}"), "push"),
+    ):
+        try:
+            require_reviewed_upload_route_event_set(source, event)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route event set":
+                raise
+        else:
+            raise RuntimeError("Upload Route event set negative accepted: " + label)
+
+
 def require_reviewed_upload_route_toolchain_environment(source: str) -> None:
     """Reject unreviewed workflow-level Python/Go dependency resolver overrides."""
     import re
@@ -2168,6 +2211,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             "scripts/validate-memory-os-rate-limit*.py"):
         raise RuntimeError("upload route path-negative fixture failed")
     prove_upload_route_event_parser_negatives()
+    prove_upload_route_event_set_negatives()
     uncovered_sets = []
     reviewed_paths = []
     for workflow, event in (
@@ -2185,6 +2229,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_container_images(source)
         require_reviewed_upload_route_permissions(source, event)
         require_reviewed_upload_route_job_execution(source, event)
+        require_reviewed_upload_route_event_set(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
