@@ -886,6 +886,68 @@ def prove_upload_route_working_directory_negatives() -> None:
             raise RuntimeError("Upload Route working-directory negative accepted: " + label)
 
 
+def require_reviewed_upload_route_action_inputs(source: str, event: str) -> None:
+    """Bind checkout source SHA and setup action inputs, not just uses refs."""
+    import re
+    if event not in ("push", "pull_request"):
+        raise RuntimeError("unreviewed Upload Route action inputs")
+    ref = chr(36) + ("{{ github.sha }}" if event == "push"
+                     else "{{ github.event.pull_request.head.sha }}")
+    expected = (
+        ("actions/checkout@v4", (f"ref: {ref}", "fetch-depth: 0")),
+        ("actions/setup-go@v5", ('go-version: "1.23.x"',
+                                 "cache-dependency-path: services/import-api/go.sum")),
+        ("actions/setup-python@v5", ('python-version: "3.12"', "cache: pip",
+                                     "cache-dependency-path: requirements-security-validation.txt")),
+    )
+    observed = []
+    for section in re.split(r"(?m)^      - (?=name:)", source)[1:]:
+        action = re.search(r"(?m)^        uses: (\S+)$", section)
+        if action:
+            observed.append((action.group(1), tuple(
+                re.findall(r"(?m)^          ([^\r\n]+)$", section)
+            )))
+    mentions = re.findall(r"""(?m)^[ \t]*(?:with|['"]with['"])\s*:""", source)
+    if (len(mentions) != 3 or tuple(observed) != expected
+            or re.search(r"(?m)^[ \t]*-\s*\{[^\r\n]*\bwith\s*:", source)):
+        raise RuntimeError("unreviewed Upload Route action inputs")
+
+
+def prove_upload_route_action_input_negatives() -> None:
+    base = ("steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n"
+            "        with:\n          ref: " + chr(36) + "{{ github.sha }}\n"
+            "          fetch-depth: 0\n"
+            "      - name: Set up Go\n        uses: actions/setup-go@v5\n"
+            '        with:\n          go-version: "1.23.x"\n'
+            "          cache-dependency-path: services/import-api/go.sum\n"
+            "      - name: Set up Python\n        uses: actions/setup-python@v5\n"
+            '        with:\n          python-version: "3.12"\n'
+            "          cache: pip\n"
+            "          cache-dependency-path: requirements-security-validation.txt\n")
+    require_reviewed_upload_route_action_inputs(base, "push")
+    require_reviewed_upload_route_action_inputs(
+        base.replace("github.sha", "github.event.pull_request.head.sha"), "pull_request"
+    )
+    for label, candidate in (
+        ("checkout ref", base.replace("github.sha", "github.ref")),
+        ("Go version", base.replace('go-version: "1.23.x"', 'go-version: "1.24.x"')),
+        ("Python cache removed", base.replace("          cache: pip\n", "")),
+        ("checkout depth", base.replace("fetch-depth: 0", "fetch-depth: 1")),
+        ("duplicate with", base.replace("        with:\n", "        with:\n        with:\n", 1)),
+        ("quoted with", base.replace("        with:\n", "        'with':\n        with:\n", 1)),
+        ("extra cache", base.replace("          cache: pip\n",
+                                      "          cache: pip\n          cache: none\n")),
+        ("spaced with", base.replace("        with:\n", "        with :\n        with:\n", 1)),
+    ):
+        try:
+            require_reviewed_upload_route_action_inputs(candidate, "push")
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route action inputs":
+                raise
+        else:
+            raise RuntimeError("Upload Route action-input negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1705,6 +1767,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_shell_dispatch_negatives()
     prove_upload_route_run_key_negatives()
     prove_upload_route_working_directory_negatives()
+    prove_upload_route_action_input_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1933,6 +1996,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         reject_unreviewed_upload_route_shell_dispatch(source)
         require_reviewed_upload_route_run_keys(source, 11 if event == "push" else 10)
         require_reviewed_upload_route_working_directories(source)
+        require_reviewed_upload_route_action_inputs(source, event)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
