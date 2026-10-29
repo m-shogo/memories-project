@@ -590,18 +590,18 @@ def prove_prewrite_python_negatives() -> None:
         raise ValidationFailure("prewrite positive control failed")
     with_comment = baseline.replace('    return 0\n', '    # removable\n    return 0\n')
     overlong = "# bounded fixture\n" * (PREWRITE_MAX_SOURCE_LINES + 1) + baseline
-    unexecutable = baseline.replace('if __name__', 'return 1\\nif __name__')
+    unexecutable = baseline.replace('if __name__', 'return 1\nif __name__')
     cases = (
         ("module return", unexecutable, sha, 40, 20,
          "candidate Python compilation invalid", baseline),
         ("module break", baseline.replace(
-            'if __name__', 'break\\nif __name__'), sha, 40, 20,
+            'if __name__', 'break\nif __name__'), sha, 40, 20,
          "candidate Python compilation invalid", baseline),
         ("module nonlocal", baseline.replace(
-            'if __name__', 'nonlocal x\\nif __name__'), sha, 40, 20,
+            'if __name__', 'nonlocal x\nif __name__'), sha, 40, 20,
          "candidate Python compilation invalid", baseline),
         ("unexecutable baseline", unexecutable.replace(
-            '    return 0\\n', '    # edit\\n    return 0\\n'),
+            '    return 0\n', '    # edit\n    return 0\n'),
          hashlib.sha256(unexecutable.encode("utf-8")).hexdigest(), 40, 20,
          "baseline Python compilation invalid", unexecutable),
         ("overlong candidate", overlong, sha, 40, 20,
