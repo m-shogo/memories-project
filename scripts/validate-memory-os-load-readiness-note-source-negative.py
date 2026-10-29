@@ -346,6 +346,86 @@ def load_readiness_concurrency_negatives(publisher: str) -> None:
             raise SystemExit("load-readiness accepted concurrency mutation: " + name)
     print("PASS: load-readiness publisher concurrency (12 exact-diagnostic negatives)")
 
+
+def load_readiness_job_authority(publisher: str, independent: str) -> None:
+    """Pin effective job mapping and pre-step execution authority."""
+    reviewed = [{"label":"publisher","name":"validate-pr","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"publisher","name":"reconcile","header":"    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+    for label, content, names in (
+        ("publisher", publisher, ["validate-pr", "reconcile"]),
+        ("independent", independent, ["source-negative"]),
+    ):
+        if content.count("\njobs:\n") != 1:
+            raise SystemExit("load-readiness " + label + " job authority drift")
+        section = content.split("\njobs:\n", 1)[1]
+        mappings = [row for row in section.splitlines()
+                    if row.startswith("  ") and not row.startswith("    ")
+                    and row.strip() and not row.lstrip().startswith("#")]
+        if mappings != ["  " + name + ":" for name in names]:
+            raise SystemExit("load-readiness " + label + " job authority drift")
+        for item in reviewed:
+            if item["label"] != label:
+                continue
+            anchor = "\n  " + item["name"] + ":\n"
+            if content.count(anchor) != 1:
+                raise SystemExit("load-readiness " + label + " job authority drift")
+            actual = content.split(anchor, 1)[1].split("\n    steps:\n", 1)[0]
+            if actual != item["header"]:
+                raise SystemExit("load-readiness " + label + " job authority drift")
+
+
+def load_readiness_job_negatives(publisher: str, independent: str) -> None:
+    """Prove 30 exact-diagnostic condition/permission/runner/job shadows."""
+    reviewed = [{"label":"publisher","name":"validate-pr","header":"    if: github.event_name == 'pull_request' && github.base_ref == 'so'\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"publisher","name":"reconcile","header":"    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'\n    permissions:\n      contents: write\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"},{"label":"independent","name":"source-negative","header":"    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/so')\n    permissions:\n      contents: read\n    runs-on: ubuntu-latest\n    timeout-minutes: 5"}]
+    load_readiness_job_authority(publisher, independent)
+    total = 0
+    for item in reviewed:
+        label, name, original = item["label"], item["name"], item["header"]
+        content = publisher if label == "publisher" else independent
+        anchor = "\n  " + name + ":\n" + original + "\n    steps:\n"
+        if content.count(anchor) != 1:
+            raise SystemExit("load-readiness job fixture anchor drift: " + name)
+        leaf = "write" if name == "reconcile" else "read"
+        opposite = "read" if leaf == "write" else "write"
+        first_if = original.splitlines(keepends=True)[0]
+        cases = (
+            ("condition bypass", original.replace(first_if, "    if: always()\n", 1)),
+            ("permission change", original.replace("      contents: " + leaf,
+                                                   "      contents: " + opposite, 1)),
+            ("runner change", original.replace("    runs-on: ubuntu-latest",
+                                               "    runs-on: ubuntu-24.04", 1)),
+            ("timeout change", original.replace("    timeout-minutes: ",
+                                                "    timeout-minutes: 1 # ", 1)),
+            ("continuation override", original + "\n    continue-on-error: true"),
+            ("duplicate permission", original + "\n    permissions:\n      contents: write"),
+            ("quoted permission", original.replace("      contents: " + leaf,
+                                                  "      'contents': " + opposite, 1)),
+            ("spaced permission", original.replace("      contents: " + leaf,
+                                                  "      contents : " + opposite, 1)),
+            ("duplicate condition", original + "\n    if: always()"),
+            ("spaced condition", original.replace(first_if, "    if : always()\n", 1)),
+        )
+        for mutation, changed in cases:
+            altered = content.replace(anchor, "\n  " + name + ":\n"
+                                      + changed + "\n    steps:\n", 1)
+            if altered == content:
+                raise SystemExit("load-readiness unchanged job fixture: " + name + "/" + mutation)
+            try:
+                if label == "publisher":
+                    load_readiness_job_authority(altered, independent)
+                else:
+                    load_readiness_job_authority(publisher, altered)
+            except SystemExit as exc:
+                expected_diagnostic = "load-readiness " + label + " job authority drift"
+                if str(exc) != expected_diagnostic:
+                    raise SystemExit("load-readiness wrong job diagnostic: "
+                                     + name + "/" + mutation + ": " + str(exc)) from exc
+            else:
+                raise SystemExit("load-readiness accepted job mutation: " + name + "/" + mutation)
+            total += 1
+    if total != 30:
+        raise SystemExit("load-readiness job negative inventory drift")
+    print("PASS: load-readiness job authority (30 exact-diagnostic negatives)")
+
 def policy(source: str) -> None:
     for marker in REQUIRED:
         if marker not in source:
@@ -424,6 +504,8 @@ def main() -> None:
     yaml_root_permission_negatives(publisher, independent)
     load_readiness_concurrency_authority(publisher)
     load_readiness_concurrency_negatives(publisher)
+    load_readiness_job_authority(publisher, independent)
+    load_readiness_job_negatives(publisher, independent)
     mutations(publisher)
     identity(publisher, "Reconcile read-only PR authority", False)
     identity(publisher, "Capture exact clean source", True)
