@@ -1184,7 +1184,26 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         if (result.returncode != 1 or result.stdout or
                 result.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite path must be a safe repository-relative path\n"):
             raise RuntimeError("prewrite fanout CLI accepted control-character path: " + label)
-    return len(cases) + 6
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-source-bytes-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        workflow = directory / "fixture.yml"
+        for label, payload, diagnostic in (
+            ("oversized", b"#" * (256 * 1024 + 1),
+             "workflow source exceeds reviewed byte limit"),
+            ("invalid UTF-8", b"\xff", "workflow source invalid UTF-8"),
+        ):
+            workflow.write_bytes(payload)
+            result = subprocess.run(
+                [sys.executable, str(guard), "--repo-root", str(root),
+                 "--path", "scripts/a.py"],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (result.returncode != 1 or result.stdout or
+                    result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
+                raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
+    return len(cases) + 8
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

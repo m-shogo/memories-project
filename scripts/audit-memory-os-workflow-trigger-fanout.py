@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 
 MAX_REVIEWED_DIRECT_FANOUT = 12
+MAX_WORKFLOW_SOURCE_BYTES = 256 * 1024
 KNOWN_EXTERNAL_BLOCKED_WORKFLOWS = {
     ".github/workflows/reconcile-upload-route-authority.yml",
     ".github/workflows/reconcile-upload-route-authority-pr.yml",
@@ -130,7 +131,12 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     for workflow in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml"))):
         if workflow.is_symlink() or not workflow.is_file():
             raise AuditFailure("workflow path missing or symlinked")
-        source = workflow.read_text(encoding="utf-8")
+        if workflow.stat().st_size > MAX_WORKFLOW_SOURCE_BYTES:
+            raise AuditFailure("workflow source exceeds reviewed byte limit")
+        try:
+            source = workflow.read_text(encoding="utf-8")
+        except UnicodeError as exc:
+            raise AuditFailure("workflow source invalid UTF-8") from exc
         if workflow_matches_path(source, relative):
             matches.append(workflow.relative_to(repo_root).as_posix())
     return matches
@@ -247,8 +253,26 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("symlinked workflow parent negative accepted")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-source-bytes-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        workflow = directory / "w.yml"
+        for label, payload, diagnostic in (
+            ("oversized", b"#" * (MAX_WORKFLOW_SOURCE_BYTES + 1),
+             "workflow source exceeds reviewed byte limit"),
+            ("invalid UTF-8", b"\xff", "workflow source invalid UTF-8"),
+        ):
+            workflow.write_bytes(payload)
+            try:
+                matching_workflows(root, "scripts/a.py")
+            except AuditFailure as exc:
+                if str(exc) != diagnostic:
+                    raise
+            else:
+                raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 8)
+        "prewrite fanout audit PASS: " + str(len(cases) + 10)
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; known MinIO coupling flagged; no workflow executed"
