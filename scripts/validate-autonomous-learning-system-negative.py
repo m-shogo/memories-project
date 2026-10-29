@@ -33,6 +33,12 @@ REVIEWED_REFLECTIVE_EXECUTION = (
     ("eager-direct-attrgetter", 'attrgetter("import_module")(importlib)("math")'),
     ("eager-operator-methodcaller", 'operator.methodcaller("import_module", "math")(importlib)'),
     ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
+    ("eager-direct-find-spec", 'find_spec("samplepkg.child")'),
+    ("eager-attribute-find-spec", 'importlib.util.find_spec("samplepkg.child")'),
+    ("eager-reflective-find-spec", 'getattr(importlib.util, "find_spec")("samplepkg.child")'),
+    ("eager-direct-resolve-name", 'resolve_name("samplepkg")'),
+    ("eager-attribute-resolve-name", 'pkgutil.resolve_name("samplepkg")'),
+    ("eager-reflective-resolve-name", 'getattr(pkgutil, "resolve_name")("samplepkg")'),
     ("eager-direct-reload", 'reload(importlib)'),
     ("eager-importlib-reload", 'importlib.reload(importlib)'),
     ("eager-getattr-reload", 'getattr(importlib, "reload")(importlib)'),
@@ -48,6 +54,12 @@ REVIEWED_REFLECTIVE_CLI_LABELS = (
     ("direct attrgetter execution", "eager-direct-attrgetter"),
     ("operator methodcaller execution", "eager-operator-methodcaller"),
     ("direct methodcaller execution", "eager-direct-methodcaller"),
+    ("direct find spec execution", "eager-direct-find-spec"),
+    ("attribute find spec execution", "eager-attribute-find-spec"),
+    ("reflective find spec execution", "eager-reflective-find-spec"),
+    ("direct resolve name execution", "eager-direct-resolve-name"),
+    ("attribute resolve name execution", "eager-attribute-resolve-name"),
+    ("reflective resolve name execution", "eager-reflective-resolve-name"),
     ("direct reload execution", "eager-direct-reload"),
     ("importlib reload execution", "eager-importlib-reload"),
     ("reflective reload execution", "eager-getattr-reload"),
@@ -3188,6 +3200,24 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("direct methodcaller execution", baseline.replace(
                 'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
+            ("direct find spec execution", baseline.replace(
+                'if __name__', 'find_spec("samplepkg.child")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("attribute find spec execution", baseline.replace(
+                'if __name__', 'importlib.util.find_spec("samplepkg.child")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("reflective find spec execution", baseline.replace(
+                'if __name__', 'getattr(importlib.util, "find_spec")("samplepkg.child")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("direct resolve name execution", baseline.replace(
+                'if __name__', 'resolve_name("samplepkg")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("attribute resolve name execution", baseline.replace(
+                'if __name__', 'pkgutil.resolve_name("samplepkg")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("reflective resolve name execution", baseline.replace(
+                'if __name__', 'getattr(pkgutil, "resolve_name")("samplepkg")\nif __name__').encode(),
+             "prewrite candidate main binding shadowed", []),
             ("direct reload execution", baseline.replace(
                 'if __name__', 'reload(importlib)\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
@@ -3699,7 +3729,8 @@ def main() -> int:
         ):
             if (kind.startswith(("eager-reflective-", "eager-qualified-"))
                     or kind.endswith(("attrgetter", "methodcaller"))
-                    or kind.endswith("-reload")):
+                    or kind.endswith("-reload")
+                    or kind.endswith(("-find-spec", "-resolve-name"))):
                 reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",
