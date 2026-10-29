@@ -205,8 +205,16 @@ def validate(repo_root: Path) -> None:
                 )]
                 if not isinstance(node, ast.Lambda):
                     eager.extend(node.decorator_list)
+                    # Eager annotations can rebind a protected CI guard.
+                    # Conservatively inspect them even with postponed typing.
+                    eager.extend(arg.annotation for arg in
+                                 [*node.args.posonlyargs, *node.args.args,
+                                  *node.args.kwonlyargs, node.args.vararg, node.args.kwarg]
+                                 if arg is not None and arg.annotation is not None)
+                    if node.returns is not None:
+                        eager.append(node.returns)
                     if any(isinstance(dec, ast.Lambda)
-                           and binds(dec.body, class_local=class_local)
+                           and binds(dec.body, class_local=True)
                            for dec in node.decorator_list):
                         return True
                 return any(binds(value, class_local=class_local) for value in eager)
@@ -297,8 +305,11 @@ def validate(repo_root: Path) -> None:
                         elif node.args[0].value == name:
                             return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
+                # The exported bindings of a wildcard import are unbounded.
                 return not class_local and any(
-                    (alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name))
+                    (isinstance(node, ast.ImportFrom) and alias.name == "*")
+                    or (alias.asname or (alias.name.split(".")[0]
+                                        if isinstance(node, ast.Import) else alias.name))
                     == name for alias in node.names
                 )
             if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
