@@ -279,6 +279,62 @@ def compat_trigger_matrix_negatives(publisher: str, independent: str) -> None:
           + " shortened inventories, " + str(len(topology)) + " event topology negatives")
 
 
+
+def compat_concurrency_authority(publisher: str) -> None:
+    """Pin effective publisher serialization without altering reviewed workflow."""
+    marker = "\nconcurrency:\n"
+    if publisher.count(marker) != 1 or publisher.count("\njobs:\n") != 1:
+        raise SystemExit("compatibility publisher concurrency authority drift")
+    observed = publisher.split(marker, 1)[1].split("\njobs:\n", 1)[0]
+    expected = ("  group: reconcile-compatibility-authority-diagnostic-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    if observed != expected:
+        raise SystemExit("compatibility publisher concurrency authority drift")
+
+
+def compat_concurrency_negatives(publisher: str) -> None:
+    """Exercise twelve independent concurrency shadow/override mutations."""
+    marker = "\nconcurrency:\n"
+    original = ("  group: reconcile-compatibility-authority-diagnostic-" + chr(36)
+                + "{{ github.event.pull_request.number || 'so' }}\n"
+                + "  cancel-in-progress: false\n")
+    anchor = marker + original + "\njobs:\n"
+    if publisher.count(anchor) != 1:
+        raise SystemExit("compatibility concurrency fixture anchor drift")
+    group = original.splitlines(keepends=True)[0]
+    cancel = "  cancel-in-progress: false\n"
+    cases = (
+        ("changed group", original.replace(group, "  group: unreviewed\n", 1)),
+        ("missing group", original.replace(group, "", 1)),
+        ("duplicate group", original.replace(group, group + "  group: unreviewed\n", 1)),
+        ("quoted group", original.replace(group, group + "  'group': unreviewed\n", 1)),
+        ("spaced group", original.replace(group, group + "  group : unreviewed\n", 1)),
+        ("extra group leaf", original.replace(group, group + "  unreviewed: true\n", 1)),
+        ("enabled cancellation", original.replace(cancel, "  cancel-in-progress: true\n", 1)),
+        ("missing cancellation", original.replace(cancel, "", 1)),
+        ("duplicate cancellation", original.replace(cancel, cancel + "  cancel-in-progress: true\n", 1)),
+        ("quoted cancellation", original.replace(cancel, cancel + "  'cancel-in-progress': true\n", 1)),
+        ("spaced cancellation", original.replace(cancel, cancel + "  cancel-in-progress : true\n", 1)),
+        ("extra cancellation leaf", original.replace(cancel, cancel + "  unreviewed: true\n", 1)),
+    )
+    if len(cases) != 12:
+        raise SystemExit("compatibility concurrency negative inventory drift")
+    compat_concurrency_authority(publisher)
+    for name, replacement in cases:
+        altered = publisher.replace(anchor, marker + replacement + "\njobs:\n", 1)
+        if altered == publisher:
+            raise SystemExit("compatibility unchanged concurrency fixture: " + name)
+        try:
+            compat_concurrency_authority(altered)
+        except SystemExit as exc:
+            if str(exc) != "compatibility publisher concurrency authority drift":
+                raise SystemExit("compatibility wrong concurrency diagnostic: "
+                                 + name + ": " + str(exc)) from exc
+        else:
+            raise SystemExit("compatibility accepted concurrency mutation: " + name)
+    print("PASS: compatibility publisher concurrency (12 exact-diagnostic negatives)")
+
 def policy(text):
     for marker in MARKERS:
         if marker not in text:
@@ -449,6 +505,8 @@ def main():
     compat_validate_trigger_matrix(text, ci)
     compat_trigger_matrix_negatives(text, ci)
     compat_yaml_shadow_negatives(text, ci)
+    compat_concurrency_authority(text)
+    compat_concurrency_negatives(text)
     mutations(text)
     writer_runtime(text)
     log_runtime(text)
