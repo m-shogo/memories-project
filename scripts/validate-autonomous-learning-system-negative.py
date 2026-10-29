@@ -304,6 +304,59 @@ def prove_upload_route_go_import_parser() -> None:
         raise RuntimeError("Go import parser accepted invalid import fixture")
 
 
+def upload_route_event_paths(source: str, event: str) -> tuple[str, ...]:
+    """Require one unshadowed event path list; never infer closure from YAML aliases."""
+    import re
+    lines = source.splitlines()
+    if sum(line in ("on:", '"on":', "'on':") for line in lines) != 1:
+        raise RuntimeError("shadowed Upload Route on authority")
+    if any(re.match(r"^\s*(?:paths-ignore|branches-ignore):", line) for line in lines):
+        raise RuntimeError("unreviewed Upload Route negative event filter")
+    event_rows = (f"  {event}:", f'  "{event}":', f"  '{event}':")
+    starts = [i for i, line in enumerate(lines) if line in event_rows]
+    if len(starts) != 1:
+        raise RuntimeError("ambiguous Upload Route event mapping")
+    start = starts[0]
+    end = next((i for i in range(start + 1, len(lines))
+                if re.match(r"^  [a-z_]+:", lines[i]) or
+                (lines[i] and not lines[i].startswith((" ", "#")))), len(lines))
+    block = lines[start + 1:end]
+    positions = [i for i, line in enumerate(block) if line == "    paths:"]
+    if len(positions) != 1 or block.count("    branches:") > 1:
+        raise RuntimeError("ambiguous Upload Route event path authority")
+    patterns = []
+    for line in block[positions[0] + 1:]:
+        if not line.startswith("      - "):
+            break
+        match = re.fullmatch(r'      - "([^"]+)"', line)
+        if match is None or match.group(1).startswith("!"):
+            raise RuntimeError("unreviewed Upload Route path pattern")
+        patterns.append(match.group(1))
+    if not patterns or len(patterns) != len(set(patterns)):
+        raise RuntimeError("duplicate/empty Upload Route event paths")
+    return tuple(patterns)
+
+
+def prove_upload_route_event_parser_negatives() -> None:
+    base = 'on:\n  push:\n    branches:\n      - so\n    paths:\n      - "a/**"\n'
+    if upload_route_event_paths(base, "push") != ("a/**",):
+        raise RuntimeError("Upload Route event parser positive fixture failed")
+    mutations = (
+        base + "on:\n",
+        base.replace("    paths:\n", "    paths-ignore:\n"),
+        base.replace('      - "a/**"\n', '      - "a/**"\n      - "a/**"\n'),
+        base.replace("  push:\n", "  pull_request:\n"),
+        base.replace("    branches:\n", "    branches-ignore:\n"),
+    )
+    for index, source in enumerate(mutations):
+        try:
+            upload_route_event_paths(source, "push")
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError(f"Upload Route event parser negative accepted: {index}")
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -393,23 +446,14 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             "scripts/validate-memory-os-rate-limit/nested.py",
             "scripts/validate-memory-os-rate-limit*.py"):
         raise RuntimeError("upload route path-negative fixture failed")
+    prove_upload_route_event_parser_negatives()
     uncovered = []
-    for workflow in ("reconcile-upload-route-authority.yml",
-                     "reconcile-upload-route-authority-pr.yml"):
-        lines = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8").splitlines()
-        positions = [i for i, line in enumerate(lines) if line == "    paths:"]
-        if len(positions) != 1:
-            raise RuntimeError("ambiguous upload route event paths: " + workflow)
-        patterns = []
-        for line in lines[positions[0] + 1:]:
-            if not line.startswith("      - "):
-                break
-            match = re.fullmatch(r'      - "([^"]+)"', line)
-            if match is None:
-                raise RuntimeError("unreviewed upload route path: " + workflow)
-            patterns.append(match.group(1))
-        if not patterns or len(patterns) != len(set(patterns)):
-            raise RuntimeError("duplicate/empty upload route paths: " + workflow)
+    for workflow, event in (
+        ("reconcile-upload-route-authority.yml", "push"),
+        ("reconcile-upload-route-authority-pr.yml", "pull_request"),
+    ):
+        source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
+        patterns = upload_route_event_paths(source, event)
         uncovered.append(sum(not any(matches(path, pat) for pat in patterns)
                              for path in inputs))
     if len(inputs) < 109 or any(count < 81 for count in uncovered):
