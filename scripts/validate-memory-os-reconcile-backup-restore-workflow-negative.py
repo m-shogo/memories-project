@@ -253,6 +253,54 @@ def yaml_root_permission_negatives(publisher: str, independent: str) -> None:
 
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Bind the reviewed restore-policy writer serialization and noncancellation."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = "  group: reconcile-backup-restore-" + chr(36) + "{{ github.ref }}\n"
+    expected = group + "  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("restore-policy publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("restore-policy publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic concurrency shadow/cancellation failures."""
+    validate_concurrency_authority(publisher)
+    group = "  group: reconcile-backup-restore-" + chr(36) + "{{ github.ref }}\n"
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: reconcile-backup-restore-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("restore-policy concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("restore-policy unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "restore-policy publisher concurrency scope drift":
+                raise SystemExit(
+                    "restore-policy wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("restore-policy accepted concurrency mutation: " + name)
+    print("PASS: restore-policy publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def validate_job_authority(publisher: str, independent: str) -> None:
     """Pin the reviewed job identities, execution keys and scoped permission leaves."""
     reviewed = (
@@ -493,6 +541,7 @@ def main() -> int:
     validate_yaml_root_permission(publisher, independent)
     yaml_root_permission_negatives(publisher, independent)
     prove_job_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     prove_trigger_reachability_negatives(publisher, independent)
     runtime(publisher, independent)
     negatives(publisher, independent)
