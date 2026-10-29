@@ -1,0 +1,18 @@
+# Supplemental OPS learning — deletion lease-recovery authority concurrency serialization (2026-10-29)
+
+Append-only supplemental learning only. Not canonical learning, production or backup/restore/RPO/RTO/skew evidence, an environment generation, approved recovery objective, executable reviewed drill, typed eight-domain non-resurrection evidence, credentials, traffic, readiness, independent recovery review or human promotion.
+
+## Material failure / executable recurrence prevention
+- **Symptom:** The lease-recovery read-only source-negative validator bound reviewed Git blobs, root YAML, event/ref/SHA and job authority, but lacked independent semantic diagnostics for publisher concurrency grouping or cancellation. Static coverage gap, not observed cancellation or production bypass.
+- **Observed evidence:** Publisher blob `ecb7b9858fdb3b203f07205454836c0a6c6af149` has event/PR-scoped `reconcile-deletion-lease-recovery-authority` grouping with `cancel-in-progress: false`. Previous validator blob `8bb0225a0af6ecbd76261cc05586535dfe93dc5d` checked the root `concurrency:` mapping but not its nested leaves.
+- **Verified root cause:** Reviewed full-source SHA and root-key checks reject changed bytes without independently proving effective YAML concurrency scope and noncancellation semantics.
+- **Failed approach:** Relying solely on whole-file digest and root-key topology to classify serialization-policy shadows.
+- **Correction / executable recurrence guard:** [`71415947`](https://github.com/m-shogo/memories-project/commit/7141594786c391b5c93dc8a438250b5dd12323fd) adds a reviewed event/PR-scoped concurrency validator plus ten exact-diagnostic negatives: global group, enabled cancellation, duplicate/spaced/quoted group and cancellation, unreviewed leaf, missing cancellation.
+- **Retry condition:** Revisit only for an approved concurrency policy change or a demonstrated YAML shadow bypass; do not retry unchanged external MinIO 401, canonical-learning transport, workflow-write permission or human-promotion blockers.
+
+## Material success / protected authority
+- **Observed outcome/evidence:** [Deletion Lease Recovery Authority Source Negative #40805938554](https://github.com/m-shogo/memories-project/actions/runs/40805938554) completed **SUCCESS** at exact code `71415947`. Log confirms ten concurrency negatives and 36 nested-job negatives, with `production evidence generated: false`. A traceback from `reconcile-memory-os-load-missing-evidence.py` followed an explicit `synthetic post-write operability failure` injection in the existing negative test and did not fail the CI; do not mistake it for an observed production incident.
+- **Why safe:** Only the CI-reachable read-only validator changed (+57 lines, no deletions). Reviewed workflows, production status, recovery evidence, registries, credentials, traffic and human promotion authority were untouched.
+- **Reusable mechanism:** Pin the event/PR-scoped concurrency group and noncancellation leaf separately from Git SHA and root YAML, then require precise in-memory shadow diagnostics.
+- **Protected-authority check:** Production status blob `2c6b196a54fafcbb6e02db65116e6e81fbdfb015` remains `productionDecision=NO_GO`; learning contract blob `87712ea9c0e1d25dea1565f34b1c21a2b2d276db` unchanged. No registered environment generation, approved objective, executable reviewed request, generation recovery evidence, complete typed eight-domain record, final candidate or human promotion review.
+- **Next safe target:** Audit remaining deletion source-negative publisher concurrency gaps and cross-workflow push-path coupling without changing protected authorities.
