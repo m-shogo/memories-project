@@ -797,6 +797,47 @@ def prove_upload_route_shell_dispatch_negatives() -> None:
             raise RuntimeError("Upload Route shell dispatch negative accepted: " + label)
 
 
+def require_reviewed_upload_route_run_keys(source: str, expected_count: int) -> None:
+    """Reject shadowed YAML run keys and unexpected non-Python/Go steps."""
+    import re
+    if (re.search(r"""(?m)^[ \t]*(?:['"]run['"]|run[ \t]+):""", source)
+            or re.search(r"""(?m)^[ \t]*-\s*(?:\{[^\r\n]*\b(?:run|['"]run['"])\s*:|(?:run|['"]run['"])\s*:)""", source)):
+        raise RuntimeError("unreviewed Upload Route run key")
+    canonical = re.findall(r"(?m)^        run:", source)
+    mentions = re.findall(r"(?m)^[ \t]*run:", source)
+    if len(canonical) != expected_count or len(mentions) != len(canonical):
+        raise RuntimeError("unreviewed Upload Route run key")
+    for step in re.split(r"(?m)^      - (?=(?:name|uses|id):)", source)[1:]:
+        if len(re.findall(r"(?m)^        run:", step)) > 1:
+            raise RuntimeError("unreviewed Upload Route run key")
+
+
+def prove_upload_route_run_key_negatives() -> None:
+    base = ("steps:\n      - name: first\n        run: python scripts/x.py\n"
+            "      - name: second\n        run: go test ./x\n")
+    require_reviewed_upload_route_run_keys(base, 2)
+    require_reviewed_upload_route_run_keys(
+        base.replace("run: python scripts/x.py", "run: |\n          python scripts/x.py"), 2
+    )
+    for label, candidate in (
+        ("duplicate run", base.replace("        run: go", "        run: echo hi\n        run: go")),
+        ("quoted shadow", base.replace("        run: go", "        'run': echo hi\n        run: go")),
+        ("spaced shadow", base.replace("        run: go", "        run : echo hi\n        run: go")),
+        ("flow shadow", base.replace("        run: go", "        - {run: echo hi}\n        run: go")),
+        ("indented shadow", base.replace("        run: go", "          run: echo hi\n        run: go")),
+        ("new run", base + "      - name: third\n        run: echo hi\n"),
+        ("removed run", base.replace("        run: go test ./x\n", "")),
+        ("inline run step", base + "      - run: echo hi\n"),
+    ):
+        try:
+            require_reviewed_upload_route_run_keys(candidate, 2)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route run key":
+                raise
+        else:
+            raise RuntimeError("Upload Route run-key negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1614,6 +1655,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
     prove_upload_route_shell_dispatch_negatives()
+    prove_upload_route_run_key_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1840,6 +1882,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_actions(source)
         require_reviewed_upload_route_runtime_commands(source)
         reject_unreviewed_upload_route_shell_dispatch(source)
+        require_reviewed_upload_route_run_keys(source, 11 if event == "push" else 10)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
