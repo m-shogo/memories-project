@@ -1,0 +1,22 @@
+# Supplemental OPS learning — zero-directory globstar matching (2026-10-30)
+
+Append-only supplemental learning under the unchanged `contracts/operations/autonomous-learning-system.json`. Canonical learning remains authoritative. This record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion evidence.
+
+## Material failure / semantic gap
+
+- **symptom:** The prewrite direct workflow fanout auditor could silently miss GitHub Actions `**/` path patterns when the globstar consumes zero directory segments.
+- **evidence:** [GitHub's official workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#patterns-to-match-file-paths) explicitly lists `docs/**/*.md` as matching `docs/README.md`, and `**/README.md` as matching root `README.md`. Python `fnmatch.fnmatchcase` treats the slash after `**` as mandatory, so `fnmatchcase("scripts/a.py", "**/scripts/a.py")` and `fnmatchcase("scripts/a.py", "scripts/**/a.py")` return false. This was a verified static semantic mismatch, not a production incident.
+- **rootCauseOrUnknown:** Verified incompatibility between GitHub's zero-directory globstar semantics and Python `fnmatch`'s literal separator matching.
+- **failedApproach:** Treating Python `fnmatch` as a complete over-approximation for GitHub `**/` patterns.
+- **correction:** [`26de561a`](https://github.com/m-shogo/memories-project/commit/26de561aa14ecf1c63326dc7c2980be513b86da3) adds `conservative_glob_match`, preserving the original `fnmatch` positive matches and enumerating zero-or-more `**/` separator variants. Expansion is bounded to four occurrences; larger patterns fail conservatively as possible matches.
+- **recurrenceGuard:** Four new synthetic and four real CLI fixtures cover root zero, nested zero, double zero and unrelated negative control. Existing exact ordered case-identity guards now pin 46 audit fixtures and 29 CLI fixtures, so an equal-count replacement of old coverage is rejected.
+- **retryCondition:** Narrow matching only with an independently validated GitHub-compatible glob engine and complete positive/negative fixtures; retain conservative classification for unreviewed complexity. Do not repeat unchanged MinIO 401, canonical learning large-append transport or human-promotion blockers.
+
+## Material success / protected authority
+
+- **outcome/evidence:** [Autonomous Learning Guard #40912385456](https://github.com/m-shogo/memories-project/actions/runs/40912385456) completed **SUCCESS** on exact source `26de561aa14ecf1c63326dc7c2980be513b86da3`. Logs report **183** autonomous learning negatives, **56** prewrite fanout synthetic cases, **1,186** helper-ancestor negatives, contract and append-only PASS. The real checked-out shared entrypoint still has 9 direct workflow matches classified `BLOCKED_KNOWN_WRITER_CAS`, while known MinIO coupling remains flagged.
+- **whySafe:** The implementation changes only the read-only fanout auditor and its existing CI-bound negative harness. No workflow trigger, external production system, credentials, traffic, recovery evidence or promotion authority was changed.
+- **reusableMechanism:** Over-approximate path matching by preserving old positives, expanding only bounded `**/` zero-directory variants and rejecting unbounded ambiguity rather than silently missing CI fanout.
+- **protectedAuthorityCheck:** The code-commit tree preserved canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `2c6b196a54fafcbb6e02db65116e6e81fbdfb015`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6` and all six protected registries unchanged. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations, approved objectives, executable reviewed requests, recovery evidence, complete typed eight-domain records, final candidates and human promotion remain zero.
+- **limitation:** The large canonical learning file cannot be fully read through this connector; its SHA was verified. A direct workflow fanout match is neither transitive closure proof nor permission to write. No full production admission chain SUCCESS is claimed.
+- **nextSafeTarget:** Review path-filter bracket/range semantics and workflow event YAML aliases for additional demonstrable undercounts; prioritize exact-source negative fixtures over changing workflow triggers or production authorities.
