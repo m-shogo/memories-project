@@ -2404,6 +2404,49 @@ def prove_upload_route_live_skip_boundary_negatives(source_root: Path) -> None:
             raise RuntimeError("live skip boundary negative accepted: " + label)
 
 
+def require_reviewed_upload_route_password_skip_boundary(source: str) -> None:
+    """Bind the transitive deployment-principal helper's only skip condition."""
+    import re
+    failure = "unreviewed Upload Route password skip boundary"
+    guard = (
+        '\tpassword, _ := parsed.User.Password()\n'
+        '\tif password == "" {\n'
+        '\t\tt.Skip("test database URL carries no password; skipping deployment-principal test")\n'
+        '\t}\n'
+    )
+    if (source.count(guard) != 1 or
+            source.count("appPool := appLoginPool(t, ctx, pool, serverURL)") != 1):
+        raise RuntimeError(failure)
+    start = source.find("func appLoginPool(t *testing.T, ctx context.Context, admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {")
+    if start < 0:
+        raise RuntimeError(failure)
+    body = source[start:]
+    if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", body)) != 1:
+        raise RuntimeError(failure)
+
+
+def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
+    path = source_root / "services/import-api/internal/httpserver/server_live_test.go"
+    source = path.read_text(encoding="utf-8")
+    require_reviewed_upload_route_password_skip_boundary(source)
+    for label, old, new in (
+        ("unconditional skip", 'if password == "" {', 'if true {'),
+        ("skip removed", '\t\tt.Skip("test database URL', '\t\tt.Log("test database URL'),
+        ("extra skip", '\t}\n\n\t// ALTER ROLE', '\t}\n\tt.SkipNow()\n\n\t// ALTER ROLE'),
+        ("missing call edge", 'appPool := appLoginPool(t, ctx, pool, serverURL)', 'appPool := pool'),
+    ):
+        if source.count(old) != 1:
+            raise RuntimeError("password skip fixture anchor drift: " + label)
+        changed = source.replace(old, new, 1)
+        try:
+            require_reviewed_upload_route_password_skip_boundary(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route password skip boundary":
+                raise
+        else:
+            raise RuntimeError("password skip negative accepted: " + label)
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -2411,6 +2454,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_go_workspace_negatives()
     prove_upload_route_focused_go_test_negatives(source_root)
     prove_upload_route_live_skip_boundary_negatives(source_root)
+    prove_upload_route_password_skip_negatives(source_root)
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
