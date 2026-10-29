@@ -948,6 +948,57 @@ def prove_upload_route_action_input_negatives() -> None:
             raise RuntimeError("Upload Route action-input negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_MINIO_RUN = "\n".join((
+    f"          docker run -d --name memory-os-upload-route-minio {chr(92)}",
+    f"            -p 9000:9000 {chr(92)}",
+    f"            -e MINIO_ROOT_USER=minioadmin {chr(92)}",
+    f"            -e MINIO_ROOT_PASSWORD=minioadmin {chr(92)}",
+    "            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data",
+))
+
+
+def require_reviewed_upload_route_container_images(source: str) -> None:
+    """Pin reviewed container source references and local MinIO launch syntax."""
+    import re
+    images = re.findall(
+        r"""(?m)^[ \t]*(?:image|['"]image['"])\s*:\s*([^\r\n]+)$""", source
+    )
+    if (images != ["postgres:16-alpine"]
+            or source.count("      postgres:\n        image: postgres:16-alpine") != 1
+            or source.count(REVIEWED_UPLOAD_ROUTE_MINIO_RUN) != 1
+            or len(re.findall(r"\bdocker\s+run\b", source)) != 1):
+        raise RuntimeError("unreviewed Upload Route container image or launch")
+
+
+def prove_upload_route_container_image_negatives() -> None:
+    base = ("services:\n      postgres:\n        image: postgres:16-alpine\n"
+            "steps:\n      - name: Start local MinIO\n        run: |\n"
+            + REVIEWED_UPLOAD_ROUTE_MINIO_RUN + "\n")
+    require_reviewed_upload_route_container_images(base)
+    for label, candidate in (
+        ("Postgres image", base.replace("postgres:16-alpine", "postgres:17-alpine")),
+        ("MinIO tag", base.replace("RELEASE.2025-09-07T16-13-09Z", "latest")),
+        ("MinIO port", base.replace("-p 9000:9000", "-p 9001:9000")),
+        ("MinIO password", base.replace("MINIO_ROOT_PASSWORD=minioadmin",
+                                         "MINIO_ROOT_PASSWORD=changed")),
+        ("MinIO extra flag", base.replace("docker run -d", "docker run --privileged -d")),
+        ("extra docker run", base + "          docker run alpine\n"),
+        ("duplicate image", base.replace("        image: postgres:16-alpine",
+                                          "        image: postgres:16-alpine\n"
+                                          "        image: alpine")),
+        ("quoted image shadow", base.replace("        image: postgres:16-alpine",
+                                             "        'image': postgres:16-alpine\n"
+                                             "        image: postgres:16-alpine")),
+    ):
+        try:
+            require_reviewed_upload_route_container_images(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route container image or launch":
+                raise
+        else:
+            raise RuntimeError("Upload Route container-image negative accepted: " + label)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1768,6 +1819,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_run_key_negatives()
     prove_upload_route_working_directory_negatives()
     prove_upload_route_action_input_negatives()
+    prove_upload_route_container_image_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1997,6 +2049,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         require_reviewed_upload_route_run_keys(source, 11 if event == "push" else 10)
         require_reviewed_upload_route_working_directories(source)
         require_reviewed_upload_route_action_inputs(source, event)
+        require_reviewed_upload_route_container_images(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
