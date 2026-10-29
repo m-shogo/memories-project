@@ -554,7 +554,20 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         or any(module_shadows_main(value, top_level=False)
                                for value in eager))
             if isinstance(node, ast.ClassDef):
-                return node.name == "main"
+                # Class decorators/bases and the class body execute now.
+                # Ordinary class-local main assignments do not bind the
+                # module, so inspect only eager value/expression positions.
+                eager = [*node.decorator_list, *node.bases,
+                         *(kw.value for kw in node.keywords)]
+                for stmt in node.body:
+                    if isinstance(stmt, ast.Expr):
+                        eager.append(stmt.value)
+                    elif isinstance(stmt, (ast.Assign, ast.AnnAssign)):
+                        if stmt.value is not None:
+                            eager.append(stmt.value)
+                return (node.name == "main"
+                        or any(module_shadows_main(value, top_level=False)
+                               for value in eager))
             if isinstance(node, ast.Lambda):
                 return False
             # List/set/dict comprehensions evaluate their elements and filters
@@ -654,6 +667,7 @@ def prove_prewrite_python_negatives() -> None:
     local_controls = (
         ("function default benign", 'def helper(x=1):\n    pass\n', (2, 0)),
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
+        ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("lambda local", 'helper = lambda main: main\n', (1, 0)),
         ("comprehension local", 'items = [main for main in (1,)]\n', (1, 0)),
@@ -702,6 +716,18 @@ def prove_prewrite_python_negatives() -> None:
         ("removed overflow", baseline, hashlib.sha256(with_comment.encode("utf-8")).hexdigest(),
          40, 0, "diff exceeds", with_comment),
         ("budget too large", candidate, sha, 81, 20, "outside reviewed bounds", baseline),
+        ("class decorator reflection", baseline.replace(
+            'if __name__', '@globals().__setitem__("main", None)\nclass Helper:\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class base reflection", baseline.replace(
+            'if __name__', 'class Helper(globals().__setitem__("main", None) or object):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class assignment value reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    main = globals().__setitem__("main", None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("class expression reflection", baseline.replace(
+            'if __name__', 'class Helper:\n    globals().__setitem__("main", None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("function decorator reflection", baseline.replace(
             'if __name__', '@globals().__setitem__("main", None)\ndef helper():\n    pass\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
