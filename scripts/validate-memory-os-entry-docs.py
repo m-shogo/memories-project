@@ -2405,6 +2405,14 @@ UPLOAD_ROUTE_WORKFLOWS = (
     ".github/workflows/reconcile-upload-route-authority.yml",
     ".github/workflows/reconcile-upload-route-authority-pr.yml",
 )
+# Confirmed direct inputs of scripts/validate-memory-os-rate-limit.py.
+# This is a lower bound, NOT a proven Python/Go transitive closure.
+UPLOAD_ROUTE_RATE_LIMIT_DIRECT_INPUTS = (
+    "docs/fixtures/memory-os-operability/rate-limit-policies.negative.v1.json",
+    "contracts/operations/production-operability-status.json",
+    "services/import-api/internal/ratelimit/enforce.go",
+    "services/import-api/internal/obslog/codes.go",
+)
 
 
 def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str | None:
@@ -2419,10 +2427,12 @@ def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str |
                 row[8:].strip().strip("\\\"'")
             )
     ]
-    allowed = {
-        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"',
-        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"',
-    }
+    # An exact-core trigger is NOT yet proven safe: the canonical validator
+    # reads additional Go, fixture and production-status authorities, and the
+    # workflow path inventory does not cover them. Reject premature narrowing.
+    if script_globs == ['      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"']:
+        return "upload-route exact-core narrowing lacks dependency closure"
+    allowed = {'      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"'}
     if len(script_globs) != 1 or script_globs[0] not in allowed:
         return "upload-route rate-limit trigger pattern drift"
     if source.count("    paths:\n") != 1:
@@ -2448,12 +2458,24 @@ def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
         return
     original = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_WILDCARD + '"\n'
     narrowed = '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CORE + '"\n'
+    # Keep the known direct-input gap visible while the broad reviewed
+    # workflow remains unchanged. An unreviewed core narrowing must fail.
+    core_source = (REPO_ROOT / UPLOAD_ROUTE_RATE_LIMIT_CORE).read_text(encoding="utf-8")
+    for dependency in UPLOAD_ROUTE_RATE_LIMIT_DIRECT_INPUTS:
+        if '"' + dependency + '"' not in core_source:
+            failures.append("upload-route rate-limit direct dependency authority drift: " + dependency)
     for relative in UPLOAD_ROUTE_WORKFLOWS:
         workflow = REPO_ROOT / relative
         if workflow.is_symlink() or not workflow.is_file():
             failures.append("upload-route workflow missing or symlinked: " + relative)
             continue
         source = workflow.read_text(encoding="utf-8")
+        trigger_rows = {row.strip()[2:].strip().strip('"') for row in source.splitlines()
+                        if row.startswith("      - ")}
+        uncovered = sorted(set(UPLOAD_ROUTE_RATE_LIMIT_DIRECT_INPUTS) - trigger_rows)
+        if uncovered:
+            print(relative + ": upload-route direct dependency trigger gaps (not full closure): "
+                  + ", ".join(uncovered))
         issue = upload_route_rate_limit_scope_issue(source, matches)
         if issue:
             failures.append(relative + ": " + issue)
@@ -2487,8 +2509,9 @@ def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
             if upload_route_rate_limit_scope_issue(changed, observed) != expected:
                 failures.append(relative + ": upload-route scope negative failed: " + name)
         if upload_route_rate_limit_scope_issue(
-                source.replace(original, narrowed, 1), matches):
-            failures.append(relative + ": reviewed exact-core narrowing rejected")
+                source.replace(original, narrowed, 1), matches) != (
+                    "upload-route exact-core narrowing lacks dependency closure"):
+            failures.append(relative + ": premature exact-core narrowing was accepted")
     if not any("upload-route" in failure for failure in failures):
         print("upload-route rate-limit wildcard scope bounded: "
               + str(len(matches)) + " current matches, "
@@ -2523,10 +2546,11 @@ def upload_route_rate_limit_contract_scope_issue(source: str, matches: set[str])
                 row[8:].strip().strip(chr(34) + chr(39))
             )
     ]
-    allowed = {
-        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + '"',
-        '      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE + '"',
-    }
+    # The core policy is only one direct input of the validator chain; do
+    # not narrow a reviewed trigger without a separately proven closure.
+    if contract_rows == ['      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_CORE + '"']:
+        return "upload-route exact-contract narrowing lacks dependency closure"
+    allowed = {'      - "' + UPLOAD_ROUTE_RATE_LIMIT_CONTRACT_WILDCARD + '"'}
     if len(contract_rows) != 1 or contract_rows[0] not in allowed:
         return "upload-route rate-limit contract trigger drift"
     if source.count("    paths:\n") != 1:
@@ -2586,8 +2610,9 @@ def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None
             if upload_route_rate_limit_contract_scope_issue(changed, observed) != expected:
                 failures.append(relative + ": upload-route contract negative failed: " + name)
         if upload_route_rate_limit_contract_scope_issue(
-                source.replace(original, narrowed, 1), matches):
-            failures.append(relative + ": reviewed exact-contract narrowing rejected")
+                source.replace(original, narrowed, 1), matches) != (
+                    "upload-route exact-contract narrowing lacks dependency closure"):
+            failures.append(relative + ": premature exact-contract narrowing was accepted")
     if not any("upload-route" in failure for failure in failures):
         print("upload-route rate-limit contract wildcard bounded: "
               + str(len(matches)) + " current matches, 14 exact-diagnostic negatives")
