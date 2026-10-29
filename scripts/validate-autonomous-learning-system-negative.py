@@ -35,6 +35,18 @@ REVIEWED_REFLECTIVE_EXECUTION = (
     ("eager-direct-methodcaller", 'methodcaller("import_module", "math")(importlib)'),
 )
 
+# CLI labels must bind to the same exact mutation payloads as the CI cases.
+REVIEWED_REFLECTIVE_CLI_LABELS = (
+    ("computed reflective import", "eager-reflective-computed-import"),
+    ("dynamic reflective loader", "eager-reflective-dynamic-loader"),
+    ("qualified reflective import", "eager-qualified-reflective-import"),
+    ("qualified dynamic reflective loader", "eager-qualified-dynamic-loader"),
+    ("operator attrgetter execution", "eager-operator-attrgetter"),
+    ("direct attrgetter execution", "eager-direct-attrgetter"),
+    ("operator methodcaller execution", "eager-operator-methodcaller"),
+    ("direct methodcaller execution", "eager-direct-methodcaller"),
+)
+
 
 def require_reviewed_reflective_inventory(observed: list[tuple[str, str, str]]) -> None:
     expected = [
@@ -3173,6 +3185,36 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("diff budget", candidate.replace("    # safe edit\n", "    # a\n    # b\n").encode(),
              "prewrite diff exceeds reviewed line budget", ["--max-added-lines", "1"]),
         )
+        reviewed_labels = {label for label, _ in REVIEWED_REFLECTIVE_CLI_LABELS}
+        reviewed_payloads = dict(REVIEWED_REFLECTIVE_EXECUTION)
+        expected_reflective_cli = [
+            (label, baseline.replace(
+                "if __name__", reviewed_payloads[kind] + "\nif __name__"
+            ).encode(), "prewrite candidate main binding shadowed", [])
+            for label, kind in REVIEWED_REFLECTIVE_CLI_LABELS
+        ]
+
+        def require_reflective_cli_inventory(observed) -> None:
+            if observed != expected_reflective_cli:
+                raise RuntimeError("reviewed reflective prewrite CLI inventory drift")
+
+        observed_reflective_cli = [case for case in cases if case[0] in reviewed_labels]
+        require_reflective_cli_inventory(observed_reflective_cli)
+        for label, changed in (
+            ("removed", observed_reflective_cli[:-1]),
+            ("duplicated", observed_reflective_cli + observed_reflective_cli[:1]),
+            ("payload substitution", observed_reflective_cli[:-1] + [
+                (observed_reflective_cli[-1][0], b"# replaced",
+                 observed_reflective_cli[-1][2], observed_reflective_cli[-1][3])
+            ]),
+        ):
+            try:
+                require_reflective_cli_inventory(changed)
+            except RuntimeError as exc:
+                if str(exc) != "reviewed reflective prewrite CLI inventory drift":
+                    raise
+            else:
+                raise RuntimeError("reflective prewrite CLI inventory negative accepted: " + label)
         for label, payload, diagnostic, extra in cases:
             after.write_bytes(payload)
             accept(label, args + extra, diagnostic)
