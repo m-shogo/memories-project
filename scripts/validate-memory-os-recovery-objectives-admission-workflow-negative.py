@@ -631,12 +631,67 @@ def negatives(publisher: str, independent: str) -> None:
     print(f"PASS: recovery objective publisher source admission ({len(publisher_cases) - 3} semantic + 3 blob-only negatives), independent source admission ({len(independent_cases) - 2} semantic + 2 blob-only negatives)")
 
 
+def validate_concurrency_authority(publisher: str) -> None:
+    """Pin reviewed human-objective admission noncancelling serialization."""
+    marker = "\nconcurrency:\n"
+    end = "\njobs:\n"
+    group = (
+        "  group: recovery-objectives-admission-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    expected = group + "  cancel-in-progress: false\n"
+    if publisher.count(marker) != 1 or publisher.count(end) != 1:
+        raise SystemExit("recovery objective publisher concurrency scope drift")
+    actual = publisher.split(marker, 1)[1].split(end, 1)[0]
+    if actual != expected:
+        raise SystemExit("recovery objective publisher concurrency scope drift")
+
+
+def prove_concurrency_authority_negatives(publisher: str) -> None:
+    """Prove ten exact-diagnostic recovery-objective concurrency shadows."""
+    validate_concurrency_authority(publisher)
+    group = (
+        "  group: recovery-objectives-admission-"
+        + chr(36) + "{{ github.event.pull_request.number || 'so' }}\n"
+    )
+    original = group + "  cancel-in-progress: false\n"
+    cases = (
+        ("global group", "  group: recovery-objectives-admission-global\n  cancel-in-progress: false\n"),
+        ("cancel enabled", original.replace("false", "true")),
+        ("duplicate group", original + "  group: unreviewed-global\n"),
+        ("duplicate cancellation", original + "  cancel-in-progress: true\n"),
+        ("spaced group", original + "  group : unreviewed-global\n"),
+        ("quoted group", original + "  'group': unreviewed-global\n"),
+        ("spaced cancellation", original + "  cancel-in-progress : true\n"),
+        ("quoted cancellation", original + "  'cancel-in-progress': true\n"),
+        ("unreviewed leaf", original + "  max-parallel: 10\n"),
+        ("removed cancellation", group),
+    )
+    if publisher.count(original) != 1:
+        raise SystemExit("recovery objective concurrency fixture anchor drift")
+    for name, block in cases:
+        changed = publisher.replace(original, block, 1)
+        if changed == publisher:
+            raise SystemExit("recovery objective unchanged concurrency fixture: " + name)
+        try:
+            validate_concurrency_authority(changed)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective publisher concurrency scope drift":
+                raise SystemExit(
+                    "recovery objective wrong concurrency diagnostic: " + name + ": " + str(exc)
+                ) from exc
+        else:
+            raise SystemExit("recovery objective accepted concurrency mutation: " + name)
+    print("PASS: recovery objective publisher concurrency serialization (10 exact-diagnostic negatives)")
+
+
 def main() -> int:
     publisher = source(PUBLISHER)
     independent = source(INDEPENDENT)
     validate(publisher, independent)
     prove_trigger_reachability_negatives(publisher, independent)
     prove_yaml_authority_negatives(publisher, independent)
+    prove_concurrency_authority_negatives(publisher)
     runtime(publisher, independent)
     runtime_sha_proof(publisher, independent)
     runtime_diagnostic_redaction(publisher)
