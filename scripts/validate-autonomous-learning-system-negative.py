@@ -600,6 +600,38 @@ def prove_upload_route_event_parser_negatives() -> None:
             raise RuntimeError(f"Upload Route event parser negative accepted: {index}")
 
 
+def require_reviewed_upload_route_toolchain_environment(source: str) -> None:
+    """Reject unreviewed workflow-level Python/Go dependency resolver overrides."""
+    import re
+    names = (
+        "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT",
+        "PYTHONSAFEPATH", "GOWORK", "GOFLAGS", "GOPATH", "GOMODCACHE",
+        "GOTOOLCHAIN", "CGO_ENABLED", "GOENV", "GITHUB_ENV",
+    )
+    if re.search(r"(?<![A-Za-z0-9_])(?:" + "|".join(names) +
+                 r")(?![A-Za-z0-9_])", source):
+        raise RuntimeError("unreviewed Upload Route toolchain environment")
+
+
+def prove_upload_route_toolchain_environment_negatives() -> None:
+    positive = "env:\n  MEMORY_OS_TEST_DATABASE_URL: postgres://local\n"
+    require_reviewed_upload_route_toolchain_environment(positive)
+    for name in (
+        "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PYTHONINSPECT",
+        "PYTHONSAFEPATH", "GOWORK", "GOFLAGS", "GOPATH", "GOMODCACHE",
+        "GOTOOLCHAIN", "CGO_ENABLED", "GOENV", "GITHUB_ENV",
+    ):
+        try:
+            require_reviewed_upload_route_toolchain_environment(
+                positive + "  " + name + ": unreviewed\n"
+            )
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route toolchain environment":
+                raise
+        else:
+            raise RuntimeError("Upload Route toolchain env negative accepted: " + name)
+
+
 def require_reviewed_go_workspace(source_root: Path) -> None:
     """Workspace/vendor changes invalidate the reviewed module-only closure."""
     unsupported = (
@@ -1413,6 +1445,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     import re
     require_reviewed_go_workspace(source_root)
     prove_upload_route_go_workspace_negatives()
+    prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_unaliased_go_path_negatives()
@@ -1635,6 +1668,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         ("reconcile-upload-route-authority-pr.yml", "pull_request"),
     ):
         source = (source_root / ".github/workflows" / workflow).read_text(encoding="utf-8")
+        require_reviewed_upload_route_toolchain_environment(source)
         patterns = upload_route_event_paths(source, event)
         reviewed_paths.append(patterns)
         uncovered_sets.append({path for path in inputs
