@@ -548,7 +548,7 @@ def prove_canonical_repo_root_alias_cli(source_root: Path) -> None:
         seed(source_root, real)
         positive = run(source_root, real)
         if (positive.returncode != 0 or
-                positive.stdout != "Autonomous improvement/learning contract validation PASS\\n"):
+                positive.stdout != "Autonomous improvement/learning contract validation PASS\n"):
             raise RuntimeError("canonical root alias positive control failed")
         root_alias = base / "root-alias"
         root_alias.symlink_to(real, target_is_directory=True)
@@ -564,7 +564,7 @@ def prove_canonical_repo_root_alias_cli(source_root: Path) -> None:
             result = run(source_root, path)
             require_canonical_rejection(label, result)
             expected = ("AUTONOMOUS LEARNING VALIDATION FAILED: "
-                        "learning repository root alias forbidden\\n")
+                        "learning repository root alias forbidden\n")
             if result.stdout or result.stderr != expected:
                 raise RuntimeError(
                     f"canonical root alias wrong diagnostic: {label}: {result.stderr!r}"
