@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from queue import SimpleQueue
+from threading import local
 from pathlib import Path
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
@@ -7209,30 +7211,30 @@ def main() -> int:
             f"symlinked {label} parent directory",
             lambda root, path=relative: symlink_parent_directory(root, path),
         ))
-    # The canonical descriptor guard snapshots ancestor ctime. Creating
-    # sibling TemporaryDirectories directly under /tmp from two workers
-    # changes that shared ancestor while the other worker is reading.
-    # Precreate disjoint worker parents before running any concurrent case.
-    # Each worker mutates only its own parent, sequentially.
-    def execute_partition(worker_index: int, worker_parent: Path):
-        results = []
-        for index in range(worker_index, len(cases), 2):
-            name, mutate = cases[index]
-            require_failure(source_root, name, mutate, worker_parent)
-            results.append((index, name))
-        return results
-
+    # Precreate disjoint worker roots before starting any concurrent case.
+    # Thread-local ownership keeps each mutable fixture parent exclusive;
+    # dynamic executor.map scheduling avoids a slow fixed half exceeding the
+    # independent nested 120-second deadline. Results remain source ordered.
+    worker_state = local()
     with tempfile.TemporaryDirectory(prefix="learning-negative-workers-") as tmp:
-        worker_parents = [Path(tmp) / f"worker-{index}" for index in range(2)]
-        for parent in worker_parents:
+        available_parents = SimpleQueue()
+        for index in range(2):
+            parent = Path(tmp) / f"worker-{index}"
             parent.mkdir()
+            available_parents.put(parent)
+
+        def execute_case(item):
+            parent = getattr(worker_state, "fixture_parent", None)
+            if parent is None:
+                parent = available_parents.get_nowait()
+                worker_state.fixture_parent = parent
+            name, mutate = item
+            require_failure(source_root, name, mutate, parent)
+            return name
+
         with ThreadPoolExecutor(max_workers=2) as executor:
-            partitions = list(executor.map(
-                lambda index: execute_partition(index, worker_parents[index]),
-                range(2),
-            ))
-    completed_pairs = sorted(pair for partition in partitions for pair in partition)
-    if completed_pairs != list(enumerate(name for name, _ in cases)):
+            completed = list(executor.map(execute_case, cases))
+    if completed != [name for name, _ in cases]:
         raise RuntimeError("canonical negative worker result/order drift")
 
     prove_parent_case_coverage_negatives()
