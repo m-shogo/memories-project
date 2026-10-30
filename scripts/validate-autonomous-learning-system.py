@@ -1175,7 +1175,7 @@ def prove_prewrite_python_negatives() -> None:
         ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
         ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
         ("caught module raise", 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\n', (4, 0)),
-        ("untaken finally raise", 'try:\n    pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (5, 0)),
+        ("untaken finally raise", 'try: pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (4, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
