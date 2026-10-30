@@ -726,18 +726,57 @@ def symlink_parent_directory(root: Path, relative: Path) -> None:
     directory.symlink_to(target.name, target_is_directory=True)
 
 
+def reject_invalid_go_lexical_regions(source: str) -> None:
+    """Reject malformed Go lexical boundaries before inferring import edges."""
+    state, index = "code", 0
+    while index < len(source):
+        char = source[index]
+        if state == "code":
+            if source.startswith("//", index):
+                state, index = "line", index + 2
+                continue
+            if source.startswith("/*", index):
+                state, index = "block", index + 2
+                continue
+            if source.startswith("*/", index):
+                raise RuntimeError("unreviewed Go orphan block comment close")
+            if char == "`":
+                state = "raw"
+            elif char == '"':
+                state = "quoted"
+            elif char == "'":
+                state = "rune"
+        elif state == "line":
+            if char in "\r\n":
+                state = "code"
+        elif state == "block":
+            if source.startswith("*/", index):
+                state, index = "code", index + 2
+                continue
+        elif state == "raw":
+            if char == "`":
+                state = "code"
+        elif state in ("quoted", "rune"):
+            if char == "\\":
+                index += 2
+                continue
+            if (state == "quoted" and char == '"') or (state == "rune" and char == "'"):
+                state = "code"
+            elif char in "\r\n":
+                raise RuntimeError("unreviewed Go unterminated interpreted literal")
+        index += 1
+    if state in ("block", "raw", "quoted", "rune"):
+        raise RuntimeError("unreviewed Go unterminated lexical region")
+
+
 def upload_route_local_go_imports(source: str, include_external: bool = False,
                                   include_aliases: bool = False) -> set[str]:
     """Parse reviewed Go import forms conservatively; reject unknown syntax."""
     import re
     module = "github.com/m-shogo/memories-project/services/import-api/"
-    # An unfinished comment or raw literal can leave import-shaped text
-    # lexically visible to a regex even though Go cannot compile the file.
-    # Fail closed before assigning any dependency edge to such source.
-    if source.count("/*") != source.count("*/"):
-        raise RuntimeError("unreviewed Go unbalanced block comment")
-    if source.count("`") % 2:
-        raise RuntimeError("unreviewed Go unbalanced raw string")
+    # Equal delimiter counts miss */ before /*; literal data can contain
+    # delimiter-looking tokens. Scan lexical states before inferring edges.
+    reject_invalid_go_lexical_regions(source)
     # Go accepts "package p; import ..." and "/* note */ import ...".
     # A line-anchored parser would silently omit those legal dependencies.
     if re.search(r"(?:;|\*/)[ \t]*import(?:[ \t]+|[ \t]*\()", source):
@@ -832,14 +871,16 @@ def prove_upload_route_go_import_parser() -> None:
             raise RuntimeError("Go import identity negative accepted: " + label)
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
-    # Unterminated lexical regions must not contribute fake import edges.
+    # Order matters even when comment token counts match.
     for label, candidate, diagnostic in (
         ("unterminated block comment", 'package test\n/*\nimport "fmt"\n',
-         "unreviewed Go unbalanced block comment"),
+         "unreviewed Go unterminated lexical region"),
         ("orphan block close", 'package test\n*/\nimport "fmt"\n',
-         "unreviewed Go unbalanced block comment"),
+         "unreviewed Go orphan block comment close"),
+        ("inverted equal-count tokens", 'package test\n*/\nimport "fmt"\n/*\n',
+         "unreviewed Go orphan block comment close"),
         ("unterminated raw string", 'package test\nvar doc = `\nimport "fmt"\n',
-         "unreviewed Go unbalanced raw string"),
+         "unreviewed Go unterminated lexical region"),
     ):
         try:
             upload_route_local_go_imports(candidate, include_external=True)
@@ -848,6 +889,15 @@ def prove_upload_route_go_import_parser() -> None:
                 raise
         else:
             raise RuntimeError("Go lexical delimiter negative accepted: " + label)
+    # Delimiter-shaped text inside Go strings/comments is not a lexical boundary.
+    for label, candidate in (
+        ("interpreted string delimiter", 'package test\nvar doc = "/*"\nimport "fmt"\n'),
+        ("line comment delimiter", 'package test\n// /*\nimport "fmt"\n'),
+        ("raw string delimiter", 'package test\nvar doc = `/*`\nimport "fmt"\n'),
+        ("escaped interpreted quote", 'package test\nvar doc = "\\"/*"\nimport "fmt"\n'),
+    ):
+        if upload_route_local_go_imports(candidate, include_external=True) != {"fmt"}:
+            raise RuntimeError("Go delimiter-looking data positive failed: " + label)
     # An import-shaped line in a block comment is not a compiled Go import.
     upload_route_local_go_imports('package test\n/* ordinary note */\nimport "fmt"\n')
     for label, candidate in (
