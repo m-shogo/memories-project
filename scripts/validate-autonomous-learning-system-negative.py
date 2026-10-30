@@ -183,6 +183,8 @@ def run(source_root: Path, root: Path) -> subprocess.CompletedProcess[str]:
 def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[str]) -> None:
     if result.returncode != 1:
         raise RuntimeError(f"negative case did not return canonical exit 1: {name}: {result.returncode}")
+    if result.stdout:
+        raise RuntimeError(f"negative case emitted stdout before canonical rejection: {name}")
     if not result.stderr.startswith("AUTONOMOUS LEARNING VALIDATION FAILED: "):
         raise RuntimeError(f"negative case did not fail through canonical guard: {name}: {result.stderr}")
     if "Traceback (most recent call last)" in result.stderr:
@@ -246,6 +248,8 @@ def prove_failure_classifier() -> None:
         subprocess.CompletedProcess([], 2, "", "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: injected"),
         subprocess.CompletedProcess([], 1, "", "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: injected"),
         subprocess.CompletedProcess([], 1, "", "Traceback (most recent call last): injected"),
+        subprocess.CompletedProcess([], 1, "false PASS marker\n",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
     )
     for index, result in enumerate(invalid):
         try:
