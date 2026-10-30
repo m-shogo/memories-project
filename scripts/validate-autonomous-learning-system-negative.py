@@ -2635,10 +2635,51 @@ def require_reviewed_upload_route_password_skip_boundary(source: str) -> None:
         raise RuntimeError(failure)
 
 
+def require_reviewed_upload_route_role_lock(source: str) -> None:
+    """Pin shared-db advisory lock around deployment-principal ALTER ROLE."""
+    failure = "unreviewed Upload Route deployment principal role lock boundary"
+    signature = ("func appLoginPool(t *testing.T, ctx context.Context, "
+                 "admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {")
+    if source.count(signature) != 1:
+        raise RuntimeError(failure)
+    start = source.index(signature)
+    end = source.find("\\nfunc ", start + len(signature))
+    if end < 0:
+        raise RuntimeError(failure)
+    helper = source[start:end]
+    role_lock_chain = (
+        "\tmaintenance := *parsed\n"
+        "\tmaintenance.Path = \"/postgres\"\n"
+        "\tlockPool, err := pgxpool.New(ctx, maintenance.String())\n"
+        "\tif err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\tdefer lockPool.Close()\n"
+        "\tlock, err := lockPool.Acquire(ctx)\n"
+        "\tif err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\tdefer lock.Release()\n"
+        "\tif _, err := lock.Exec(ctx, \"SELECT pg_advisory_lock(730001)\"); err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\tdefer func() { _, _ = lock.Exec(ctx, \"SELECT pg_advisory_unlock(730001)\") }()\n"
+        "\n"
+        "\tif _, err := admin.Exec(ctx,\n"
+        "\t\t\"ALTER ROLE memory_app_login PASSWORD '\"+strings.ReplaceAll(password, \"'\", \"''\")+\"'\"); err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\n"
+    )
+    if helper.count(role_lock_chain) != 1:
+        raise RuntimeError(failure)
+
+
 def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
     path = source_root / "services/import-api/internal/httpserver/server_live_test.go"
     source = path.read_text(encoding="utf-8")
     require_reviewed_upload_route_password_skip_boundary(source)
+    require_reviewed_upload_route_role_lock(source)
     for label, old, new in (
         ("unconditional skip", 'if password == "" {', 'if true {'),
         ("skip removed", '\t\tt.Skip("test database URL', '\t\tt.Log("test database URL'),
@@ -2655,6 +2696,41 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
                 raise
         else:
             raise RuntimeError("password skip negative accepted: " + label)
+
+
+    signature = ("func appLoginPool(t *testing.T, ctx context.Context, "
+                 "admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {")
+    helper_start = source.index(signature)
+    helper_end = source.find("\nfunc ", helper_start + len(signature))
+    if helper_end < 0:
+        raise RuntimeError("role lock fixture helper boundary drift")
+    helper = source[helper_start:helper_end]
+    for label, old, new in (
+        ("wrong maintenance database", 'maintenance.Path = "/postgres"',
+         'maintenance.Path = "/memory_os_httpserver"'),
+        ("wrong role lock ID", "SELECT pg_advisory_lock(730001)",
+         "SELECT pg_advisory_lock(730002)"),
+        ("wrong role unlock ID", "SELECT pg_advisory_unlock(730001)",
+         "SELECT pg_advisory_unlock(730002)"),
+        ("premature role lock release", "defer lock.Release()", "lock.Release()"),
+        ("wrong role lock connection", "lockPool.Acquire(ctx)", "admin.Acquire(ctx)"),
+        ("premature role unlock", 'defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()',
+         'func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()'),
+        ("wrong role mutation", "ALTER ROLE memory_app_login PASSWORD",
+         "ALTER ROLE memory_admin PASSWORD"),
+        ("wrong role mutation connection", "admin.Exec(ctx,", "admin.Query(ctx,"),
+    ):
+        if helper.count(old) != 1:
+            raise RuntimeError("role lock fixture anchor drift: " + label)
+        changed = (source[:helper_start] + helper.replace(old, new, 1)
+                   + source[helper_end:])
+        try:
+            require_reviewed_upload_route_role_lock(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route deployment principal role lock boundary":
+                raise
+        else:
+            raise RuntimeError("Upload Route role lock negative accepted: " + label)
 
 
 def require_reviewed_upload_route_focused_skip_inventory(sources: dict[str, str]) -> None:
