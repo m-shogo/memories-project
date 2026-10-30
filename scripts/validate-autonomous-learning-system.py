@@ -497,6 +497,17 @@ def validate(repo_root: Path) -> None:
                 return True
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
+        # for-loops and eager comprehensions consume map now, whereas a
+        # standalone generator expression does not iterate its map source.
+        def mapped_iter(value: ast.AST) -> bool:
+            return (isinstance(value, ast.Call)
+                    and isinstance(value.func, ast.Name)
+                    and value.func.id == "map")
+        if isinstance(node, (ast.For, ast.AsyncFor)) and mapped_iter(node.iter):
+            return True
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
+            if any(mapped_iter(gen.iter) for gen in node.generators):
+                return True
         if isinstance(node, ast.Call):
             # A mapped callable executes when an eager builtin consumes map.
             # Mere map construction is lazy and remains admissible.
@@ -755,6 +766,17 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return False
             if isinstance(node, ast.Global):
                 return "main" in node.names
+            # A for-loop or eager comprehension consumes a mapped callable;
+            # generator expressions alone defer that iteration.
+            def mapped_iter(value: ast.AST) -> bool:
+                return (isinstance(value, ast.Call)
+                        and isinstance(value.func, ast.Name)
+                        and value.func.id == "map")
+            if isinstance(node, (ast.For, ast.AsyncFor)) and mapped_iter(node.iter):
+                return True
+            if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp)):
+                if any(mapped_iter(gen.iter) for gen in node.generators):
+                    return True
             # List/set/dict comprehensions evaluate their elements and filters
             # now, but keep iteration targets local. Generator expressions
             # defer their body and evaluate only the first iterable eagerly.
@@ -951,6 +973,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred operator call", 'def helper():\n    operator.call(exec, "main = None")\n', (2, 0)),
         ("lazy map construction", 'pending = map(exec, ["main = None"])\n', (1, 0)),
         ("deferred map consumption", 'def helper():\n    list(map(exec, ["main = None"]))\n', (2, 0)),
+        ("deferred map generator", 'pending = (x for x in map(exec, ["main = None"]))\n', (1, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -1115,6 +1138,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager mapped exec next", baseline.replace(
             'if __name__', 'next(map(exec, ["main = None"]))\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager mapped exec for", baseline.replace(
+            'if __name__', 'for _ in map(exec, ["main = None"]):\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager mapped exec comprehension", baseline.replace(
+            'if __name__', '[x for x in map(exec, ["main = None"])]\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct methodcaller execution", baseline.replace(
             'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__'),

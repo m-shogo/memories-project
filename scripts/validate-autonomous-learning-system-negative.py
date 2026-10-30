@@ -3453,6 +3453,7 @@ def main() -> int:
         ("deferred operator call", "def later():\n    operator.call(sys.exit, 0)\n"),
         ("lazy map construction", "map(sys.exit, [0])\n"),
         ("deferred map consumption", "def later():\n    list(map(sys.exit, [0]))\n"),
+        ("deferred map generator", "pending = (x for x in map(sys.exit, [0]))\n"),
         ("benign immediate lambda", "(lambda: os.getpid())()\n"),
         ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
@@ -3702,6 +3703,9 @@ def main() -> int:
         ("immediate-partial-exit", "functools.partial(sys.exit, 0)()" + chr(10) + chr(10)),
         ("operator-call-exit", "operator.call(sys.exit, 0)" + chr(10) + chr(10)),
         ("mapped-exit-list", "list(map(sys.exit, [0]))" + chr(10) + chr(10)),
+        ("mapped-exit-for", "for _ in map(sys.exit, [0]):" + chr(10)
+         + "    pass" + chr(10) + chr(10)),
+        ("mapped-exit-comprehension", "[x for x in map(sys.exit, [0])]" + chr(10) + chr(10)),
         ("mapped-exit-next", "next(map(sys.exit, [0]))" + chr(10) + chr(10)),
         ("direct-call-abort", "call(os.abort)" + chr(10) + chr(10)),
         ("direct-partial-abort", "partial(os.abort)()" + chr(10) + chr(10)),
@@ -3745,6 +3749,9 @@ def main() -> int:
         ("immediate-partial-exit", "    functools.partial(sys.exit, 0)()" + newline),
         ("operator-call-exit", "    operator.call(sys.exit, 0)" + newline),
         ("mapped-exit-list", "    list(map(sys.exit, [0]))" + newline),
+        ("mapped-exit-for", "    for _ in map(sys.exit, [0]):" + newline
+         + "        pass" + newline),
+        ("mapped-exit-comprehension", "    [x for x in map(sys.exit, [0])]" + newline),
         ("mapped-exit-any", "    any(map(sys.exit, [0]))" + newline),
         ("direct-call-abort", "    call(os.abort)" + newline),
         ("direct-partial-abort", "    partial(os.abort)()" + newline),
