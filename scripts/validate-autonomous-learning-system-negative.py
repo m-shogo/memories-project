@@ -2745,6 +2745,7 @@ def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str)
     require_reviewed_upload_route_input_set(
         paths, 11, "42c8ba87cc722a92a254fbab74689ef1677f2caf2eb0faeee1471b30a0cdcf62"
     )
+    require_reviewed_upload_route_sql_application(source)
     if set(REVIEWED_UPLOAD_ROUTE_SQL_BLOBS) != paths:
         raise RuntimeError("unreviewed Upload Route SQL migration blob inventory")
     for relative in sorted(paths):
@@ -2759,6 +2760,27 @@ def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str)
         if git_blob_sha1 != REVIEWED_UPLOAD_ROUTE_SQL_BLOBS[relative]:
             raise RuntimeError("unreviewed Upload Route SQL migration blob")
     return paths
+
+
+def require_reviewed_upload_route_sql_application(source: str) -> None:
+    """Pin the runtime SQL apply/error chain, not live test execution."""
+    failure = "unreviewed Upload Route SQL migration apply boundary"
+    apply_chain = (
+        '\t\t\tpayload, err := os.ReadFile(filepath.Join('
+        '"..", "..", "..", "..", "infra", "postgresql", "security", name))\n'
+        '\t\t\tif err == nil {\n'
+        '\t\t\t\t_, err = pool.Exec(ctx, string(payload))\n'
+        '\t\t\t}\n'
+        '\t\t\tif err != nil {\n'
+        '\t\t\t\tmigrateErr = fmt.Errorf("apply %s: %w", name, err)\n'
+        '\t\t\t\treturn\n'
+        '\t\t\t}\n'
+    )
+    fatal_chain = '\tif migrateErr != nil {\n\t\tt.Fatal(migrateErr)\n\t}\n'
+    if (source.count(apply_chain) != 1 or
+            source.count('migrateOnce.Do(func() {') != 1 or
+            source.count(fatal_chain) != 1):
+        raise RuntimeError(failure)
 
 
 def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
@@ -2780,6 +2802,28 @@ def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
                 raise
         else:
             raise RuntimeError("Upload Route SQL migration negative accepted: " + label)
+    for label, old, new in (
+        ("discard SQL execution", '_, err = pool.Exec(ctx, string(payload))',
+         '_ = payload'),
+        ("ignore read error", '\t\t\tif err == nil {\n\t\t\t\t_, err = pool.Exec',
+         '\t\t\tif true {\n\t\t\t\t_, err = pool.Exec'),
+        ("discard apply error", 'migrateErr = fmt.Errorf("apply %s: %w", name, err)',
+         '_ = fmt.Errorf("apply %s: %w", name, err)'),
+        ("continue after failure", '\t\t\t\treturn\n\t\t\t}\n\t\t}\n\t})',
+         '\t\t\t\tcontinue\n\t\t\t}\n\t\t}\n\t})'),
+        ("suppress fatal", '\tif migrateErr != nil {\n\t\tt.Fatal(migrateErr)\n\t}\n',
+         '\tif migrateErr != nil {\n\t\tt.Log(migrateErr)\n\t}\n'),
+    ):
+        if source.count(old) != 1:
+            raise RuntimeError("SQL apply boundary fixture anchor drift: " + label)
+        changed = source.replace(old, new, 1)
+        try:
+            require_reviewed_upload_route_sql_application(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route SQL migration apply boundary":
+                raise
+        else:
+            raise RuntimeError("Upload Route SQL apply boundary negative accepted: " + label)
     with tempfile.TemporaryDirectory(prefix="upload-sql-migration-input-") as tmp:
         fixture_root = Path(tmp)
         for relative in paths:
