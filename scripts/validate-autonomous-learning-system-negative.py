@@ -3031,8 +3031,13 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             ("root anchored on", "&key on:\n    push:\n", 1),
             ("root complex on", "? on\n:\n    push:\n", 1),
             ("root unrelated anchor", "name: &e push\non: workflow_dispatch\n", 0),
+            ("root flow push", "{\"on\": {\"push\": {\"paths\": [\"scripts/a.py\"]}}}\n", 1),
+            ("root flow target", "{\"on\": [\"pull_request_target\"]}\n", 1),
+            ("root flow document marker", "--- {\"on\": [\"push\"]}\n", 1),
+            ("root flow dispatch conservative", "# header\n\n{\"on\": {\"workflow_dispatch\": {}}}\n", 1),
+            ("nested JSON block is not root flow", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          {\"on\": {\"push\": {}}}\n", 0),
         )
-        if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor",):
+        if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor","root flow push","root flow target","root flow document marker","root flow dispatch conservative","nested JSON block is not root flow",):
             raise RuntimeError("prewrite root-event CLI fixture identity drift")
         for label, content, count in root_event_cases:
             workflow.write_text(content, encoding="utf-8")
