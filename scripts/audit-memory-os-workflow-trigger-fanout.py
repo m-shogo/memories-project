@@ -238,6 +238,11 @@ def validate_relative_path(relative: str) -> None:
 
 def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     validate_relative_path(relative)
+    # Auditing a symlink alias is not proof about the underlying target.
+    # Missing prospective files remain allowed; only existing aliases fail.
+    target = repo_root / relative
+    if any(part.is_symlink() for part in (target, *target.parents)):
+        raise AuditFailure("prewrite target path symlinked")
     directory = repo_root / ".github/workflows"
     # A normal workflow leaf beneath a symlinked .github ancestor is still
     # an alias outside the reviewed repository tree.
@@ -490,6 +495,34 @@ def self_test(repo_root: Path) -> None:
     if (entry_risk != "BLOCKED_KNOWN_WRITER_CAS" or
             set(entry_docs) & KNOWN_WRITER_CAS_WORKFLOWS != KNOWN_WRITER_CAS_WORKFLOWS):
         raise AuditFailure("shared entrypoint writer CAS risk changed; review required")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-target-alias-") as tmp:
+        root = Path(tmp) / "repo"
+        workflow_dir = root / ".github/workflows"
+        workflow_dir.mkdir(parents=True)
+        (workflow_dir / "w.yml").write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', encoding="utf-8"
+        )
+        (root / "scripts").mkdir()
+        if matching_workflows(root, "scripts/a.py") != [".github/workflows/w.yml"]:
+            raise AuditFailure("missing prospective target positive failed")
+        external = Path(tmp) / "external"
+        external.write_text("fixture", encoding="utf-8")
+        leaf = root / "scripts/a.py"
+        leaf.symlink_to(external)
+        for label in ("leaf", "parent"):
+            try:
+                matching_workflows(root, "scripts/a.py")
+            except AuditFailure as exc:
+                if str(exc) != "prewrite target path symlinked":
+                    raise
+            else:
+                raise AuditFailure("symlinked prewrite target negative accepted: " + label)
+            if label == "leaf":
+                leaf.unlink()
+                (root / "scripts").rmdir()
+                outside = Path(tmp) / "outside"
+                outside.mkdir()
+                (root / "scripts").symlink_to(outside, target_is_directory=True)
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
@@ -523,7 +556,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 17 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
