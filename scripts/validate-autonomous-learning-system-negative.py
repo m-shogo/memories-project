@@ -4475,6 +4475,41 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (blocked.returncode != 1 or blocked.stdout or
                     blocked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git configuration environment requires review\n"):
                 raise RuntimeError("Git config environment CLI negative failed: " + name)
+        # An inherited object database or helper path can substitute the
+        # checkout's Git authority or external executable lookup semantics.
+        external_objects = Path(tmp) / "unreviewed-objects"
+        external_objects.mkdir()
+        redirected = subprocess.run(
+            ["git", "-C", str(root), "cat-file", "-t", "HEAD"],
+            env={**os.environ, "GIT_OBJECT_DIRECTORY": str(external_objects)},
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if redirected.returncode == 0:
+            raise RuntimeError("Git external object-store control did not redirect lookup")
+        external_exec = Path(tmp) / "unreviewed-git-exec"
+        exec_probe = subprocess.run(
+            ["git", "--exec-path"],
+            env={**os.environ, "GIT_EXEC_PATH": str(external_exec)},
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if exec_probe.returncode != 0 or exec_probe.stdout.strip() != str(external_exec):
+            raise RuntimeError("Git helper execution-path control failed")
+        for name, value in (
+            ("GIT_OBJECT_DIRECTORY", str(external_objects)),
+            ("GIT_ALTERNATE_OBJECT_DIRECTORIES", str(root / ".git/objects")),
+            ("GIT_NAMESPACE", "unreviewed"),
+            ("GIT_REPLACE_REF_BASE", "refs/replace/unreviewed"),
+            ("GIT_EXEC_PATH", str(external_exec)),
+            ("GIT_NO_REPLACE_OBJECTS", "1"),
+        ):
+            blocked = subprocess.run(
+                args, env={**os.environ, name: value},
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (blocked.returncode != 1 or blocked.stdout
+                    or blocked.stderr !=
+                    "PREWRITE TRIGGER AUDIT FAILED: prewrite Git object or helper environment requires review\n"):
+                raise RuntimeError("Git object/helper environment CLI negative failed: " + name)
         config_fifo = Path(tmp) / "unreviewed-gitconfig-fifo"
         os.mkfifo(config_fifo)
         blocked_fifo = subprocess.run(
@@ -4759,7 +4794,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 77 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 83 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

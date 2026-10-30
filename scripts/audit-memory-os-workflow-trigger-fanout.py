@@ -419,6 +419,15 @@ def require_workflow_git_index_identity(
             or any(name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
                    for name in os.environ)):
         raise AuditFailure("prewrite Git configuration environment requires review")
+    # Git object stores, replacement namespaces and helper lookup paths are
+    # external authority inputs. The checked-out HEAD/index proof must not
+    # inherit a different object database or executable helper namespace.
+    if any(name in os.environ for name in (
+            "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_NAMESPACE", "GIT_REPLACE_REF_BASE",
+            "GIT_EXEC_PATH", "GIT_NO_REPLACE_OBJECTS",
+    )):
+        raise AuditFailure("prewrite Git object or helper environment requires review")
     if not (repo_root / ".git").is_dir():
         raise AuditFailure("prewrite Git index checkout identity unavailable")
 
