@@ -305,7 +305,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
 
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
-            or any(part in ("", ".", "..") or part.casefold() == ".git"
+            or any(part in ("", ".", "..") or part.rstrip(" .").casefold() == ".git"
                    for part in relative.split("/"))
             or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
             or any(unicodedata.category(char) in {"Cf", "Cs", "Zl", "Zp"}
@@ -318,6 +318,9 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     # A symlinked Git metadata root can point outside the reviewed checkout.
     if (repo_root / ".git").is_symlink():
         raise AuditFailure("prewrite checkout Git metadata symlinked")
+    # A worktree gitdir file can redirect checkout identity outside this root.
+    if (repo_root / ".git").is_file():
+        raise AuditFailure("prewrite checkout Git metadata file requires review")
     # A caller-supplied repository root inside another checkout can inspect
     # a copied .github/workflows tree instead of the parent checkout authority.
     # The root's own .git marker is legitimate; an ancestor's is ambiguous.
@@ -401,6 +404,8 @@ def self_test(repo_root: Path) -> None:
         ("Git metadata leaf", ".git"),
         ("casefold Git metadata root", ".GIT/config"),
         ("casefold nested Git metadata", "scripts/.GiT/hooks/pre-commit"),
+        ("trailing-dot Git metadata", ".git./config"),
+        ("trailing-space Git metadata", "scripts/.git /hooks"),
     ):
         try:
             validate_relative_path(path)
@@ -786,6 +791,15 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("symlinked checkout Git metadata negative accepted")
         (root / ".git").unlink()
+        (root / ".git").write_text("gitdir: ../external-git\n", encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "prewrite checkout Git metadata file requires review":
+                raise
+        else:
+            raise AuditFailure("gitdir-file checkout root negative accepted")
+        (root / ".git").unlink()
         (root / ".git").mkdir()
         outer_git = Path(tmp) / ".git"
         outer_git.mkdir()
@@ -868,7 +882,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 21 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 24 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))

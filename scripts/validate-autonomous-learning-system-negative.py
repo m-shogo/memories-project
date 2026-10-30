@@ -3395,6 +3395,14 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 linked_git.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite checkout Git metadata symlinked\n"):
             raise RuntimeError("symlinked checkout Git metadata CLI negative failed")
         (root / ".git").unlink()
+        (root / ".git").write_text("gitdir: ../external-git\n", encoding="utf-8")
+        gitdir_file = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (gitdir_file.returncode != 1 or gitdir_file.stdout or
+                gitdir_file.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite checkout Git metadata file requires review\n"):
+            raise RuntimeError("gitdir-file checkout root CLI negative failed")
+        (root / ".git").unlink()
         (root / ".git").mkdir()
         outer_git = Path(tmp) / ".git"
         outer_git.mkdir()
@@ -3477,6 +3485,8 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("Git metadata leaf", ".git"),
         ("casefold Git metadata root", ".GIT/config"),
         ("casefold nested Git metadata", "scripts/.GiT/hooks/pre-commit"),
+        ("trailing-dot Git metadata", ".git./config"),
+        ("trailing-space Git metadata", "scripts/.git /hooks"),
     ):
         result = subprocess.run(
             [sys.executable, str(guard), "--repo-root", str(source_root),
@@ -3505,7 +3515,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 20 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 23 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
