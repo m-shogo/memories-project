@@ -108,6 +108,14 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
     return False
 
 
+def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
+    """Keep child failure evidence bounded and on one CI log line."""
+    raw = (completed.stderr or completed.stdout).strip()
+    if not raw:
+        return "empty"
+    return re.sub(r"[\\x00-\\x1f\\x7f]", " ", raw[-800:])
+
+
 def prove_learning_guard_classifier(failures: list[str]) -> None:
     """Prove that a no-op, truncated suite or spurious success cannot pass."""
     positive = "Autonomous improvement/learning contract validation PASS\n"
@@ -131,6 +139,16 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         completed = subprocess.CompletedProcess([], code, stdout, stderr)
         if learning_guard_passed(relative, completed) is not expected:
             failures.append(f"learning guard success classifier misclassified: {name}")
+    for name, stdout, stderr, expected in (
+        ("empty", "", "", "empty"),
+        ("multiline", "", "first\\nsecond\\rthird", "first second third"),
+        ("stderr preferred", "stdout", "stderr", "stderr"),
+        ("bounded", "", "x" * 900, "x" * 800),
+        ("control", "", "a\\x1bb\\x7fc", "a b c"),
+    ):
+        completed = subprocess.CompletedProcess([], 1, stdout, stderr)
+        if bounded_learning_guard_failure_detail(completed) != expected:
+            failures.append(f"learning guard failure detail misclassified: {name}")
 
 
 def validate_learning_guards(failures: list[str]) -> None:
@@ -167,13 +185,11 @@ def validate_learning_guards(failures: list[str]) -> None:
             # Preserve the actual bounded child diagnostic on CI failure.
             # A first direct PASS cannot establish this independent invocation.
             # Never emit unbounded child output or treat diagnostics as proof.
-            child_diagnostic = (completed.stderr or completed.stdout).strip()
-            if child_diagnostic:
-                child_diagnostic = child_diagnostic[-800:].replace("\\n", " | ")
+            child_diagnostic = bounded_learning_guard_failure_detail(completed)
             failures.append(
                 f"autonomous-learning guard missing verified PASS: {relative} "
                 f"(exit {completed.returncode}; "
-                f"child diagnostic: {child_diagnostic or 'empty'})"
+                f"child diagnostic: {child_diagnostic})"
             )
         else:
             # Emit only a previously validated, single-line success marker.
