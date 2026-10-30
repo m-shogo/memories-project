@@ -3506,6 +3506,12 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("Windows 8dot3 nested alias", "scripts/PROGRA~2/config"),
         ("Windows 8dot3 no-extension alias", "DOCUME~1"),
         ("Windows 8dot3 lowercase alias", "docs/longfi~9.txt"),
+        ("Windows invalid left angle", "docs/<draft>.md"),
+        ("Windows invalid right angle", "docs/report>.md"),
+        ("Windows invalid quote", 'docs/report"draft.md'),
+        ("Windows invalid pipe", "docs/report|final.md"),
+        ("Windows invalid question", "docs/report?.md"),
+        ("Windows invalid star", "docs/report*.md"),
     ):
         result = subprocess.run(
             [sys.executable, str(guard), "--repo-root", str(source_root),
@@ -3534,7 +3540,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 42 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 48 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
