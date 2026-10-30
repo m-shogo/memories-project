@@ -2946,11 +2946,16 @@ def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
 
         attributes = root / ".gitattributes"
         attributes.write_text(".github/workflows/*.yml filter=opaque\n", encoding="utf-8")
-        if git("config", "filter.opaque.clean", "printf 'on: push\\n'").returncode:
+        if git("config", "filter.opaque.clean",
+               "sh -c 'echo executed > .filter-marker; printf \"on: push\\n\"'").returncode:
             raise RuntimeError("prewrite Git clean-filter config failed")
         workflow.write_text("on: workflow_dispatch\n", encoding="utf-8")
         if git("diff", "--quiet", "HEAD", "--", ".github/workflows").returncode:
             raise RuntimeError("prewrite Git clean-filter did not mask git diff")
+        marker = root / ".filter-marker"
+        if not marker.is_file():
+            raise RuntimeError("prewrite Git clean-filter executable control failed")
+        marker.unlink()
         blocked = subprocess.run(
             command, capture_output=True, text=True, check=False, timeout=30,
         )
@@ -2958,6 +2963,8 @@ def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
                 or blocked.stderr.strip() !=
                 "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index raw blob drift"):
             raise RuntimeError("prewrite Git clean-filter raw-byte negative failed")
+        if marker.exists():
+            raise RuntimeError("prewrite Git audit executed unreviewed clean filter")
 
         workflow.write_text(original, encoding="utf-8")
         attributes.unlink()
