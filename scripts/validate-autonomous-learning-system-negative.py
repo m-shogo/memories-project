@@ -5096,6 +5096,110 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
 
 
 
+
+def prove_prewrite_git_head_ref_stability(source_root: Path) -> int:
+    """Moving HEAD between a clean workflow diff and final audit must fail."""
+    import runpy
+    from unittest import mock
+
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    namespace = runpy.run_path(str(guard))
+    auditor = namespace["matching_workflows"]
+    audit_failure = namespace["AuditFailure"]
+    with tempfile.TemporaryDirectory(prefix="learning-prewrite-head-ref-") as tmp:
+        root = Path(tmp) / "repo"
+        workflow = root / ".github/workflows/fixture.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_bytes(b"on: push\n")
+        if workflow.read_bytes() != b"on: push" + bytes((10,)):
+            raise RuntimeError("prewrite HEAD ref fixture newline drift")
+        workflow.chmod(0o644)
+
+        def git(*args: str) -> subprocess.CompletedProcess[str]:
+            completed = subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if completed.returncode:
+                raise RuntimeError("prewrite HEAD ref fixture setup failed: " + " ".join(args))
+            return completed
+
+        git("init", "-q")
+        git("config", "user.name", "Fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        git("add", ".github/workflows/fixture.yml")
+        git("commit", "-qm", "first")
+        first_sha = git("rev-parse", "HEAD").stdout.strip()
+        (root / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+        git("add", "unrelated.txt")
+        git("commit", "-qm", "second")
+        second_sha = git("rev-parse", "HEAD").stdout.strip()
+        if first_sha == second_sha:
+            raise RuntimeError("prewrite HEAD ref fixture lacks distinct commits")
+        git_root = root / ".git"
+        index = git_root / "index"
+        git_root.chmod(0o755)
+        index.chmod(0o644)
+        command = [
+            sys.executable, str(guard), "--repo-root", str(root),
+            "--path", "scripts/a.py", "--require-git-index-identity",
+            "--require-direct-push-pr-match",
+        ]
+
+        def positive() -> None:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (completed.returncode or completed.stderr or
+                    "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                    not in completed.stdout.splitlines()):
+                raise RuntimeError("prewrite HEAD ref restoration positive drift")
+
+        positive()
+        real_run = subprocess.run
+        fired = [False]
+        index_before = index.stat()
+        root_before = git_root.stat()
+
+        def move_head_after_diff(*args: object, **kwargs: object):
+            completed = real_run(*args, **kwargs)
+            argv = args[0] if args else ()
+            if (not fired[0] and isinstance(argv, (list, tuple))
+                    and "diff" in argv and "--cached" in argv and "--quiet" in argv):
+                if completed.returncode:
+                    raise RuntimeError("prewrite HEAD ref cached workflow diff not clean")
+                moved = real_run(
+                    ["git", "-C", str(root), "update-ref", "HEAD", first_sha, second_sha],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+                if moved.returncode:
+                    raise RuntimeError("prewrite HEAD ref mutation failed")
+                fired[0] = True
+            return completed
+
+        with mock.patch("subprocess.run", side_effect=move_head_after_diff):
+            try:
+                auditor(root, "scripts/a.py", require_git_index=True)
+            except audit_failure as exc:
+                if str(exc) != "prewrite Git HEAD changed during audit":
+                    raise RuntimeError("prewrite HEAD ref wrong diagnostic") from exc
+            else:
+                raise RuntimeError("prewrite HEAD ref mutation accepted")
+        if not fired[0] or git("rev-parse", "HEAD").stdout.strip() != first_sha:
+            raise RuntimeError("prewrite HEAD ref mutation was not observed")
+        index_after = index.stat()
+        root_after = git_root.stat()
+        for before, after in ((index_before, index_after), (root_before, root_after)):
+            if (before.st_dev, before.st_ino, before.st_mode,
+                    before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                    after.st_dev, after.st_ino, after.st_mode,
+                    after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+                raise RuntimeError("prewrite HEAD ref control also changed metadata identity")
+        git("update-ref", "HEAD", second_sha, first_sha)
+        positive()
+    return 1
+
+
 def prove_prewrite_git_metadata_stable_through_audit(source_root: Path) -> int:
     """Deterministic Git-command-time index and metadata mutation negatives."""
     import runpy
@@ -6568,6 +6672,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    head_ref_cases = prove_prewrite_git_head_ref_stability(source_root)
     git_snapshot_cases = prove_prewrite_git_metadata_stable_through_audit(source_root)
     split_index_cases = prove_prewrite_git_split_index_boundary(source_root)
     git_metadata_mode_cases = prove_prewrite_git_metadata_permissions(source_root)
@@ -6580,7 +6685,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases} fail-closed cases)")
     return 0
 
 

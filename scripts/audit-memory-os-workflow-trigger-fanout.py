@@ -478,6 +478,13 @@ def require_workflow_git_index_identity(
     if (root.returncode != 0 or
             Path(root.stdout.strip()).resolve() != repo_root.resolve()):
         raise AuditFailure("prewrite Git index checkout root mismatch")
+    # A concurrent ref update can change the meaning of HEAD while leaving
+    # the tracked workflow blobs and index byte-for-byte unchanged.
+    head_before = git("rev-parse", "--verify", "HEAD^{commit}")
+    if (head_before.returncode != 0 or
+            not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}",
+                             head_before.stdout.strip())):
+        raise AuditFailure("prewrite Git HEAD authority unavailable")
     # Split-index may read a separate sharedindex object whose authority is
     # not covered by the canonical .git/index inode and mode checks.
     # Reject an active split index, but do not confuse stale sharedindex
@@ -549,6 +556,10 @@ def require_workflow_git_index_identity(
         if digest(payload).hexdigest() != expected:
             raise AuditFailure("prewrite workflow Git index raw blob drift")
         verified_sources[workflow] = raw
+    head_after = git("rev-parse", "--verify", "HEAD^{commit}")
+    if (head_after.returncode != 0 or
+            head_after.stdout.strip() != head_before.stdout.strip()):
+        raise AuditFailure("prewrite Git HEAD changed during audit")
     # A clean Git diff and raw workflow blobs do not prove that the index
     # inode or its containing metadata directory stayed authoritative during
     # the intervening Git commands. Recheck both snapshots before returning.
