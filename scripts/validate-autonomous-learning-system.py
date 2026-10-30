@@ -1091,6 +1091,12 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(statement, ast.ClassDef):
                 return any(eager_direct_termination(child)
                            for child in statement.body)
+            if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+                # A direct terminating call in an eagerly evaluated assignment
+                # RHS runs before the main guard; a lambda value is deferred.
+                value = statement.value
+                return (isinstance(value, ast.Call)
+                        and eager_direct_termination(ast.Expr(value=value)))
             if isinstance(statement, ast.With):
                 # A module-level with body executes eagerly after a successful
                 # context-manager entry; a direct exit prevents main dispatch.
@@ -1195,6 +1201,9 @@ def prove_prewrite_python_negatives() -> None:
         ("constant-false raise", 'if False:\n    raise SystemExit(0)\n', (2, 0)),
         ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
         ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
+        ("benign module assignment", 'value = 1\n', (1, 0)),
+        ("annotation without initializer", 'value: int\n', (1, 0)),
+        ("deferred assigned abort lambda", 'later = lambda: os.abort()\n', (1, 0)),
         ("empty tuple for exit", 'for item in ():\n    sys.exit(0)\n', (2, 0)),
         ("empty list for raise", 'for item in []:\n    raise SystemExit(0)\n', (2, 0)),
         ("deferred nonempty for exit", 'def helper():\n    for item in (1,):\n        sys.exit(0)\n', (3, 0)),
@@ -1523,6 +1532,15 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("eager class literal-true exit", baseline.replace(
              'if __name__', 'class Helper:\n    if True:\n        os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("assignment rhs sys.exit", baseline.replace(
+             'if __name__', 'result = sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("annotated assignment rhs abort", baseline.replace(
+             'if __name__', 'result: object = os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("augmented assignment rhs os exit", baseline.replace(
+             'if __name__', 'result = 0\nresult += os._exit(0)\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("nonempty tuple for sys.exit", baseline.replace(
              'if __name__', 'for item in (1,):\n    sys.exit(0)\nif __name__'),
