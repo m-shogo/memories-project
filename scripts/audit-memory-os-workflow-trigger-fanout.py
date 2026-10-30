@@ -316,7 +316,13 @@ def windows_component_ambiguous(part: str) -> bool:
     # Win32 strips terminal dots/spaces and treats device stems as devices,
     # even with a normal-looking extension (e.g. NUL.txt or COM¹.log).
     stem = part.split(".", 1)[0].rstrip(" ").casefold()
-    return part != part.rstrip(" .") or stem in WINDOWS_RESERVED_DEVICE_STEMS
+    return (
+        part != part.rstrip(" .")
+        or stem in WINDOWS_RESERVED_DEVICE_STEMS
+        # Win32 8.3 short-name aliases can resolve to a different long-name
+        # file when 8dot3 generation is enabled; do not infer safe identity.
+        or re.fullmatch(r"[^.~ /]{1,6}~[1-9][0-9]*(?:\\.[^.]{0,3})?", part) is not None
+    )
 
 
 def validate_relative_path(relative: str) -> None:
@@ -442,6 +448,10 @@ def self_test(repo_root: Path) -> None:
         ("Windows trailing space", "docs/notes /readme.md"),
         ("decomposed Latin NFC alias", "docs/cafe\u0301.md"),
         ("decomposed Japanese NFC alias", "docs/ハ\u309aス.md"),
+        ("Windows 8dot3 long-name alias", "docs/LONGFI~1.TXT"),
+        ("Windows 8dot3 nested alias", "scripts/PROGRA~2/config"),
+        ("Windows 8dot3 no-extension alias", "DOCUME~1"),
+        ("Windows 8dot3 lowercase alias", "docs/longfi~9.txt"),
     ):
         try:
             validate_relative_path(path)
@@ -457,6 +467,8 @@ def self_test(repo_root: Path) -> None:
     validate_relative_path("docs/company.txt")
     validate_relative_path("docs/café.md")
     validate_relative_path("docs/パス.md")
+    validate_relative_path("docs/notes~draft.md")
+    validate_relative_path("docs/longfi~0.txt")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
@@ -922,7 +934,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 39 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 43 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
