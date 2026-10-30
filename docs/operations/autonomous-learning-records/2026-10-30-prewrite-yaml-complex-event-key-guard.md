@@ -1,0 +1,24 @@
+# Supplemental OPS learning — complex YAML workflow event keys (2026-10-30)
+
+Append-only supplemental learning only. Canonical authority: `docs/operations/AUTONOMOUS-OPS-LEARNING.md`; mandatory policy: `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, approved recovery objective, reviewed executable request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review, or human promotion evidence.
+
+## Material failure — prospective direct-trigger undercount
+
+- **Symptom:** The read-only prewrite fanout audit could classify an event map with YAML merge, complex, anchored, or tagged keys as having no push/PR trigger, because the literal event-key parser did not recognize those spellings. This was a prospective fail-open parsing gap, **not** an observed GitHub Actions production event.
+- **Observed evidence:** Before the change, `workflow_matches_path` recognized literal and some quoted/escaped event keys but had no check for `on:\n  <<: *events`, `on:\n  ? push`, `on:\n  &event push:`, or `on:\n  !!str push:`. Source review established the missing branch; these are conservative ambiguity fixtures, not claims that GitHub accepts every syntax.
+- **Verified root cause:** Literal `^  push:`/PR matching can return false for event keys constructed through YAML mapping semantics.
+- **Failed approach:** Treating the absence of a literal two-space event key as proof that the workflow is dispatch-only.
+- **Correction:** [`e6811ebd`](https://github.com/m-shogo/memories-project/commit/e6811ebde860d30bfe82ee387ad080466792965e) makes the bounded parser fail closed on merge/complex/anchored/tagged keys under `on:`. It adds five ambiguity negatives and one unrelated-anchor positive to both the internal self-test and actual subprocess CLI test.
+- **Executable recurrence guard:** Both suites pin ordered fixture labels; the CLI checks exact workflow counts and matched identities. Existing 64-case self-test and 47-case CLI fixture fingerprints remain intact. No workflow YAML was changed.
+- **Retry condition:** Any legitimate new YAML event-key syntax or parser exception needs source-semantic review, exact positive/negative CLI fixtures, workflow identity reconciliation, exact-source CI, and protected-authority verification. Do not retry unchanged external MinIO, workflow-write permission, large canonical-learning transport, or human-promotion blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #40987683808](https://github.com/m-shogo/memories-project/actions/runs/40987683808) completed **SUCCESS** for exact code source `e6811ebde860d30bfe82ee387ad080466792965e`. Job logs report append-only PASS, learning contract PASS, **389 fail-closed negatives**, **80 prewrite fanout synthetic cases**, **1,186 helper-ancestor negative mutations**, entry-document PASS, and final read-only execution success.
+- **Why safe:** Only two CI-reachable read-only Python validators changed. The workflow event definitions, service code, credentials, production traffic, generation/objective/drill/recovery evidence, typed eight-domain non-resurrection, independent review, and promotion authorities were not modified.
+- **Reusable mechanism:** When a partial YAML parser cannot prove an event map's meaning, classify it as a possible push/PR match instead of returning a false non-match; test both direct function semantics and the real CLI boundary.
+- **Protected-authority check:** The code commit left canonical learning blob `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `55b3e639763601a66b5cfeb1a6ac409005a093e3`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6`, and generation/drill/evidence/non-resurrection/promotion registries unchanged. Registry reads confirm `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/eligible generations 0/0, and zero approved objectives, executable reviewed requests, request-bound evidence, complete typed eight-domain records, final candidates, or human promotion reviews.
+
+## Limits and next safe target
+
+The 9 direct workflows matching the shared entrypoint are a bounded direct inventory, **not** proof of transitive CI reachability. The Upload Route Go/Python dependency closure and Go-only MinIO-independent focused-test trigger remain unresolved. The canonical learning document exceeds the connector's useful text-read capability; its blob identity and existing supplemental learning were checked, not falsely represented as a full read. Next: audit root-level YAML merge/tagged/complex `on` keys, then revisit the MinIO-independent Go source CI path without changing blocked workflow permissions or production gates.
