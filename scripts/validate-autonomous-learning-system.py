@@ -115,6 +115,10 @@ def validate(repo_root: Path) -> None:
         # protected authority through an unreviewed path. Require one inode
         # name for every canonical learning/CI authority in this checkout.
         try:
+            # A FIFO/socket/directory can resolve inside the checkout and
+            # evade symlink checks, yet a subsequent read may block or fail.
+            if path.exists() and not path.is_file():
+                raise ValidationFailure(f"nonregular learning authority forbidden: {relative}")
             if path.is_file() and path.stat().st_nlink != 1:
                 raise ValidationFailure(f"hardlinked learning authority forbidden: {relative}")
         except OSError:

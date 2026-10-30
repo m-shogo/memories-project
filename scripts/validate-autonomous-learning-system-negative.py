@@ -329,6 +329,20 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("nonregular "):
+        for kind in ("fifo", "directory"):
+            prefix = "nonregular " + kind + " "
+            if name.startswith(prefix) and name.endswith(" authority"):
+                label = name[len(prefix):-len(" authority")]
+                targets = {
+                    "contract": CONTRACT,
+                    "learning history": LEARNING,
+                    "positive guard": VALIDATOR,
+                    "negative guard": NEGATIVE_VALIDATOR,
+                    "CI entrypoint": CI_ENTRYPOINT,
+                }
+                if label in targets:
+                    return "nonregular learning authority forbidden: " + targets[label].as_posix()
     if name.startswith("module early "):
         return "learning CI entrypoint module terminates before live main guard"
     if name.startswith("early learning guard "):
@@ -415,6 +429,19 @@ def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
     if old not in text:
         raise RuntimeError(f"negative fixture missing expected CI fragment: {old}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def nonregular_authority(root: Path, relative: Path, kind: str) -> None:
+    # Never open the FIFO: the validator must reject its inode type before
+    # any blocking read. Only disposable canonical fixture paths are changed.
+    path = root / relative
+    path.unlink()
+    if kind == "fifo":
+        os.mkfifo(path)
+    elif kind == "directory":
+        path.mkdir()
+    else:
+        raise RuntimeError("unreviewed nonregular authority fixture")
 
 
 def hardlink_authority(root: Path, relative: Path) -> None:
@@ -5746,6 +5773,18 @@ def main() -> int:
             ))
     require_reviewed_reflective_inventory(reviewed_reflective)
     prove_reviewed_reflective_inventory_negatives()
+    for kind in ("fifo", "directory"):
+        for label, relative in (
+            ("contract", CONTRACT),
+            ("learning history", LEARNING),
+            ("positive guard", VALIDATOR),
+            ("negative guard", NEGATIVE_VALIDATOR),
+            ("CI entrypoint", CI_ENTRYPOINT),
+        ):
+            cases.append((
+                f"nonregular {kind} {label} authority",
+                lambda root, path=relative, mode=kind: nonregular_authority(root, path, mode),
+            ))
     for label, relative in (
         ("contract", CONTRACT),
         ("learning history", LEARNING),
