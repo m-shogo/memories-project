@@ -3368,6 +3368,28 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         if (result.returncode != 1 or result.stdout or
                 result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow source hardlink alias\n"):
             raise RuntimeError("prewrite workflow source hardlink CLI negative failed")
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-workflow-name-alias-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "alpha.yml").write_text('on: push\n', encoding="utf-8")
+        for label, alias, diagnostic in (
+            ("casefold collision", "ALPHA.yml", "workflow source casefold alias"),
+            ("uppercase extension", "alpha.YML", "workflow source filename alias"),
+            ("trailing dot", "alpha.yml.", "workflow source filename alias"),
+            ("trailing space", "alpha.yml ", "workflow source filename alias"),
+        ):
+            leaf = directory / alias
+            leaf.write_text('on: push\n', encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(guard), "--repo-root", str(root),
+                 "--path", "scripts/a.py"],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (result.returncode != 1 or result.stdout or
+                    result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
+                raise RuntimeError("prewrite workflow filename alias CLI negative failed: " + label)
+            leaf.unlink()
     with tempfile.TemporaryDirectory(prefix="learning-fanout-submodule-identity-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"
@@ -3540,7 +3562,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 48 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 52 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
