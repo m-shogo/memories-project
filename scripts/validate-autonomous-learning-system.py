@@ -498,6 +498,15 @@ def validate(repo_root: Path) -> None:
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
         if isinstance(node, ast.Call):
+            # A mapped callable executes when an eager builtin consumes map.
+            # Mere map construction is lazy and remains admissible.
+            if (isinstance(node.func, ast.Name)
+                    and node.func.id in {"list", "tuple", "set", "any", "all",
+                                         "sum", "next"}
+                    and any(isinstance(arg, ast.Call)
+                            and isinstance(arg.func, ast.Name)
+                            and arg.func.id == "map" for arg in node.args)):
+                return True
             # operator.call invokes its first argument now; an exit target
             # need not appear as the direct AST callee of this expression.
             if ((isinstance(node.func, ast.Name) and node.func.id == "call")
@@ -778,6 +787,15 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
                 return True
             if isinstance(node, ast.Call):
+                # map is lazy alone, but these consumers iterate it eagerly.
+                # A mapped exec/import callable may rebind main on iteration.
+                if (isinstance(node.func, ast.Name)
+                        and node.func.id in {"list", "tuple", "set", "any", "all",
+                                             "sum", "next"}
+                        and any(isinstance(arg, ast.Call)
+                                and isinstance(arg.func, ast.Name)
+                                and arg.func.id == "map" for arg in node.args)):
+                    return True
                 # operator.call dispatches a callable immediately; the
                 # target may be exec/import or a reflective main rebinder.
                 if ((isinstance(node.func, ast.Name) and node.func.id == "call")
@@ -931,6 +949,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred attrgetter execution", 'def helper():\n    operator.attrgetter("import_module")(importlib)("math")\n', (2, 0)),
         ("deferred methodcaller execution", 'def helper():\n    operator.methodcaller("import_module", "math")(importlib)\n', (2, 0)),
         ("deferred operator call", 'def helper():\n    operator.call(exec, "main = None")\n', (2, 0)),
+        ("lazy map construction", 'pending = map(exec, ["main = None"])\n', (1, 0)),
+        ("deferred map consumption", 'def helper():\n    list(map(exec, ["main = None"]))\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -1089,6 +1109,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct call exec", baseline.replace(
             'if __name__', 'call(exec, "main = None")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager mapped exec list", baseline.replace(
+            'if __name__', 'list(map(exec, ["main = None"]))\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager mapped exec next", baseline.replace(
+            'if __name__', 'next(map(exec, ["main = None"]))\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct methodcaller execution", baseline.replace(
             'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__'),
