@@ -202,28 +202,63 @@ def require_reviewed_learning_negative_stdout(source: str) -> None:
     stdout_calls = []
     # Direct low-level writes bypass the reviewed print-only stdout inventory.
     # They also contaminate the nested CI child's exact empty-stderr proof.
+    def stream_target(expr: ast.expr) -> bool:
+        """Recognize direct and reviewed reflective standard-stream references."""
+        if isinstance(expr, ast.Attribute):
+            if (expr.attr in {"stdout", "__stdout__", "stderr", "__stderr__"}
+                    and isinstance(expr.value, ast.Name)
+                    and expr.value.id == "sys"):
+                return True
+            if expr.attr in {"buffer", "raw"}:
+                return stream_target(expr.value)
+        if isinstance(expr, ast.Call):
+            if (isinstance(expr.func, ast.Name) and expr.func.id == "getattr"
+                    and len(expr.args) == 2 and not expr.keywords
+                    and isinstance(expr.args[0], ast.Name)
+                    and expr.args[0].id == "sys"
+                    and isinstance(expr.args[1], ast.Constant)
+                    and expr.args[1].value in
+                    {"stdout", "__stdout__", "stderr", "__stderr__"}):
+                return True
+            if (isinstance(expr.func, ast.Attribute)
+                    and expr.func.attr == "detach"
+                    and not expr.args and not expr.keywords):
+                return stream_target(expr.func.value)
+        return False
+
+    def standard_fd(expr: ast.expr) -> bool:
+        if (isinstance(expr, ast.Constant)
+                and type(expr.value) is int and expr.value in (1, 2)):
+            return True
+        return (isinstance(expr, ast.Call)
+                and isinstance(expr.func, ast.Attribute)
+                and expr.func.attr == "fileno"
+                and not expr.args and not expr.keywords
+                and stream_target(expr.func.value))
+
     def unreviewed_stream_write(node: ast.Call) -> bool:
         func = node.func
+        if (isinstance(func, ast.Attribute)
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "builtins" and func.attr == "print"):
+            return True
+        if (isinstance(func, ast.Call)
+                and isinstance(func.func, ast.Name)
+                and func.func.id == "getattr"
+                and len(func.args) == 2 and not func.keywords
+                and isinstance(func.args[0], ast.Name)
+                and func.args[0].id == "builtins"
+                and isinstance(func.args[1], ast.Constant)
+                and func.args[1].value == "print"):
+            return True
         if not isinstance(func, ast.Attribute):
             return False
-        if (isinstance(func.value, ast.Name) and func.value.id == "builtins"
-                and func.attr == "print"):
-            return True
         if (isinstance(func.value, ast.Name) and func.value.id == "os"
                 and func.attr == "write" and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and type(node.args[0].value) is int
-                and node.args[0].value in (1, 2)):
+                and standard_fd(node.args[0])):
             return True
-        if func.attr not in {"write", "writelines"}:
-            return False
-        stream = func.value
-        if isinstance(stream, ast.Attribute) and stream.attr == "buffer":
-            stream = stream.value
-        return (isinstance(stream, ast.Attribute)
-                and stream.attr in {"stdout", "__stdout__", "stderr", "__stderr__"}
-                and isinstance(stream.value, ast.Name)
-                and stream.value.id == "sys")
+        return (func.attr in {"write", "writelines"}
+                and stream_target(func.value))
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and unreviewed_stream_write(node):
@@ -261,6 +296,14 @@ def prove_learning_negative_stdout_negatives() -> None:
         ("builtins print", 'builtins.print("extra")\n'),
         ("os stdout fd", 'os.write(1, b"extra")\n'),
         ("os stderr fd", 'os.write(2, b"extra")\n'),
+        ("stdout raw write", 'sys.stdout.buffer.raw.write(b"extra")\n'),
+        ("stderr raw writelines", 'sys.stderr.buffer.raw.writelines([b"extra"])\n'),
+        ("stdout getattr write", 'getattr(sys, "stdout").write("extra")\n'),
+        ("stderr getattr buffer write", 'getattr(sys, "stderr").buffer.write(b"extra")\n'),
+        ("stdout detached write", 'sys.stdout.detach().write(b"extra")\n'),
+        ("stdout fileno os write", 'os.write(sys.stdout.fileno(), b"extra")\n'),
+        ("stderr fileno os write", 'os.write(sys.stderr.fileno(), b"extra")\n'),
+        ("getattr builtins print", 'getattr(builtins, "print")("extra")\n'),
     ):
         try:
             require_reviewed_learning_negative_stdout(base + injected)
