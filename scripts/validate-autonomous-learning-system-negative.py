@@ -539,6 +539,33 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         target.symlink_to("missing-target")
         reject("symlink", f"unreadable authority: {target}")
 
+        parent = Path(tmp) / "source-parent"
+        parent.mkdir()
+        nested = parent / "nested-authority"
+        nested.write_bytes(b"stable")
+        if module.read_canonical_authority_bytes(
+                nested, 10, too_large="reviewed source oversized") != b"stable":
+            raise RuntimeError("canonical parent-chain positive drift")
+        def swap_parent_after_open(path, flags):
+            fd = original_open(path, flags)
+            if Path(path) == nested:
+                moved = Path(tmp) / "source-parent-old"
+                parent.rename(moved)
+                parent.symlink_to(moved, target_is_directory=True)
+            return fd
+        with mock.patch.object(module.os, "open", side_effect=swap_parent_after_open):
+            try:
+                module.read_canonical_authority_bytes(
+                    nested, 10, too_large="reviewed source oversized"
+                )
+            except module.ValidationFailure as exc:
+                if str(exc) != f"canonical authority changed during read: {nested}":
+                    raise RuntimeError("canonical parent-chain wrong diagnostic") from exc
+            else:
+                raise RuntimeError("canonical parent symlink swap accepted")
+        if not parent.is_symlink() or nested.read_bytes() != b"stable":
+            raise RuntimeError("canonical parent-chain fixture did not preserve leaf identity")
+
 
 def prove_canonical_repo_root_alias_cli(source_root: Path) -> None:
     """The explicit CLI root must not silently resolve an unreviewed alias."""
