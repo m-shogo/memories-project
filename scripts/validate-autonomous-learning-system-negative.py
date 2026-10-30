@@ -3631,6 +3631,32 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 raise RuntimeError("Git checkout environment override CLI negative failed: " + name)
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
                     ".github/workflows/fixture.yml")
+        # Read-only Git inspection must not execute a checkout-configured
+        # fsmonitor hook. Prove the hook would execute without the explicit
+        # override, then require that the actual audit leaves no marker.
+        monitor = Path(tmp) / "fsmonitor.sh"
+        marker = Path(tmp) / "fsmonitor-invoked"
+        monitor.write_text(
+            "#!/bin/sh\nprintf invoked >> '" + str(marker) + "'\nprintf '/\\\n'\n",
+            encoding="utf-8",
+        )
+        monitor.chmod(0o755)
+        fixture_git("-C", str(root), "config", "core.fsmonitor", str(monitor))
+        probe = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-v", "--", ".github/workflows"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if probe.returncode != 0 or not marker.exists():
+            raise RuntimeError("Git fsmonitor execution fixture did not execute hook")
+        marker.unlink()
+        monitor_safe = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (monitor_safe.returncode != 0 or monitor_safe.stderr or marker.exists() or
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in monitor_safe.stdout.splitlines()):
+            raise RuntimeError("read-only Git fsmonitor hook execution guard failed")
+        fixture_git("-C", str(root), "config", "--unset", "core.fsmonitor")
         (root / ".git").rename(Path(tmp) / "detached-git")
         missing = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=10,
@@ -3810,7 +3836,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 75 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 76 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
