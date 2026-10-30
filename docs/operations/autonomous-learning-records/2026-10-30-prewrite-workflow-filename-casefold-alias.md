@@ -1,0 +1,22 @@
+# Supplemental OPS learning — workflow filename casefold/extension aliases (2026-10-30)
+
+Append-only supplemental learning governed by `contracts/operations/autonomous-learning-system.json`. Canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` remains blob-SHA verified but cannot be fully retrieved through the known large-blob transport. **Not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, typed eight-domain non-resurrection, independent-review or human-promotion evidence.**
+
+## Material failure / static workflow-source identity gap
+
+- **symptom:** The prewrite auditor enumerated only `*.yml`/`*.yaml` and did not detect a pair of workflow files whose names differed only in case, or a potential workflow alias with an uppercase extension or trailing dot/space.
+- **evidence:** Prior `matching_workflows` directly used two `Path.glob` calls and did not enumerate other directory leaves or compare casefold identities. A pre-CI review also found the first generated fixture had two literal backslashes before `n`, rather than a real YAML newline escape. This is a static safety gap and fixture-generation mistake, not a production incident.
+- **rootCauseOrUnknown:** Verified missing workflow filename normalization/collision inventory; the fixture mistake was verified by reading the committed source character codes `92,92,110`.
+- **failedApproach:** Assuming host-local glob enumeration proves cross-platform workflow-source identity, and assuming generated Python string escapes have the intended semantics without inspecting source bytes.
+- **correction:** [`18d944ae`](https://github.com/m-shogo/memories-project/commit/18d944ae3542b35eb18bcc2978694210e8129797) enumerates candidate workflow leaves and rejects casefold duplicates, uppercase extension and trailing-dot/space aliases. [`0c6af60d`](https://github.com/m-shogo/memories-project/commit/0c6af60d6731c8b47ff46d18688c9587759fc3a4) fixes the fixture's newline escape before CI. [`369e89d7`](https://github.com/m-shogo/memories-project/commit/369e89d727d9ba29226a98ed8cbbc3a451b4a289) adds four real CLI negatives.
+- **recurrenceGuard:** Four synthetic and four exact-diagnostic/exit-1/empty-stdout CLI negatives; two distinct canonical `.yml`/`.yaml` workflow leaves remain a positive. Inspect generated Python fixture escapes before writing and ensure both alias and non-alias cases exercise the real CLI. Exact-source negatives **481 → 485** and fanout synthetic **171 → 176** (including one positive).
+- **retryCondition:** Any permitted casefold/extension alias requires reviewed checkout/filesystem semantics and direct CLI proof. Do not repeat the double-escaped YAML fixture without source-byte inspection; unchanged MinIO, workflow-write permission, large canonical learning transfer and human promotion blockers are not retried.
+
+## Material success / protected authority
+
+- **outcome:** Exact-source [Autonomous Learning Guard #41014316995](https://github.com/m-shogo/memories-project/actions/runs/41014316995) completed **SUCCESS** for `369e89d727d9ba29226a98ed8cbbc3a451b4a289`.
+- **evidence:** CI job log reports append-only PASS, contract PASS, **485** fail-closed negatives, **176** fanout synthetic cases, **1,186** helper-ancestor negative mutations, entry-document PASS and read-only completion.
+- **whySafe:** Only the read-only auditor and CI-reachable negative suite changed; no workflow YAML, production code, credentials, traffic, recovery evidence, readiness, objective, generation or promotion authority was modified.
+- **reusableMechanism:** Enumerate all candidate workflow-source leaves and reject cross-platform filename aliases before any YAML read or direct trigger inference; preserve exact CLI controls.
+- **protectedAuthorityCheck:** Ten protected authority blobs matched run-start `7d2a0617`, including canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0` and six generation/objective/drill/evidence/non-resurrection/promotion registries. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/eligible generations 0/0, no human-approved recovery objective or human promotion.
+- **limits / nextSafeTarget:** This does not prove Git index identity, full Go/Python transitive closure or a MinIO-independent Go-only CI path. Extend the portable filename grammar to workflow YAML leaves independently; do not change workflow triggers without permission.
