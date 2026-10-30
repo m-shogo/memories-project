@@ -3996,10 +3996,28 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
     live_test = (source_root / "services/import-api/internal/httpserver/server_live_test.go").read_text(
         encoding="utf-8"
     )
-    if (f'"{module}/internal/httpapi"' not in server
-            or f'"{module}/internal/upload"' not in handler
-            or f'"{module}/internal/upload"' not in live_test):
-        raise RuntimeError("upload route Go transitive import edge changed; review required")
+    # String presence is not a compiled import edge: comments and raw strings
+    # can retain the old quoted path after the actual import is replaced.
+    def require_core_import_edges(s: str, h: str, t: str) -> None:
+        for source, package in ((s, "httpapi"), (h, "upload"), (t, "upload")):
+            if module + "/internal/" + package not in upload_route_local_go_imports(
+                    source, include_external=True):
+                raise RuntimeError("upload route Go transitive import edge changed; review required")
+    require_core_import_edges(server, handler, live_test)
+    for index, package in enumerate(("httpapi", "upload", "upload")):
+        sources = [server, handler, live_test]
+        anchor = f'"{module}/internal/{package}"'
+        if sources[index].count(anchor) != 1:
+            raise RuntimeError("upload route core Go import fixture anchor drift")
+        sources[index] = (sources[index].replace(anchor, '"example.com/unreviewed"', 1)
+                          + "\n// " + anchor + "\n")
+        try:
+            require_core_import_edges(*sources)
+        except RuntimeError as exc:
+            if str(exc) != "upload route Go transitive import edge changed; review required":
+                raise
+        else:
+            raise RuntimeError("comment-spoofed core Go import edge accepted: " + str(index))
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
     source = (source_root / ".github/workflows/import-api-security-slice.yml").read_text(
         encoding="utf-8"
