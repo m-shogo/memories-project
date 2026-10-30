@@ -794,6 +794,7 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
     blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
     paths = []
     aliases = []
+    bindings = []
     for block in blocks:
         for line in block.group(1).splitlines():
             if not line.strip() or line.lstrip().startswith("//"):
@@ -804,6 +805,7 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
             if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
             paths.append(match.group(2))
+            bindings.append((match.group(1) or "", match.group(2)))
             if match.group(1):
                 aliases.append(match.group(1) + "\t" + match.group(2))
     for block in reversed(blocks):
@@ -816,8 +818,13 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
             if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
             paths.append(match.group(2))
+            bindings.append((match.group(1) or "", match.group(2)))
             if match.group(1):
                 aliases.append(match.group(1) + "\t" + match.group(2))
+    # A set-based path/alias inventory otherwise loses repeated import
+    # declarations. Reject unreviewed multiplicity, including blank imports.
+    if len(bindings) != len(set(bindings)):
+        raise RuntimeError("unreviewed duplicate Go import binding")
     if include_aliases:
         return set(aliases)
     return set(paths) if include_external else {
@@ -839,6 +846,23 @@ def prove_upload_route_go_import_parser() -> None:
     for alias in ("_", "."):
         if upload_route_local_go_imports('import ' + alias + ' "fmt"\n', include_aliases=True) != {alias + "\tfmt"}:
             raise RuntimeError("Go special import alias positive fixture failed")
+    # Different explicit aliases are legal and retain separate bindings.
+    distinct = 'import (\n  first "fmt"\n  second "fmt"\n)\n'
+    if upload_route_local_go_imports(distinct, include_aliases=True) != {"first\tfmt", "second\tfmt"}:
+        raise RuntimeError("Go distinct import alias positive fixture failed")
+    for label, candidate in (
+        ("grouped plain duplicate", 'import (\n  "fmt"\n  "fmt"\n)\n'),
+        ("grouped explicit duplicate", 'import (\n  alias "fmt"\n  alias "fmt"\n)\n'),
+        ("single-line duplicate", 'import "fmt"\nimport "fmt"\n'),
+        ("repeated blank import", 'import (\n  _ "fmt"\n  _ "fmt"\n)\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate, include_external=True)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed duplicate Go import binding":
+                raise
+        else:
+            raise RuntimeError("Go duplicate import binding negative accepted: " + label)
     plain, aliased = 'import "fmt"\n', 'import other "fmt"\n'
     if upload_route_local_go_imports(plain, include_external=True) != upload_route_local_go_imports(aliased, include_external=True):
         raise RuntimeError("Go alias mutation changed path-only positive control")
