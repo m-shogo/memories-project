@@ -3454,6 +3454,58 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite workflow filename alias CLI negative failed: " + label)
             leaf.unlink()
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-git-index-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        workflow = directory / "fixture.yml"
+        original = 'on: push\n'
+        workflow.write_text(original, encoding="utf-8")
+        def fixture_git(*args: str) -> None:
+            result = subprocess.run(
+                ["git", *args], capture_output=True, text=True,
+                check=False, timeout=10,
+            )
+            if result.returncode != 0:
+                raise RuntimeError("prewrite Git index CLI fixture setup failed")
+        fixture_git("init", "-q", str(root))
+        fixture_git("-C", str(root), "add", ".github/workflows/fixture.yml")
+        fixture_git("-C", str(root), "-c", "user.name=Fixture",
+                    "-c", "user.email=fixture@example.invalid",
+                    "commit", "-qm", "baseline")
+        args = [sys.executable, str(guard), "--repo-root", str(root),
+                "--path", "scripts/a.py", "--require-git-index-identity"]
+        positive = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (positive.returncode != 0 or positive.stderr or
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in positive.stdout.splitlines()):
+            raise RuntimeError("tracked clean Git workflow CLI positive failed")
+        workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
+        dirty = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (dirty.returncode != 1 or dirty.stdout or
+                dirty.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index content drift\n"):
+            raise RuntimeError("dirty tracked Git workflow CLI negative failed")
+        workflow.write_text(original, encoding="utf-8")
+        extra = directory / "untracked.yml"
+        extra.write_text(original, encoding="utf-8")
+        untracked = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (untracked.returncode != 1 or untracked.stdout or
+                untracked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index inventory drift\n"):
+            raise RuntimeError("untracked Git workflow CLI negative failed")
+        extra.unlink()
+        (root / ".git").rename(Path(tmp) / "detached-git")
+        missing = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (missing.returncode != 1 or missing.stdout or
+                missing.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git index checkout identity unavailable\n"):
+            raise RuntimeError("missing Git index CLI negative failed")
     with tempfile.TemporaryDirectory(prefix="learning-fanout-submodule-identity-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"
@@ -3626,7 +3678,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 61 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 65 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
