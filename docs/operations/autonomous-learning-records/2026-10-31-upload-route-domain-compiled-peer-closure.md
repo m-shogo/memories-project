@@ -1,0 +1,17 @@
+# Supplemental OPS learning — compiled domain Go peer closure (2026-10-31)
+
+Append-only operational learning only; never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, recovery objective, reviewed request, request-bound evidence, typed eight-domain non-resurrection, independent review or human promotion evidence. Canonical learning and mandatory contract are unchanged.
+
+## Material safe success
+
+- **outcome:** The CI-bound read-only negative validator now pins the reviewed complete non-test Go package peer inventories and exact parsed local imports for `accountdelete`, `apply`, `previewread` and `upload` (five Go source files). An unreviewed new compiled peer or local dependency fails closed.
+- **evidence:** [Commit `b6141b80`](https://github.com/m-shogo/memories-project/commit/b6141b80cdb18ccefe8f165c54a10d81bde2b6b6) adds 87 lines of in-process positive and deterministic missing-peer, added-peer, extra-import and comment-spoofed missing-import negatives to `scripts/validate-autonomous-learning-system-negative.py`. [Exact-source Autonomous Learning Guard #41141019976](https://github.com/m-shogo/memories-project/actions/runs/41141019976) SUCCESS; learning contract PASS, direct negative PASS (601 cases), nested negative PASS, helper ancestor reachability PASS and read-only source check PASS.
+- **whySafe:** Only the already CI-triggered read-only Python validator changed. The Go application, workflow YAML, external dependencies, production/backup/restore/recovery evidence, protected registries, credentials and human approvals were untouched. No runtime Go test or production admission is claimed.
+- **reusableMechanism:** For imported Go packages, exact non-test peer inventory plus parsed local import equality rejects silent compile-input expansion. Run missing/extra peer and import mutation negatives in-process to preserve the nested 120-second deadline; a quoted dependency retained only in a comment cannot satisfy the parsed edge.
+- **protectedAuthorityCheck:** Compare `1d0ff012` to `b6141b80` modifies only the read-only negative validator. Ten protected authority blobs remain unchanged, including canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0` and six protected registries. `productionDecision=NO_GO` remains authoritative.
+
+## Limits, unchanged blockers and next safe target
+
+This is scoped source-closure verification, not a complete global Go/Python closure proof, not independent pre-MinIO Go test coverage and not production evidence. The known workflow-write permission and MinIO HTTP 401 blockers have unchanged retry conditions and were not retried. Supplemental-only append-only Push/PR coverage remains missing; canonical learning full-text retrieval remains unavailable despite unchanged blob identity. Registered and semantically preflight-eligible generations, human-approved current recovery objective, executable reviewed drill request, request-bound recovery evidence, complete typed eight-domain non-resurrection, independent review and separate human production promotion remain unsatisfied; OPS-P0-007 stays blocked.
+
+**Next safe target:** Pin the complete compiled `httpserver` peer inventory and its `metrics`, `obslog`, `ratelimit` and `reqid` dependencies, with parsed import negatives and exact-source CI. Preserve `productionDecision=NO_GO`.
