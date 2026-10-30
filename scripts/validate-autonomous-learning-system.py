@@ -845,6 +845,16 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         # A unique main definition can still be shadowed by eager module
         # control flow. Ignore deferred function/lambda bodies and class-local
         # assignments; this is not a reflective-mutation proof.
+        # A partial factory returns a callable whose invocation is eager.
+        # A partial used as a decorator is also invoked at definition time.
+        # This is conservative lexical detection, not callable-alias closure.
+        def partial_factory(value: ast.AST) -> bool:
+            return (isinstance(value, ast.Call)
+                    and ((isinstance(value.func, ast.Name)
+                          and value.func.id == "partial")
+                         or (isinstance(value.func, ast.Attribute)
+                             and value.func.attr == "partial")))
+
         def module_shadows_main(node: ast.AST, *, top_level: bool, class_local: bool = False) -> bool:
             # Decorator lambdas are invoked when applied, unlike ordinary
             # deferred lambdas. Their lexical bindings remain lambda-local.
@@ -853,6 +863,8 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 # referenced by name without an explicit Call node.
                 if any(isinstance(dec, ast.Name) and dec.id in module_local_helpers
                        for dec in node.decorator_list):
+                    return True
+                if any(partial_factory(dec) for dec in node.decorator_list):
                     return True
                 if any(isinstance(dec, ast.Lambda)
                        and module_shadows_main(dec.body, top_level=False,
@@ -879,6 +891,8 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         or any(module_shadows_main(value, top_level=False, class_local=class_local)
                                for value in eager))
             if isinstance(node, ast.ClassDef):
+                if any(partial_factory(dec) for dec in node.decorator_list):
+                    return True
                 # Class decorators/bases execute in the enclosing scope;
                 # class body control flow is eager but its names are local
                 # unless a global declaration explicitly redirects them.
@@ -1006,6 +1020,10 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     elif (not node.args or not isinstance(node.args[0], ast.Constant)
                           or node.args[0].value in {"main", "__name__"}):
                         return True
+                # An immediately invoked partial executes its wrapped
+                # callable without an explicit local-helper Name callee.
+                if partial_factory(node.func):
+                    return True
                 if isinstance(node.func, ast.Lambda):
                     return True
                 # Eager dynamic imports or runpy can execute unreviewed module
@@ -1102,6 +1120,8 @@ def prove_prewrite_python_negatives() -> None:
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("safe explicit import", 'from math import sqrt\n', (1, 0)),
+        ("deferred partial construction", 'pending = functools.partial(print, "hello")\n', (1, 0)),
+        ("deferred partial local helper", 'def helper():\n    pass\npending = functools.partial(helper)\n', (3, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
@@ -1365,6 +1385,18 @@ def prove_prewrite_python_negatives() -> None:
         ("eager direct methodcaller execution", baseline.replace(
             'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager partial local helper", baseline.replace(
+             'if __name__', 'def mutate():\n    globals()["main"] = None\nfunctools.partial(mutate)()\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager partial exec", baseline.replace(
+             'if __name__', 'functools.partial(exec, "main = None")()\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("partial function decorator", baseline.replace(
+             'if __name__', 'def mutate(fn):\n    globals()["main"] = None\n    return fn\n@functools.partial(mutate)\ndef helper():\n    pass\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("partial class decorator", baseline.replace(
+             'if __name__', 'def mutate(cls):\n    globals()["main"] = None\n    return cls\n@functools.partial(mutate)\nclass Helper:\n    pass\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
