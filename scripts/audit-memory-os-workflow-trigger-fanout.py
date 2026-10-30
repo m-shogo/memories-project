@@ -366,6 +366,14 @@ def require_workflow_git_index_identity(
     # read-only rev-parse/ls-files/diff. Refuse inherited tracing before Git.
     if any(name.startswith("GIT_TRACE") for name in os.environ):
         raise AuditFailure("prewrite Git tracing environment requires review")
+    # Alternate Git configuration sources or command-scoped config injection
+    # can change source semantics or block on an inherited config FIFO.
+    if (any(name in os.environ for name in (
+            "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+            "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"))
+            or any(name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
+                   for name in os.environ)):
+        raise AuditFailure("prewrite Git configuration environment requires review")
     if not (repo_root / ".git").is_dir():
         raise AuditFailure("prewrite Git index checkout identity unavailable")
 
