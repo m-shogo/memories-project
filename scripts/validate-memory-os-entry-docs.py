@@ -129,7 +129,7 @@ def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess
     raw = (completed.stderr or completed.stdout).strip()
     if not raw:
         return "empty"
-    return re.sub(r"[\x00-\x1f\x7f]", " ", raw[-800:])
+    return re.sub(r"[\x00-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]", " ", raw[-800:])
 
 
 def prove_learning_guard_classifier(failures: list[str]) -> None:
@@ -182,6 +182,9 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         ("stderr preferred", "stdout", "stderr", "stderr"),
         ("bounded", "", "x" * 900, "x" * 800),
         ("control", "", "a\x1bb\x7fc", "a b c"),
+        ("Unicode line separators", "", "a\u0085b\u2028c\u2029d", "a b c d"),
+        ("bidi direction controls", "", "a\u061cb\u202ec\u2066d\u2069e", "a b c d e"),
+        ("zero-width and BOM", "", "a\u200bb\u200fc\ufeffd", "a b c d"),
     ):
         completed = subprocess.CompletedProcess([], 1, stdout, stderr)
         if bounded_learning_guard_failure_detail(completed) != expected:
