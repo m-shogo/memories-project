@@ -4893,6 +4893,48 @@ def prove_prewrite_workflow_parent_swap(source_root: Path) -> None:
             raise RuntimeError("workflow parent symlink swap did not execute")
 
 
+def prove_prewrite_workflow_root_swap(source_root: Path) -> None:
+    """Reject a repository-root symlink substitution with stable child inodes."""
+    import runpy
+    from unittest import mock
+
+    module = runpy.run_path(str(source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"))
+    matcher = module["matching_workflows"]
+    original_reader = module["read_workflow_bytes_bounded"]
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-root-swap-") as tmp:
+        container = Path(tmp)
+        root = container / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        source = directory / "initial.yml"
+        source.write_text("on: push\n", encoding="utf-8")
+        if source.read_bytes() != b"on: push\n":
+            raise RuntimeError("workflow root-swap fixture newline bytes drift")
+        if matcher(root, "scripts/a.py") != [".github/workflows/initial.yml"]:
+            raise RuntimeError("workflow root-swap baseline failed")
+        swapped = [False]
+
+        def swap_root_during_read(path: Path, *, strict: bool = False) -> bytes:
+            if not swapped[0]:
+                swapped[0] = True
+                root.rename(container / "oldrepo")
+                root.symlink_to("oldrepo", target_is_directory=True)
+            return original_reader(path, strict=strict)
+
+        with mock.patch.dict(matcher.__globals__, {
+            "read_workflow_bytes_bounded": swap_root_during_read,
+        }):
+            try:
+                matcher(root, "scripts/a.py")
+            except module["AuditFailure"] as exc:
+                if str(exc) != "prewrite repository root changed during audit":
+                    raise
+            else:
+                raise RuntimeError("repository root symlink swap accepted")
+        if not swapped[0] or not root.is_symlink():
+            raise RuntimeError("repository root symlink swap did not execute")
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -5677,6 +5719,7 @@ def main() -> int:
     prove_import_api_minio_first_classification(source_root)
     prove_prewrite_workflow_directory_membership_drift(source_root)
     prove_prewrite_workflow_parent_swap(source_root)
+    prove_prewrite_workflow_root_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
