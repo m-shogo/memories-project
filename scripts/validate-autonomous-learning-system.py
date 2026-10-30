@@ -820,6 +820,10 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                  and node.name == "main"]
         if len(mains) != 1 or not isinstance(mains[0], ast.FunctionDef):
             raise ValidationFailure("prewrite " + label + " must have one sync main")
+        # A decorator may replace main with a noncallable or unreviewed
+        # wrapper while preserving the FunctionDef and exact guard AST.
+        if mains[0].decorator_list:
+            raise ValidationFailure("prewrite " + label + " main must be undecorated")
         # A locally defined helper can mutate main when called at module
         # scope; deferred function bodies alone do not prove that safe.
         module_local_helpers = {
@@ -1207,6 +1211,15 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("syntax", baseline + 'def broken(:\n', sha, 40, 20, "syntax invalid", baseline),
         ("duplicate main", baseline + '\ndef main():\n    pass\n', sha, 40, 20, "one sync main", baseline),
+        ("main decorator returning None", baseline.replace(
+            'def main() -> int:', '@(lambda fn: None)\ndef main() -> int:'),
+         sha, 40, 20, "main must be undecorated", baseline),
+        ("main property decorator", baseline.replace(
+            'def main() -> int:', '@property\ndef main() -> int:'),
+         sha, 40, 20, "main must be undecorated", baseline),
+        ("main staticmethod decorator", baseline.replace(
+            'def main() -> int:', '@staticmethod\ndef main() -> int:'),
+         sha, 40, 20, "main must be undecorated", baseline),
         ("removed guard", baseline.replace('    raise SystemExit(main())\n',
                                            '    pass\n'), sha, 40, 20, "live main guard", baseline),
         ("added overflow", baseline.replace('    return 0\n',
