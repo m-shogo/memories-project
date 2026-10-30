@@ -3048,11 +3048,14 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         uncovered_sets.append({path for path in inputs
                                if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
-    for event, patterns in zip(("push", "pull_request"), reviewed_paths):
-        sql_gaps = sorted(path for path in sql_runtime_inputs
-                          if not any(matches(path, pat) for pat in patterns))
-        print(f"upload-route SQL runtime input lower bound: {len(sql_runtime_inputs)}; "
-              f"{event} trigger gaps={len(sql_gaps)}; complete closure unproven")
+    # Both current workflows omit all eleven runtime SQL migration paths.
+    # Pin this known trigger gap without introducing unreviewed stdout;
+    # a future trigger correction must be reviewed and reconciled explicitly.
+    for patterns in reviewed_paths:
+        sql_gaps = {path for path in sql_runtime_inputs
+                    if not any(matches(path, pat) for pat in patterns)}
+        if sql_gaps != sql_runtime_inputs:
+            raise RuntimeError("Upload Route SQL migration trigger gap changed; review required")
     snapshot_paths = upload_route_snapshot_inventory(source_root)
     require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1687, 1620)
     guard_path = source_root / ".github/workflows/autonomous-learning-guard.yml"
