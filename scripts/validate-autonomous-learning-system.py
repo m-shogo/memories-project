@@ -49,6 +49,9 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
     """Read a bounded, descriptor-pinned regular canonical authority snapshot."""
     diagnostic = f"canonical authority changed during read: {path}"
     try:
+        # Snapshot the directory chain too: a parent can become a symlink
+        # to its old inode while the leaf still resolves to identical bytes.
+        parents = [(parent, parent.lstat()) for parent in path.parents]
         preflight = path.lstat()
     except OSError:
         raise ValidationFailure(f"unreadable authority: {path}") from None
@@ -77,6 +80,11 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                 raise ValidationFailure(too_large)
             after = os.fstat(stream.fileno())
             live = path.lstat()
+            for parent, prior in parents:
+                current = parent.lstat()
+                if ((current.st_dev, current.st_ino, stat.S_IFMT(current.st_mode)) !=
+                        (prior.st_dev, prior.st_ino, stat.S_IFMT(prior.st_mode))):
+                    raise ValidationFailure(diagnostic)
             if (not stat.S_ISREG(live.st_mode)
                     or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
                     or after.st_nlink != 1 or live.st_nlink != 1
