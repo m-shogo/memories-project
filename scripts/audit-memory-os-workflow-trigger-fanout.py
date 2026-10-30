@@ -400,8 +400,14 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     seen_workflow_names: set[str] = set()
     for entry in sorted(directory.iterdir()):
         normalized = entry.name.rstrip(" .")
-        if not normalized.casefold().endswith((".yml", ".yaml")):
+        # An NTFS alternate-stream suffix can shadow an otherwise normal
+        # YAML filename even though its complete spelling lacks .yml.
+        if not normalized.casefold().split(":", 1)[0].endswith((".yml", ".yaml")):
             continue
+        try:
+            validate_relative_path(entry.name)
+        except AuditFailure as exc:
+            raise AuditFailure("workflow source filename alias") from exc
         if entry.name != normalized or not entry.name.endswith((".yml", ".yaml")):
             raise AuditFailure("workflow source filename alias")
         folded = entry.name.casefold()
@@ -865,6 +871,12 @@ def self_test(repo_root: Path) -> None:
             ("uppercase extension", "alpha.YML", "workflow source filename alias"),
             ("trailing dot", "alpha.yml.", "workflow source filename alias"),
             ("trailing space", "alpha.yml ", "workflow source filename alias"),
+            ("reserved device", "NUL.yml", "workflow source filename alias"),
+            ("superscript device", "COM¹.yml", "workflow source filename alias"),
+            ("wildcard filename", "audit?.yml", "workflow source filename alias"),
+            ("decomposed Unicode filename", "cafe\u0301.yml", "workflow source filename alias"),
+            ("DOS short-name filename", "LONGFI~1.yml", "workflow source filename alias"),
+            ("NTFS alternate-stream filename", "audit.yml:stream", "workflow source filename alias"),
         ):
             leaf = directory / alias
             leaf.write_text(source, encoding="utf-8")
@@ -988,7 +1000,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 54 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 60 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
