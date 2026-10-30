@@ -645,6 +645,10 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
                (root_before.st_dev, root_before.st_ino,
                 root_before.st_mtime_ns, root_before.st_ctime_ns)):
         raise AuditFailure("prewrite repository root changed during audit")
+    # Parent/root inode checks cannot see a symlink substituted higher in
+    # the absolute path while the same descendant inodes remain reachable.
+    if any(part.is_symlink() for part in (directory, *directory.parents)):
+        raise AuditFailure("workflow ancestor path changed during audit")
     return matches
 
 

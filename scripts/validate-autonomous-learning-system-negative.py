@@ -4935,6 +4935,49 @@ def prove_prewrite_workflow_root_swap(source_root: Path) -> None:
             raise RuntimeError("repository root symlink swap did not execute")
 
 
+def prove_prewrite_workflow_outer_ancestor_swap(source_root: Path) -> None:
+    """Reject an outer ancestor alias while root and YAML inodes stay stable."""
+    import runpy
+    from unittest import mock
+
+    module = runpy.run_path(str(source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"))
+    matcher = module["matching_workflows"]
+    original_reader = module["read_workflow_bytes_bounded"]
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-outer-swap-") as tmp:
+        container = Path(tmp)
+        outer = container / "outer"
+        root = outer / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        source = directory / "initial.yml"
+        source.write_text("on: push\n", encoding="utf-8")
+        if source.read_bytes() != b"on: push\n":
+            raise RuntimeError("workflow outer-swap fixture newline bytes drift")
+        if matcher(root, "scripts/a.py") != [".github/workflows/initial.yml"]:
+            raise RuntimeError("workflow outer-swap baseline failed")
+        swapped = [False]
+
+        def swap_outer_during_read(path: Path, *, strict: bool = False) -> bytes:
+            if not swapped[0]:
+                swapped[0] = True
+                outer.rename(container / "old-outer")
+                outer.symlink_to("old-outer", target_is_directory=True)
+            return original_reader(path, strict=strict)
+
+        with mock.patch.dict(matcher.__globals__, {
+            "read_workflow_bytes_bounded": swap_outer_during_read,
+        }):
+            try:
+                matcher(root, "scripts/a.py")
+            except module["AuditFailure"] as exc:
+                if str(exc) != "workflow ancestor path changed during audit":
+                    raise
+            else:
+                raise RuntimeError("workflow outer ancestor symlink swap accepted")
+        if not swapped[0] or not outer.is_symlink():
+            raise RuntimeError("workflow outer ancestor swap did not execute")
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -5720,6 +5763,7 @@ def main() -> int:
     prove_prewrite_workflow_directory_membership_drift(source_root)
     prove_prewrite_workflow_parent_swap(source_root)
     prove_prewrite_workflow_root_swap(source_root)
+    prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
