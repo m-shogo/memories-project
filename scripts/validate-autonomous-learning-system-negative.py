@@ -4010,9 +4010,34 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             (workflow.parent / workflow_name).write_text(
                 focused_source, encoding="utf-8"
             )
+        # The four Python validators delegated by the reconciler also read
+        # Go source authorities; their own workflow triggers do not cover
+        # these transitive input files in the focused Upload Route jobs.
+        validator_inputs = (
+            ("scripts/validate-memory-os-metrics.py", (
+                "services/import-api/internal/metrics/recorder.go",
+            )),
+            ("scripts/validate-memory-os-rate-limit.py", (
+                "services/import-api/internal/ratelimit/enforce.go",
+                "services/import-api/internal/obslog/codes.go",
+            )),
+            ("scripts/validate-memory-os-observability.py", (
+                "services/import-api/internal/obslog/codes.go",
+                "services/import-api/internal/obslog/event.go",
+            )),
+        )
+        for validator, inputs in validator_inputs:
+            validator_source = (source_root / validator).read_text(encoding="utf-8")
+            for dependency in inputs:
+                if f'"{dependency}"' not in validator_source:
+                    raise RuntimeError("upload route delegated validator Go input changed: " + dependency)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
+            ("metrics validator Go input", "services/import-api/internal/metrics/recorder.go"),
+            ("rate-limit validator Go input", "services/import-api/internal/ratelimit/enforce.go"),
+            ("observability codes Go input", "services/import-api/internal/obslog/codes.go"),
+            ("observability event Go input", "services/import-api/internal/obslog/event.go"),
         ):
             if not (source_root / relative).is_file():
                 raise RuntimeError("upload route transitive source missing: " + label)
@@ -4031,7 +4056,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route transitive MinIO-first CI classification failed: " + label)
-    return 2
+    return 6
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
