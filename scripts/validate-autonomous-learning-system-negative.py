@@ -4215,6 +4215,53 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             )
             if "\npackage " + package + "\n" not in "\n" + source:
                 raise RuntimeError("upload route second-hop Go package identity changed: " + relative_name)
+        # epochguard imports dbscope; dbscope's executor imports security.
+        # These third-hop Go inputs are not directly triggered by the two
+        # focused Upload Route workflows; only the MinIO-first broad slice
+        # currently matches their concrete source paths in this scoped audit.
+        epoch_source = (source_root / "services/import-api/internal/epochguard/guard.go").read_text(
+            encoding="utf-8"
+        )
+        executor_source = (source_root / "services/import-api/internal/dbscope/executor.go").read_text(
+            encoding="utf-8"
+        )
+        adapter_source = (source_root / "services/import-api/internal/dbscope/sql_adapter.go").read_text(
+            encoding="utf-8"
+        )
+        def require_third_hop_edges(epoch: str, executor: str) -> None:
+            for source, package in ((epoch, "dbscope"), (executor, "security")):
+                if module + "/internal/" + package not in upload_route_local_go_imports(
+                        source, include_external=True):
+                    raise RuntimeError("upload route third-hop Go import edge changed: " + package)
+        require_third_hop_edges(epoch_source, executor_source)
+        for index, package in enumerate(("dbscope", "security")):
+            anchor = f'"{module}/internal/{package}"'
+            sources = [epoch_source, executor_source]
+            if sources[index].count(anchor) != 1:
+                raise RuntimeError("upload route third-hop Go import fixture anchor drift")
+            sources[index] = (sources[index].replace(anchor, '"example.com/unreviewed"', 1)
+                              + "\n// " + anchor + "\n")
+            try:
+                require_third_hop_edges(*sources)
+            except RuntimeError as exc:
+                if str(exc) != "upload route third-hop Go import edge changed: " + package:
+                    raise
+            else:
+                raise RuntimeError("comment-spoofed third-hop Go edge accepted: " + package)
+        def require_dbscope_identity(source: str) -> None:
+            if not source.startswith("package dbscope\n"):
+                raise RuntimeError("upload route third-hop dbscope package identity changed")
+        for dbscope_source in (executor_source, adapter_source):
+            require_dbscope_identity(dbscope_source)
+            try:
+                require_dbscope_identity(dbscope_source.replace(
+                    "package dbscope\n", "package unreviewed\n", 1
+                ))
+            except RuntimeError as exc:
+                if str(exc) != "upload route third-hop dbscope package identity changed":
+                    raise
+            else:
+                raise RuntimeError("third-hop dbscope package identity negative accepted")
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
