@@ -4568,6 +4568,48 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     raise
             else:
                 raise RuntimeError("third-hop dbscope package identity negative accepted")
+        # Scoped fourth-hop compile inputs reached through the imported httpapi
+        # package. These parsed Go edges are not independent pre-MinIO CI
+        # coverage; the focused Push/PR filters still omit these paths.
+        fourth_hop_edges = (
+            ("appleauth/login.go", ("security",)),
+            ("appleauth/metered.go", ("metrics", "security")),
+            ("apply/service.go", ("dbscope", "security")),
+            ("previewread/service.go", ("dbscope", "pgscope", "security")),
+            ("pgscope/beginner.go", ("dbscope",)),
+            ("upload/service.go", ("dbscope", "security")),
+        )
+        for relative_name, dependencies in fourth_hop_edges:
+            relative = "services/import-api/internal/" + relative_name
+            source = (source_root / relative).read_text(encoding="utf-8")
+            require_reviewed_upload_route_go_package(relative, source)
+
+            def require_fourth_hop_edges(candidate: str) -> None:
+                imported = upload_route_local_go_imports(candidate, include_external=True)
+                for package in dependencies:
+                    if module + "/internal/" + package not in imported:
+                        raise RuntimeError(
+                            "upload route fourth-hop Go import edge changed: "
+                            + relative_name + "/" + package
+                        )
+
+            require_fourth_hop_edges(source)
+            for package in dependencies:
+                anchor = f'"{module}/internal/{package}"'
+                if source.count(anchor) != 1:
+                    raise RuntimeError("upload route fourth-hop Go fixture anchor drift")
+                spoofed = (source.replace(anchor, '"example.com/unreviewed"', 1)
+                           + "\n// " + anchor + "\n")
+                expected = ("upload route fourth-hop Go import edge changed: "
+                            + relative_name + "/" + package)
+                try:
+                    require_fourth_hop_edges(spoofed)
+                except RuntimeError as exc:
+                    if str(exc) != expected:
+                        raise
+                else:
+                    raise RuntimeError("comment-spoofed fourth-hop Go edge accepted: "
+                                       + relative_name + "/" + package)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
