@@ -3856,6 +3856,29 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (substituted.returncode != 1 or substituted.stdout or
                     substituted.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git environment checkout override requires review\n"):
                 raise RuntimeError("Git checkout environment override CLI negative failed: " + name)
+        # Git tracing can create an arbitrary file even for rev-parse.
+        # Establish the control write, then prove prewrite rejects the
+        # inherited trace destination before executing any Git command.
+        for name in ("GIT_TRACE", "GIT_TRACE2_EVENT", "GIT_TRACE2_PERF"):
+            trace_file = Path(tmp) / ("trace-" + name.lower())
+            trace_env = {**os.environ, name: str(trace_file)}
+            control = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+                env=trace_env, capture_output=True, text=True,
+                check=False, timeout=10,
+            )
+            if (control.returncode != 0 or not trace_file.is_file()
+                    or trace_file.stat().st_size == 0):
+                raise RuntimeError("Git trace write control failed: " + name)
+            trace_file.unlink()
+            blocked = subprocess.run(
+                args, env=trace_env, capture_output=True, text=True,
+                check=False, timeout=10,
+            )
+            if (blocked.returncode != 1 or blocked.stdout
+                    or blocked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git tracing environment requires review\n"
+                    or trace_file.exists()):
+                raise RuntimeError("Git trace prewrite CLI negative failed: " + name)
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
                     ".github/workflows/fixture.yml")
         # Read-only Git inspection must not execute a checkout-configured
