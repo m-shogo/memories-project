@@ -4811,7 +4811,9 @@ def prove_prewrite_workflow_directory_membership_drift(source_root: Path) -> Non
         root = Path(tmp)
         directory = root / ".github/workflows"
         directory.mkdir(parents=True)
-        (directory / "initial.yml").write_text("on: push\\n", encoding="utf-8")
+        (directory / "initial.yml").write_text("on: push\n", encoding="utf-8")
+        if (directory / "initial.yml").read_bytes() != b"on: push\n":
+            raise RuntimeError("workflow directory fixture newline bytes drift")
         expected = [".github/workflows/initial.yml"]
         if matcher(root, "scripts/a.py") != expected:
             raise RuntimeError("workflow directory membership baseline failed")
@@ -4821,7 +4823,7 @@ def prove_prewrite_workflow_directory_membership_drift(source_root: Path) -> Non
         def inject_late_workflow(path: Path, *, strict: bool = False) -> bytes:
             if not injected[0]:
                 injected[0] = True
-                (directory / "late.yml").write_text("on: push\\n", encoding="utf-8")
+                (directory / "late.yml").write_text("on: push\n", encoding="utf-8")
             return original_reader(path, strict=strict)
 
         def directory_ctime_drift(path: Path):
@@ -4846,6 +4848,8 @@ def prove_prewrite_workflow_directory_membership_drift(source_root: Path) -> Non
                 raise RuntimeError("late workflow membership drift accepted")
         if not injected[0] or not (directory / "late.yml").is_file():
             raise RuntimeError("late workflow membership fixture did not execute")
+        if (directory / "late.yml").read_bytes() != b"on: push\n":
+            raise RuntimeError("late workflow fixture newline bytes drift")
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
