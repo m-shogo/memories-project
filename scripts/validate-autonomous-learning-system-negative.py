@@ -6673,7 +6673,11 @@ def main() -> int:
         ),
     )
 
-    with tempfile.TemporaryDirectory(prefix="learning-positive-") as tmp:
+    # Keep positive fixtures outside the shared /tmp ancestor. An unrelated
+    # sibling created in /tmp can change its ctime during a descriptor read.
+    # The checked-out workspace parent is stable and outside the Git tree.
+    positive_parent = source_root.parent
+    with tempfile.TemporaryDirectory(prefix="learning-positive-", dir=positive_parent) as tmp:
         root = Path(tmp)
         seed(source_root, root)
         result = run(source_root, root)
@@ -6709,7 +6713,8 @@ def main() -> int:
         ("decorator lambda local main", "@(lambda fn: (main := fn))\ndef eager():\n    pass\n"),
         ("decorator lambda local learning guard", "@(lambda fn: (validate_learning_guards := fn))\ndef eager():\n    pass\n"),
     ):
-        with tempfile.TemporaryDirectory(prefix="learning-comprehension-positive-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="learning-comprehension-positive-",
+                                         dir=positive_parent) as tmp:
             root = Path(tmp)
             seed(source_root, root)
             module_guard = 'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)
