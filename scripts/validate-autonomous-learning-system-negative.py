@@ -4488,7 +4488,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         # Git replace refs can make a staged workflow look identical to
         # HEAD by silently substituting a different commit tree. Verify the
         # unsafe control first, then require original-object comparison.
-        workflow.write_text('on: workflow_dispatch\\n', encoding="utf-8")
+        workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
         fixture_git("-C", str(root), "add", ".github/workflows/fixture.yml")
         workflow.write_text(original, encoding="utf-8")
         head_lookup = subprocess.run(
@@ -4526,7 +4526,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         )
         if (guarded_replace.returncode != 1 or guarded_replace.stdout
                 or guarded_replace.stderr !=
-                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index content drift\\n"):
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index content drift\n"):
             raise RuntimeError("Git replace-ref staged-drift CLI negative failed")
         fixture_git("-C", str(root), "replace", "-d", head_lookup.stdout.strip())
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
