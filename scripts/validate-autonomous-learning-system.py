@@ -1091,6 +1091,18 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(statement, ast.ClassDef):
                 return any(eager_direct_termination(child)
                            for child in statement.body)
+            # Conditions, iterable expressions and context managers evaluate
+            # before their bodies. A direct exit in one makes main unreachable.
+            if isinstance(statement, (ast.If, ast.While, ast.For, ast.With)):
+                header_expressions = (
+                    [statement.test] if isinstance(statement, (ast.If, ast.While))
+                    else [statement.iter] if isinstance(statement, ast.For)
+                    else [item.context_expr for item in statement.items]
+                )
+                if any(isinstance(expression, ast.Call)
+                       and eager_direct_termination(ast.Expr(value=expression))
+                       for expression in header_expressions):
+                    return True
             if isinstance(statement, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
                 # A direct terminating call in an eagerly evaluated assignment
                 # RHS runs before the main guard; a lambda value is deferred.
@@ -1201,6 +1213,10 @@ def prove_prewrite_python_negatives() -> None:
         ("constant-false raise", 'if False:\n    raise SystemExit(0)\n', (2, 0)),
         ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
         ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
+        ("benign if call test", 'if bool(False):\n    pass\n', (2, 0)),
+        ("benign while call test", 'while bool(False):\n    pass\n', (2, 0)),
+        ("benign for call iterable", 'for item in range(0):\n    pass\n', (2, 0)),
+        ("benign with context call", 'from contextlib import nullcontext\nwith nullcontext():\n    pass\n', (3, 0)),
         ("benign module assignment", 'value = 1\n', (1, 0)),
         ("annotation without initializer", 'value: int\n', (1, 0)),
         ("deferred assigned abort lambda", 'later = lambda: os.abort()\n', (1, 0)),
@@ -1532,6 +1548,18 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("eager class literal-true exit", baseline.replace(
              'if __name__', 'class Helper:\n    if True:\n        os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("if test direct sys.exit", baseline.replace(
+             'if __name__', 'if sys.exit(0):\n    pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("while test direct abort", baseline.replace(
+             'if __name__', 'while os.abort():\n    pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("for iterable direct os exit", baseline.replace(
+             'if __name__', 'for item in os._exit(0):\n    pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("with context direct sys.exit", baseline.replace(
+             'if __name__', 'with sys.exit(0):\n    pass\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("assignment rhs sys.exit", baseline.replace(
              'if __name__', 'result = sys.exit(0)\nif __name__'),
