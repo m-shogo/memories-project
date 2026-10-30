@@ -3559,6 +3559,39 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 untracked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index inventory drift\n"):
             raise RuntimeError("untracked Git workflow CLI negative failed")
         extra.unlink()
+        # Both index bits suppress Git's normal worktree diff, even when a
+        # workflow's live bytes no longer match the committed HEAD. The
+        # explicit index flag check must reject both masked source aliases.
+        for flag, clear, label in (
+            ("--assume-unchanged", "--no-assume-unchanged", "assume-unchanged"),
+            ("--skip-worktree", "--no-skip-worktree", "skip-worktree"),
+        ):
+            fixture_git("-C", str(root), "update-index", flag,
+                        ".github/workflows/fixture.yml")
+            workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
+            masked = subprocess.run(
+                ["git", "-C", str(root), "diff", "--quiet", "HEAD", "--",
+                 ".github/workflows"], capture_output=True, text=True,
+                check=False, timeout=10,
+            )
+            if masked.returncode != 0:
+                raise RuntimeError("Git index hidden-flag fixture did not mask diff: " + label)
+            hidden = subprocess.run(
+                args, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (hidden.returncode != 1 or hidden.stdout or
+                    hidden.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index sparse or assume-unchanged flag\n"):
+                raise RuntimeError("Git workflow hidden-index-flag CLI negative failed: " + label)
+            workflow.write_text(original, encoding="utf-8")
+            fixture_git("-C", str(root), "update-index", clear,
+                        ".github/workflows/fixture.yml")
+        restored = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (restored.returncode != 0 or restored.stderr or
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in restored.stdout.splitlines()):
+            raise RuntimeError("Git index hidden-flag cleanup positive failed")
         (root / ".git").rename(Path(tmp) / "detached-git")
         missing = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=10,
