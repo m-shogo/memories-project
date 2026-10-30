@@ -809,6 +809,11 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
                 raise RuntimeError("unreviewed Go import block entry")
             if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
+            # Go interprets \u, \x, \U and octal escapes in import path
+            # string literals. A textual import graph must not record
+            # the escape spelling as a different compiled dependency.
+            if "\\" in match.group(2):
+                raise RuntimeError("unreviewed Go escaped import path")
             paths.append(match.group(2))
             bindings.append((match.group(1) or "", match.group(2)))
             if match.group(1):
@@ -822,6 +827,11 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
                 raise RuntimeError("unreviewed single-line Go import")
             if match.group(2) == "C":
                 raise RuntimeError("unreviewed Go CGo import")
+            # Go interprets \u, \x, \U and octal escapes in import path
+            # string literals. A textual import graph must not record
+            # the escape spelling as a different compiled dependency.
+            if "\\" in match.group(2):
+                raise RuntimeError("unreviewed Go escaped import path")
             paths.append(match.group(2))
             bindings.append((match.group(1) or "", match.group(2)))
             if match.group(1):
@@ -982,6 +992,21 @@ def prove_upload_route_go_import_parser() -> None:
                 raise
         else:
             raise RuntimeError("Go CGo import negative accepted: " + label)
+    for label, candidate in (
+        ("escaped single import", 'import "' + chr(92) + 'u0066mt"\n'),
+        ("escaped grouped import", 'import (\n  "' + chr(92) + 'x66mt"\n)\n'),
+        ("escaped aliased import", 'import alias "' + chr(92) + '146mt"\n'),
+        ("escaped wide import", 'import "' + chr(92) + 'U00000066mt"\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate, include_external=True)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go escaped import path":
+                raise
+        else:
+            raise RuntimeError("Go escaped import path negative accepted: " + label)
+    if upload_route_local_go_imports('import "fmt"\n', include_external=True) != {"fmt"}:
+        raise RuntimeError("Go ordinary import path positive fixture failed")
     try:
         upload_route_local_go_imports('import (\n  not_a_go_import\n)\n')
     except RuntimeError:
