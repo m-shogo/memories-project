@@ -4818,6 +4818,106 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     else:
                         raise RuntimeError("comment-spoofed domain Go peer import accepted: "
                                            + package + "/" + name)
+        # The focused Go test builds every non-test httpserver source and its
+        # metrics/observability/rate-limit/request-ID imports. Review the
+        # complete package peers and exact local imports, not just server.go.
+        reviewed_httpserver_peers = {
+            "httpserver": {
+                "observability.go": ("metrics", "obslog", "reqid"),
+                "ratelimit.go": ("metrics", "obslog", "ratelimit", "reqid"),
+                "server.go": ("httpapi", "metrics", "obslog", "security"),
+            },
+            "metrics": {
+                "export.go": (),
+                "labels.go": (),
+                "prometheus.go": (),
+                "recorder.go": (),
+                "registry.go": (),
+                "scrape.go": (),
+            },
+            "obslog": {
+                "codes.go": (),
+                "event.go": (),
+            },
+            "ratelimit": {
+                "enforce.go": (),
+                "keys.go": (),
+                "limiter.go": (),
+                "policies.go": (),
+            },
+            "reqid": {
+                "reqid.go": (),
+            },
+        }
+        for package, members in reviewed_httpserver_peers.items():
+            directory = source_root / "services/import-api/internal" / package
+            observed = {
+                path.name for path in directory.glob("*.go")
+                if not path.name.endswith("_test.go")
+            }
+            expected = set(members)
+
+            def require_httpserver_peer_inventory(names: set[str]) -> None:
+                if names != expected:
+                    raise RuntimeError("upload route httpserver Go peer inventory drift: " + package)
+
+            require_httpserver_peer_inventory(observed)
+            for changed in (observed - {next(iter(sorted(expected)))},
+                            observed | {"unreviewed.go"}):
+                try:
+                    require_httpserver_peer_inventory(changed)
+                except RuntimeError as exc:
+                    if str(exc) != "upload route httpserver Go peer inventory drift: " + package:
+                        raise
+                else:
+                    raise RuntimeError("httpserver Go peer inventory negative accepted: " + package)
+
+            for name, dependencies in members.items():
+                relative = "services/import-api/internal/" + package + "/" + name
+                source = (source_root / relative).read_text(encoding="utf-8")
+                require_reviewed_upload_route_go_package(relative, source)
+
+                def require_httpserver_peer_imports(candidate: str) -> None:
+                    prefix = module + "/internal/"
+                    imported = {
+                        item[len(prefix):]
+                        for item in upload_route_local_go_imports(candidate, include_external=True)
+                        if item.startswith(prefix)
+                    }
+                    if imported != set(dependencies):
+                        raise RuntimeError("upload route httpserver Go peer import drift: "
+                                           + package + "/" + name)
+
+                require_httpserver_peer_imports(source)
+                declaration = "package " + package + "\n"
+                if source.count(declaration) != 1:
+                    raise RuntimeError("upload route httpserver Go peer fixture anchor drift")
+                injected = source.replace(
+                    declaration, declaration + 'import "' + module + '/internal/unreviewed"\n', 1
+                )
+                try:
+                    require_httpserver_peer_imports(injected)
+                except RuntimeError as exc:
+                    if str(exc) != ("upload route httpserver Go peer import drift: "
+                                    + package + "/" + name):
+                        raise
+                else:
+                    raise RuntimeError("unreviewed httpserver Go peer import accepted: "
+                                       + package + "/" + name)
+                for dependency in dependencies:
+                    anchor = '"' + module + '/internal/' + dependency + '"'
+                    if source.count(anchor) != 1:
+                        raise RuntimeError("upload route httpserver Go peer import fixture drift")
+                    spoofed = source.replace(anchor, '"example.com/unreviewed"', 1) + "\n// " + anchor + "\n"
+                    try:
+                        require_httpserver_peer_imports(spoofed)
+                    except RuntimeError as exc:
+                        if str(exc) != ("upload route httpserver Go peer import drift: "
+                                        + package + "/" + name):
+                            raise
+                    else:
+                        raise RuntimeError("comment-spoofed httpserver Go peer import accepted: "
+                                           + package + "/" + name)
         # Scoped fourth-hop compile inputs reached through the imported httpapi
         # package. These parsed Go edges are not independent pre-MinIO CI
         # coverage; the focused Push/PR filters still omit these paths.
