@@ -3454,6 +3454,7 @@ def main() -> int:
         ("lazy map construction", "map(sys.exit, [0])\n"),
         ("deferred map consumption", "def later():\n    list(map(sys.exit, [0]))\n"),
         ("deferred map generator", "pending = (x for x in map(sys.exit, [0]))\n"),
+        ("deferred nested generator consumer", "def later():\n    list(x for x in map(sys.exit, [0]))\n"),
         ("benign immediate lambda", "(lambda: os.getpid())()\n"),
         ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
@@ -3706,6 +3707,8 @@ def main() -> int:
         ("mapped-exit-for", "for _ in map(sys.exit, [0]):" + chr(10)
          + "    pass" + chr(10) + chr(10)),
         ("mapped-exit-comprehension", "[x for x in map(sys.exit, [0])]" + chr(10) + chr(10)),
+        ("nested-generator-list", "list(x for x in map(sys.exit, [0]))" + chr(10) + chr(10)),
+        ("nested-generator-next", "next(x for x in map(sys.exit, [0]))" + chr(10) + chr(10)),
         ("mapped-exit-next", "next(map(sys.exit, [0]))" + chr(10) + chr(10)),
         ("direct-call-abort", "call(os.abort)" + chr(10) + chr(10)),
         ("direct-partial-abort", "partial(os.abort)()" + chr(10) + chr(10)),
@@ -3752,6 +3755,8 @@ def main() -> int:
         ("mapped-exit-for", "    for _ in map(sys.exit, [0]):" + newline
          + "        pass" + newline),
         ("mapped-exit-comprehension", "    [x for x in map(sys.exit, [0])]" + newline),
+        ("nested-generator-list", "    list(x for x in map(sys.exit, [0]))" + newline),
+        ("nested-generator-any", "    any(x for x in map(sys.exit, [0]))" + newline),
         ("mapped-exit-any", "    any(map(sys.exit, [0]))" + newline),
         ("direct-call-abort", "    call(os.abort)" + newline),
         ("direct-partial-abort", "    partial(os.abort)()" + newline),

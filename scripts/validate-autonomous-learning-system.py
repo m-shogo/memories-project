@@ -514,9 +514,10 @@ def validate(repo_root: Path) -> None:
             if (isinstance(node.func, ast.Name)
                     and node.func.id in {"list", "tuple", "set", "any", "all",
                                          "sum", "next"}
-                    and any(isinstance(arg, ast.Call)
-                            and isinstance(arg.func, ast.Name)
-                            and arg.func.id == "map" for arg in node.args)):
+                    and any(mapped_iter(arg) or (
+                            isinstance(arg, ast.GeneratorExp)
+                            and any(mapped_iter(gen.iter) for gen in arg.generators)
+                        ) for arg in node.args)):
                 return True
             # operator.call invokes its first argument now; an exit target
             # need not appear as the direct AST callee of this expression.
@@ -814,9 +815,10 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 if (isinstance(node.func, ast.Name)
                         and node.func.id in {"list", "tuple", "set", "any", "all",
                                              "sum", "next"}
-                        and any(isinstance(arg, ast.Call)
-                                and isinstance(arg.func, ast.Name)
-                                and arg.func.id == "map" for arg in node.args)):
+                        and any(mapped_iter(arg) or (
+                                isinstance(arg, ast.GeneratorExp)
+                                and any(mapped_iter(gen.iter) for gen in arg.generators)
+                            ) for arg in node.args)):
                     return True
                 # operator.call dispatches a callable immediately; the
                 # target may be exec/import or a reflective main rebinder.
@@ -974,6 +976,7 @@ def prove_prewrite_python_negatives() -> None:
         ("lazy map construction", 'pending = map(exec, ["main = None"])\n', (1, 0)),
         ("deferred map consumption", 'def helper():\n    list(map(exec, ["main = None"]))\n', (2, 0)),
         ("deferred map generator", 'pending = (x for x in map(exec, ["main = None"]))\n', (1, 0)),
+        ("deferred nested generator consumer", 'def helper():\n    list(x for x in map(exec, ["main = None"]))\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -1144,6 +1147,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager mapped exec comprehension", baseline.replace(
             'if __name__', '[x for x in map(exec, ["main = None"])]\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager nested mapped exec list", baseline.replace(
+            'if __name__', 'list(x for x in map(exec, ["main = None"]))\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager nested mapped exec next", baseline.replace(
+            'if __name__', 'next(x for x in map(exec, ["main = None"]))\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct methodcaller execution", baseline.replace(
             'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__'),
