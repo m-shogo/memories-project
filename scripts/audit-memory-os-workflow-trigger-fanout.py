@@ -351,7 +351,8 @@ def validate_relative_path(relative: str) -> None:
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
-def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False) -> bytes:
+def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False,
+                                expected_executable: bool | None = None) -> bytes:
     """Read one stable regular workflow inode with a hard byte ceiling.
 
     O_NONBLOCK avoids a FIFO swap hanging the audit; O_NOFOLLOW rejects
@@ -379,6 +380,9 @@ def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False) -> byte
                 raise AuditFailure("workflow source world-writable")
             if before.st_mode & 0o020:
                 raise AuditFailure("workflow source group-writable")
+            if (expected_executable is not None and
+                    bool(before.st_mode & 0o111) != expected_executable):
+                raise AuditFailure("prewrite workflow Git index executable mode drift")
             if before.st_size > MAX_WORKFLOW_SOURCE_BYTES:
                 raise AuditFailure("workflow source exceeds reviewed byte limit")
             raw = stream.read(MAX_WORKFLOW_SOURCE_BYTES + 1)
@@ -463,6 +467,7 @@ def require_workflow_git_index_identity(
         raise AuditFailure("prewrite Git index checkout identity unavailable")
     tracked: set[str] = set()
     index_blobs: dict[str, str] = {}
+    index_executable: dict[str, bool] = {}
     for item in index.stdout.split("\0"):
         if not item:
             continue
@@ -477,6 +482,7 @@ def require_workflow_git_index_identity(
             raise AuditFailure("prewrite workflow Git index mode or stage drift")
         tracked.add(relative)
         index_blobs[relative] = fields[1]
+        index_executable[relative] = fields[0] == "100755"
     # Git's assume-unchanged and skip-worktree index bits can make a dirty
     # workflow invisible to git diff --quiet HEAD. Require ordinary tracked
     # entries before using HEAD/index/worktree parity as source authority.
@@ -509,7 +515,9 @@ def require_workflow_git_index_identity(
     verified_sources: dict[Path, bytes] = {}
     for workflow in workflow_sources:
         relative = workflow.relative_to(repo_root).as_posix()
-        raw = read_workflow_bytes_bounded(workflow, strict=True)
+        raw = read_workflow_bytes_bounded(
+            workflow, strict=True, expected_executable=index_executable[relative]
+        )
         expected = index_blobs[relative]
         digest = hashlib.sha1 if len(expected) == 40 else hashlib.sha256
         payload = f"blob {len(raw)}\0".encode("ascii") + raw
