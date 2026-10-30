@@ -85,7 +85,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
         break
     # YAML double-quoted mapping keys can decode \u escapes into "on".
     # Unknown escaped root keys are not proof of a dispatch-only workflow.
-    if re.search(r'(?m)^"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
+    if re.search(r'(?m)^[ \t]*"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
         return True
     # Root-level YAML merges or tagged/anchored/complex "on" keys may
     # introduce a trigger without a literal root-level on: declaration.
@@ -475,8 +475,11 @@ def self_test(repo_root: Path) -> None:
         ("root flow document marker", "--- {\"on\": [\"push\"]}\n", "scripts/a.py", True),
         ("root flow dispatch conservative", "# header\n\n{\"on\": {\"workflow_dispatch\": {}}}\n", "scripts/a.py", True),
         ("nested JSON block is not root flow", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          {\"on\": {\"push\": {}}}\n", "scripts/a.py", False),
+        ("indented escaped root on", "  \"o\\u006e\": push\n", "scripts/a.py", True),
+        ("document indented escaped root on", "---\n  \"o\\u006e\": [pull_request]\n", "scripts/a.py", True),
+        ("indented plain unrelated root", "  \"name\": workflow_dispatch\n", "scripts/a.py", False),
     )
-    if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor","root flow push","root flow target","root flow document marker","root flow dispatch conservative","nested JSON block is not root flow",):
+    if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor","root flow push","root flow target","root flow document marker","root flow dispatch conservative","nested JSON block is not root flow","indented escaped root on","document indented escaped root on","indented plain unrelated root",):
         raise AuditFailure("prewrite root-event fixture identity drift")
     for label, source, path, expected in root_event_cases:
         if workflow_matches_path(source, path) is not expected:
