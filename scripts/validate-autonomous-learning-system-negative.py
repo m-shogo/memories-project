@@ -197,8 +197,7 @@ def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[s
     # An empty or terminal-control-tainted reason is not a canonical failure proof.
     # Keep the diagnostic text intact: never normalize it before classification.
     reason = result.stderr[len("AUTONOMOUS LEARNING VALIDATION FAILED: "):-1]
-    if (not reason.strip() or
-            any(ord(char) < 32 or ord(char) == 127 for char in reason)):
+    if not reason.strip() or not reason.isprintable():
         raise RuntimeError(f"negative case emitted unreviewed diagnostic: {name}")
     if "Traceback (most recent call last)" in result.stderr:
         raise RuntimeError(f"negative case leaked implementation traceback: {name}")
@@ -371,6 +370,16 @@ def prove_failure_classifier() -> None:
                                     "AUTONOMOUS LEARNING VALIDATION FAILED: injected\x7f\n"),
         subprocess.CompletedProcess([], 1, "",
                                     "AUTONOMOUS LEARNING VALIDATION FAILED: injected\ttext\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\u0085text\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\u2028text\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\u202etext\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\u200btext\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\ufefftext\n"),
         subprocess.CompletedProcess([], True, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
         subprocess.CompletedProcess([], 1.0, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
         subprocess.CompletedProcess([], 1, None, "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
@@ -386,6 +395,11 @@ def prove_failure_classifier() -> None:
     require_canonical_rejection(
         "synthetic canonical rejection",
         subprocess.CompletedProcess([], 1, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected canonical guard\n"),
+    )
+
+    require_canonical_rejection(
+        "synthetic printable Unicode diagnostic",
+        subprocess.CompletedProcess([], 1, "", "AUTONOMOUS LEARNING VALIDATION FAILED: 検証拒否\n"),
     )
 
 
