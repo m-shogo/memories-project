@@ -392,8 +392,25 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
         marker = component / ".git"
         if marker.exists() or marker.is_symlink():
             raise AuditFailure("workflow directory nested Git checkout")
+    # A case-insensitive checkout can collapse distinct workflow source
+    # filenames, while an uppercase extension or trailing dot/space may
+    # alias a reviewed YAML leaf without matching the glob on this host.
+    # Enumerate all leaves before trusting direct trigger fanout.
+    workflow_sources: list[Path] = []
+    seen_workflow_names: set[str] = set()
+    for entry in sorted(directory.iterdir()):
+        normalized = entry.name.rstrip(" .")
+        if not normalized.casefold().endswith((".yml", ".yaml")):
+            continue
+        if entry.name != normalized or not entry.name.endswith((".yml", ".yaml")):
+            raise AuditFailure("workflow source filename alias")
+        folded = entry.name.casefold()
+        if folded in seen_workflow_names:
+            raise AuditFailure("workflow source casefold alias")
+        seen_workflow_names.add(folded)
+        workflow_sources.append(entry)
     matches: list[str] = []
-    for workflow in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml"))):
+    for workflow in workflow_sources:
         if workflow.is_symlink() or not workflow.is_file():
             raise AuditFailure("workflow path missing or symlinked")
         if workflow.stat().st_nlink != 1:
@@ -832,6 +849,33 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("hardlinked workflow source negative accepted")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-workflow-name-alias-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        source = 'on: push\\n'
+        (directory / "alpha.yml").write_text(source, encoding="utf-8")
+        (directory / "beta.yaml").write_text(source, encoding="utf-8")
+        if matching_workflows(root, "scripts/a.py") != [
+                ".github/workflows/alpha.yml", ".github/workflows/beta.yaml"]:
+            raise AuditFailure("distinct workflow filenames positive failed")
+        (directory / "beta.yaml").unlink()
+        for label, alias, diagnostic in (
+            ("casefold collision", "ALPHA.yml", "workflow source casefold alias"),
+            ("uppercase extension", "alpha.YML", "workflow source filename alias"),
+            ("trailing dot", "alpha.yml.", "workflow source filename alias"),
+            ("trailing space", "alpha.yml ", "workflow source filename alias"),
+        ):
+            leaf = directory / alias
+            leaf.write_text(source, encoding="utf-8")
+            try:
+                matching_workflows(root, "scripts/a.py")
+            except AuditFailure as exc:
+                if str(exc) != diagnostic:
+                    raise
+            else:
+                raise AuditFailure("workflow filename alias negative accepted: " + label)
+            leaf.unlink()
     with tempfile.TemporaryDirectory(prefix="ops-fanout-submodule-identity-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"
@@ -944,7 +988,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 49 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 54 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
