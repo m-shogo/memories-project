@@ -381,6 +381,7 @@ def require_workflow_git_index_identity(
     if index.returncode != 0:
         raise AuditFailure("prewrite Git index checkout identity unavailable")
     tracked: set[str] = set()
+    index_blobs: dict[str, str] = {}
     for item in index.stdout.split("\0"):
         if not item:
             continue
@@ -394,6 +395,7 @@ def require_workflow_git_index_identity(
                 or relative in tracked):
             raise AuditFailure("prewrite workflow Git index mode or stage drift")
         tracked.add(relative)
+        index_blobs[relative] = fields[1]
     # Git's assume-unchanged and skip-worktree index bits can make a dirty
     # workflow invisible to git diff --quiet HEAD. Require ordinary tracked
     # entries before using HEAD/index/worktree parity as source authority.
@@ -421,6 +423,23 @@ def require_workflow_git_index_identity(
     ):
         if git(*args).returncode != 0:
             raise AuditFailure("prewrite workflow Git index content drift")
+    # Git clean filters and checkout conversions can make git diff --quiet
+    # report equality while raw workflow bytes differ from the indexed blob.
+    for workflow in workflow_sources:
+        relative = workflow.relative_to(repo_root).as_posix()
+        if (workflow.is_symlink() or not workflow.is_file()
+                or workflow.stat().st_nlink != 1):
+            raise AuditFailure("prewrite workflow Git index raw blob drift")
+        if workflow.stat().st_size > MAX_WORKFLOW_SOURCE_BYTES:
+            raise AuditFailure("workflow source exceeds reviewed byte limit")
+        raw = workflow.read_bytes()
+        if len(raw) > MAX_WORKFLOW_SOURCE_BYTES:
+            raise AuditFailure("workflow source exceeds reviewed byte limit")
+        expected = index_blobs[relative]
+        digest = hashlib.sha1 if len(expected) == 40 else hashlib.sha256
+        payload = f"blob {len(raw)}\0".encode("ascii") + raw
+        if digest(payload).hexdigest() != expected:
+            raise AuditFailure("prewrite workflow Git index raw blob drift")
 
 
 def matching_workflows(repo_root: Path, relative: str, *, require_git_index: bool = False) -> list[str]:
@@ -930,6 +949,33 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("staged-only Git workflow drift negative accepted")
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
+        # A clean filter can hide modified YAML from git diff; raw blob
+        # identity must still fail closed on the actual CLI.
+        attributes = root / ".gitattributes"
+        attributes.write_text(".github/workflows/*.yml filter=opaque\n", encoding="utf-8")
+        fixture_git("-C", str(root), "config", "filter.opaque.clean",
+                    "printf 'on: push\\n'")
+        workflow.write_text("on: workflow_dispatch\n", encoding="utf-8")
+        filtered = subprocess.run(
+            ["git", "-C", str(root), "diff", "--quiet", "HEAD",
+             "--", ".github/workflows"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if filtered.returncode != 0:
+            raise AuditFailure("Git clean-filter fixture did not mask diff")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index raw blob drift":
+                raise
+        else:
+            raise AuditFailure("Git clean-filter raw-byte drift negative accepted")
+        workflow.write_text(original, encoding="utf-8")
+        attributes.unlink()
+        fixture_git("-C", str(root), "config", "--unset", "filter.opaque.clean")
+        if matching_workflows(root, "scripts/a.py", require_git_index=True) != [
+                ".github/workflows/w.yml"]:
+            raise AuditFailure("Git clean-filter restoration positive failed")
         blob = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD:.github/workflows/w.yml"],
             capture_output=True, text=True, check=False, timeout=10,
