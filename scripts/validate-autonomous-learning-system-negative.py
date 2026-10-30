@@ -840,6 +840,12 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
     # declarations. Reject unreviewed multiplicity, including blank imports.
     if len(bindings) != len(set(bindings)):
         raise RuntimeError("unreviewed duplicate Go import binding")
+    # Distinct paths with the same explicit local name are not independent
+    # bindings: Go rejects that redeclaration even when the path set differs.
+    # Blank and dot imports are special forms, not named local bindings.
+    named_aliases = [alias for alias, _ in bindings if alias not in ("", "_", ".")]
+    if len(named_aliases) != len(set(named_aliases)):
+        raise RuntimeError("unreviewed Go import alias collision")
     if include_aliases:
         return set(aliases)
     return set(paths) if include_external else {
@@ -878,6 +884,19 @@ def prove_upload_route_go_import_parser() -> None:
                 raise
         else:
             raise RuntimeError("Go duplicate import binding negative accepted: " + label)
+    for label, candidate in (
+        ("grouped same alias different paths",
+         'import (\n  alias "fmt"\n  alias "math"\n)\n'),
+        ("single-line same alias different paths",
+         'import alias "fmt"\nimport alias "math"\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate, include_aliases=True)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go import alias collision":
+                raise
+        else:
+            raise RuntimeError("Go import alias collision negative accepted: " + label)
     plain, aliased = 'import "fmt"\n', 'import other "fmt"\n'
     if upload_route_local_go_imports(plain, include_external=True) != upload_route_local_go_imports(aliased, include_external=True):
         raise RuntimeError("Go alias mutation changed path-only positive control")
