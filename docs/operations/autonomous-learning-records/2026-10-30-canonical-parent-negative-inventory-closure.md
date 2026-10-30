@@ -1,0 +1,26 @@
+# Supplemental OPS learning — exact canonical parent negative inventory (2026-10-30)
+
+Append-only learning/history only. Mandatory contract `contracts/operations/autonomous-learning-system.json` and canonical learning `docs/operations/AUTONOMOUS-OPS-LEARNING.md` remain separate. This is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review or human-promotion evidence.
+
+## Material failure — prospective test-inventory drift
+
+- **symptom:** After group-writable parent rejection was implemented, the world/group parent CLI negative inventories listed six reviewed paths independently. If a canonical learning/CI authority path later acquired a new in-repository ancestor, a future maintainer could update the validator but omit the corresponding negative; individual existing negatives would still pass.
+- **evidence:** At source `b1c2033e5572597617c71bf556ca72e63546621e`, both CLI case loops and both expected-diagnostic maps contained duplicated literal ancestor inventories. The five canonical authority paths imply exactly six distinct in-repository ancestor directories: `.`, `scripts`, `contracts`, `contracts/operations`, `docs`, `docs/operations`. A separate Python `pathlib` calculation confirmed this closure. This is a prospective test-completeness risk, not an observed production failure.
+- **rootCauseOrUnknown:** Verified: the negative suite lacked an executable equality constraint between its reviewed ancestor set and the parent prefixes derived from all five canonical authorities.
+- **failedApproach:** Treating six hard-coded world/group CLI negatives as permanently complete without a dependency-derived inventory guard.
+- **correction:** [`97edac9c`](https://github.com/m-shogo/memories-project/commit/97edac9c3fafaa14df9e08367078d172c1a5a3d8) introduces `require_parent_case_coverage`, deriving the expected ancestor set from all five authority paths, enforcing exact set/length/unique-label equality, and sharing the reviewed cases between both CLI negative loops and diagnostic maps.
+- **recurrenceGuard:** Three independent synthetic negative mutations—missing, duplicated and substituted ancestor entries—must be rejected with the exact inventory-drift diagnostic. Both world/group real-CLI negatives remain active for all six paths. The new proof is executed by the existing CI-bound negative harness.
+- **retryCondition:** Update the inventory only after reviewing the canonical authority path change and all newly introduced ancestor permissions, with complete positive/negative tests, exact-source CI and protected-authority comparison. Never retry unchanged MinIO HTTP 401, workflow-write permission, canonical large-history transport or human-promotion blockers.
+
+## Material success and authority boundary
+
+- **outcome:** Exact-source [Autonomous Learning Guard #41072087068](https://github.com/m-shogo/memories-project/actions/runs/41072087068) completed **SUCCESS** on `97edac9c3fafaa14df9e08367078d172c1a5a3d8`. This is validator execution evidence only.
+- **evidence:** GitHub Actions logs confirm append-only, learning contract, entry-document, clean/read-only and helper-ancestor checks PASS; **560** canonical fail-closed negatives, **195** fanout synthetic cases and **1,186** helper-ancestor negative mutations PASS. The three new parent-inventory synthetic negatives are exercised but are not separately included in the printed 560 count.
+- **whySafe:** Only `scripts/validate-autonomous-learning-system-negative.py` changed. All mutation fixtures are disposable; no workflow YAML, Go code, credentials, traffic, production evidence, recovery, eight-domain records or promotion authority was changed.
+- **reusableMechanism:** Derive a negative-test inventory from the exact protected input-path closure and bind it to real CLI cases and diagnostics; reject both omissions and duplicates, rather than relying on a manually maintained count.
+- **protectedAuthorityCheck:** Commit `97edac9c` changes only the read-only negative validator. Across the current run, canonical learning blob `b809c69d`, mandatory contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0`, and six protected generation/objective/drill/evidence/non-resurrection/promotion registries remain unchanged. The 4.17 MB canonical learning history was not fully transferred, so no claim of full-content inspection is made.
+- **production boundary:** `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/semantically preflight-eligible generations 0/0, no human-approved current recovery objective, executable reviewed request, request-bound evidence, complete typed eight-domain coverage, independent review, final candidate or human production-promotion authority. Learning records cannot satisfy any of these gates.
+
+## Next safe target
+
+Audit Go/Python transitive dependency closure and source-change Push/PR trigger coverage for a genuinely pre-MinIO Focused Upload Route Test. Preserve the existing workflow-write permission blocker; do not narrow the event filters or claim production readiness from learning CI.
