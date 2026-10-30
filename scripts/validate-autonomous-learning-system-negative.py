@@ -2851,6 +2851,11 @@ def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
                 raise
         else:
             raise RuntimeError("Upload Route SQL apply boundary negative accepted: " + label)
+    helper_start = source.index("func newLiveServer(t *testing.T) *liveServer {")
+    helper_end = source.find("\nfunc ", helper_start + 1)
+    if helper_end < 0:
+        raise RuntimeError("SQL advisory lock helper boundary drift")
+    helper_source = source[helper_start:helper_end]
     for label, old, new in (
         ("wrong advisory lock ID", "SELECT pg_advisory_lock(730001)",
          "SELECT pg_advisory_lock(730002)"),
@@ -2864,9 +2869,10 @@ def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
         ("ignore lock error", 'if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {\n\t\t\tmigrateErr = err',
          'if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {\n\t\t\t_ = err'),
     ):
-        if source.count(old) != 1:
+        if helper_source.count(old) != 1:
             raise RuntimeError("SQL advisory lock fixture anchor drift: " + label)
-        changed = source.replace(old, new, 1)
+        changed = (source[:helper_start] + helper_source.replace(old, new, 1)
+                   + source[helper_end:])
         try:
             require_reviewed_upload_route_sql_lock(changed)
         except RuntimeError as exc:
