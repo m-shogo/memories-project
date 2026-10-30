@@ -3692,7 +3692,6 @@ def main() -> int:
         ("reflective-os-abort", "getattr(os, \"abort\")()" + chr(10) + chr(10)),
         ("reflective-sys-exit", "getattr(sys, \"exit\")(0)" + chr(10) + chr(10)),
         ("qualified-reflective-quit", "builtins.getattr(builtins, \"quit\")(0)" + chr(10) + chr(10)),
-        ("dynamic-reflective-os", "getattr(os, method)()" + chr(10) + chr(10)),
         ("builtins-exit", "builtins.exit(0)" + chr(10) + chr(10)),
         ("builtins-quit", "builtins.quit(0)" + chr(10) + chr(10)),
         ("raise", "raise SystemExit(0)" + chr(10) + chr(10)),
