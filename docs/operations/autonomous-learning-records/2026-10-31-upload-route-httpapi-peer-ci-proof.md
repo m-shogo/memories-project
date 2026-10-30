@@ -1,0 +1,15 @@
+# Supplemental OPS learning — imported httpapi package peer trigger closure (2026-10-31)
+
+Append-only supplemental learning only, not canonical production evidence or authority. No learning record can satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, recovery generation/objective/request, typed eight-domain non-resurrection, independent review or human promotion.
+
+## Material success and bounded scope
+
+- **outcome:** All five non-test `internal/httpapi` Go peer files other than the explicitly focused `upload_handler.go` are bound to actual Push/PR MinIO-first source-path classification: `account_handler.go`, `apple_handler.go`, `apply_handler.go`, `fence_error.go`, and `preview_handler.go`. The guard rejects a package declaration change and rejects any focused-workflow match not yet reviewed.
+- **evidence:** [Code commit a5273fa](https://github.com/m-shogo/memories-project/commit/a5273fa8b0ccae8c15ab0f222213284a4e22770f), exact-source [Autonomous Learning Guard #41089622871](https://github.com/m-shogo/memories-project/actions/runs/41089622871) **SUCCESS**. Logs report 601 canonical fail-closed cases, 195 fanout synthetic cases, 1,186 helper ancestor negative mutations, append-only, learning contract, entry-document and read-only validation PASS. The actual Go import chain `httpserver/server.go` → `httpapi` means all non-test files in that package compile as inputs; `upload_handler.go` is already an explicit focused trigger, whereas the five peers are not.
+- **whySafe:** Only `scripts/validate-autonomous-learning-system-negative.py` changed; this is read-only classification with temporary workflow fixtures. No Go production source, workflow YAML, MinIO, credentials, traffic or recovery evidence was changed or executed.
+- **reusableMechanism:** For an imported Go package, enumerate the reviewed non-test package peers, verify package declarations and classify each concrete path against actual workflow source; do not equate a single explicitly triggered file with the entire compiled package.
+- **protectedAuthorityCheck:** All ten protected authority blobs remained unchanged relative to start HEAD `cfc012db`: canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0` and six protected registries.
+
+## Remaining limits and next safe target
+
+This proves five scoped path classifications, **not** complete transitive Go dependency closure, successful independent Go regression CI or a pre-MinIO test path. The separate second-hop account deletion/epoch/security source classification at commit `4dd5c622` was still awaiting exact-source CI at the time of this record. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/semantically eligible generations 0/0; no approved objective, executable reviewed request, request-bound evidence, typed eight-domain coverage, independent review or human promotion. Next: verify second-hop package classifications and continue safe source/trigger closure audits without editing blocked workflow YAML.
