@@ -303,10 +303,27 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     return False
 
 
+# Windows Win32 device stems (also reserved with extensions), including the
+# documented superscript digits. This prewrite path is intentionally portable.
+WINDOWS_RESERVED_DEVICE_STEMS = (
+    {"con", "prn", "aux", "nul", "conin$", "conout$"}
+    | {"com" + digit for digit in "123456789¹²³"}
+    | {"lpt" + digit for digit in "123456789¹²³"}
+)
+
+
+def windows_component_ambiguous(part: str) -> bool:
+    # Win32 strips terminal dots/spaces and treats device stems as devices,
+    # even with a normal-looking extension (e.g. NUL.txt or COM¹.log).
+    stem = part.split(".", 1)[0].rstrip(" ").casefold()
+    return part != part.rstrip(" .") or stem in WINDOWS_RESERVED_DEVICE_STEMS
+
+
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
             or ":" in relative
             or any(part in ("", ".", "..") or part.rstrip(" .").casefold() == ".git"
+                   or windows_component_ambiguous(part)
                    for part in relative.split("/"))
             or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
             or any(unicodedata.category(char) in {"Cf", "Cs", "Zl", "Zp"}
@@ -410,6 +427,16 @@ def self_test(repo_root: Path) -> None:
         ("Windows drive-relative path", "C:config"),
         ("Windows drive-prefixed path", "D:/outside/config"),
         ("NTFS alternate stream", "scripts/a.py:stream"),
+        ("Windows reserved CON", "docs/CON"),
+        ("Windows reserved NUL extension", "assets/nul.txt"),
+        ("Windows reserved COM9", "COM9"),
+        ("Windows reserved LPT1 extension", "docs/lpt1.log"),
+        ("Windows reserved superscript COM", "docs/COM¹.txt"),
+        ("Windows reserved superscript LPT", "docs/LPT²"),
+        ("Windows reserved CONIN$", "docs/CONIN$.log"),
+        ("Windows reserved CONOUT$", "docs/conout$"),
+        ("Windows trailing dot", "docs/notes."),
+        ("Windows trailing space", "docs/notes /readme.md"),
     ):
         try:
             validate_relative_path(path)
@@ -421,6 +448,8 @@ def self_test(repo_root: Path) -> None:
     # Ordinary Japanese filename characters remain valid repository paths.
     validate_relative_path("docs/日本語.md")
     validate_relative_path(".gitignore")
+    validate_relative_path("docs/conifer.md")
+    validate_relative_path("docs/company.txt")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
@@ -886,7 +915,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 27 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 37 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
