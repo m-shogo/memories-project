@@ -321,7 +321,7 @@ def windows_component_ambiguous(part: str) -> bool:
         or stem in WINDOWS_RESERVED_DEVICE_STEMS
         # Win32 8.3 short-name aliases can resolve to a different long-name
         # file when 8dot3 generation is enabled; do not infer safe identity.
-        or re.fullmatch(r"[^.~ /]{1,6}~[1-9][0-9]*(?:\\.[^.]{0,3})?", part) is not None
+        or re.fullmatch(r"[^.~ /]{1,6}~[1-9][0-9]*(?:\.[^.]{0,3})?", part) is not None
     )
 
 
