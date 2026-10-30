@@ -10,6 +10,8 @@ import difflib
 import hashlib
 import json
 import math
+import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -39,19 +41,58 @@ class ValidationFailure(RuntimeError):
 
 
 MAX_LEARNING_CONTRACT_BYTES = 1024 * 1024
+MAX_CANONICAL_LEARNING_BYTES = 8 * 1024 * 1024
+MAX_CANONICAL_ENTRYPOINT_BYTES = 512 * 1024
+
+
+def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str) -> bytes:
+    """Read a bounded, descriptor-pinned regular canonical authority snapshot."""
+    diagnostic = f"canonical authority changed during read: {path}"
+    try:
+        preflight = path.lstat()
+    except OSError:
+        raise ValidationFailure(f"unreadable authority: {path}") from None
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+    except OSError:
+        raise ValidationFailure(f"unreadable authority: {path}") from None
+    try:
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                    or before.st_mode & 0o002
+                    or (preflight.st_dev, preflight.st_ino) !=
+                    (before.st_dev, before.st_ino)):
+                raise ValidationFailure(diagnostic)
+            if before.st_size > max_bytes:
+                raise ValidationFailure(too_large)
+            raw = stream.read(max_bytes + 1)
+            if len(raw) > max_bytes:
+                raise ValidationFailure(too_large)
+            after = os.fstat(stream.fileno())
+            live = path.lstat()
+            if (not stat.S_ISREG(live.st_mode)
+                    or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
+                    or after.st_nlink != 1 or live.st_nlink != 1
+                    or after.st_mode & 0o002 or live.st_mode & 0o002
+                    or (after.st_size, after.st_mtime_ns, after.st_ctime_ns) !=
+                    (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                    or live.st_ctime_ns != before.st_ctime_ns):
+                raise ValidationFailure(diagnostic)
+            return raw
+    except OSError:
+        raise ValidationFailure(f"unreadable authority: {path}") from None
 
 
 def load_object(path: Path) -> dict[str, Any]:
     """Read the learning contract with bounded, unambiguous JSON semantics."""
     if not path.is_file():
         raise ValidationFailure(f"missing authority: {path}")
-    try:
-        with path.open("rb") as stream:
-            raw = stream.read(MAX_LEARNING_CONTRACT_BYTES + 1)
-    except OSError:
-        raise ValidationFailure(f"unreadable authority: {path}") from None
-    if len(raw) > MAX_LEARNING_CONTRACT_BYTES:
-        raise ValidationFailure(f"oversized JSON authority: {path}")
+    raw = read_canonical_authority_bytes(
+        path, MAX_LEARNING_CONTRACT_BYTES,
+        too_large=f"oversized JSON authority: {path}",
+    )
     try:
         source = raw.decode("utf-8")
     except UnicodeDecodeError:
@@ -203,9 +244,12 @@ def validate(repo_root: Path) -> None:
     if not (repo_root / NEGATIVE_VALIDATOR).is_file():
         raise ValidationFailure("bound negative learning guard is missing")
     try:
-        ci_entrypoint = (repo_root / CI_ENTRYPOINT).read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"bound learning CI entrypoint is missing: {CI_ENTRYPOINT}") from exc
+        ci_entrypoint = read_canonical_authority_bytes(
+            repo_root / CI_ENTRYPOINT, MAX_CANONICAL_ENTRYPOINT_BYTES,
+            too_large=f"oversized learning CI entrypoint: {CI_ENTRYPOINT}",
+        ).decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValidationFailure(f"invalid UTF-8: {CI_ENTRYPOINT}") from None
     for guard in (VALIDATOR.as_posix(), NEGATIVE_VALIDATOR.as_posix()):
         if guard not in ci_entrypoint:
             raise ValidationFailure(f"learning CI entrypoint does not invoke bound guard: {guard}")
@@ -701,9 +745,12 @@ def validate(repo_root: Path) -> None:
 
     prove_prewrite_python_negatives()
     try:
-        learning = (repo_root / LEARNING).read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise ValidationFailure(f"missing learning authority: {LEARNING}") from exc
+        learning = read_canonical_authority_bytes(
+            repo_root / LEARNING, MAX_CANONICAL_LEARNING_BYTES,
+            too_large=f"oversized learning authority: {LEARNING}",
+        ).decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValidationFailure(f"invalid UTF-8: {LEARNING}") from None
     for phrase in (
         "not production evidence",
         "Do not repeatedly retry an unchanged permission failure",
