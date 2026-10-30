@@ -3247,6 +3247,37 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         if (result.returncode != 1 or result.stdout or
                 result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow source hardlink alias\n"):
             raise RuntimeError("prewrite workflow source hardlink CLI negative failed")
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-submodule-identity-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "fixture.yml").write_text('on: push\n', encoding="utf-8")
+        (root / "scripts").mkdir()
+        (root / ".git").mkdir()
+        args = [sys.executable, str(guard), "--repo-root", str(root),
+                "--path", "scripts/a.py"]
+        positive = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (positive.returncode != 0 or positive.stderr or
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in positive.stdout.splitlines()):
+            raise RuntimeError("normal checkout root Git metadata CLI positive failed")
+        gitmodules = root / ".gitmodules"
+        gitmodules.write_text('[submodule "x"]\npath = vendor/x\n', encoding="utf-8")
+        for label, diagnostic in (
+            ("submodule inventory", "prewrite Git submodule inventory requires review"),
+            ("nested checkout", "prewrite nested Git checkout requires review"),
+        ):
+            result = subprocess.run(
+                args, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (result.returncode != 1 or result.stdout or
+                    result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
+                raise RuntimeError("prewrite Git identity CLI negative failed: " + label)
+            if label == "submodule inventory":
+                gitmodules.unlink()
+                (root / "scripts/.git").write_text("gitdir: ../external\n", encoding="utf-8")
     with tempfile.TemporaryDirectory(prefix="learning-fanout-target-hardlink-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"

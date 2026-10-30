@@ -247,6 +247,20 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     # outside the requested path; do not audit it as an independent target.
     if target.is_file() and target.stat().st_nlink != 1:
         raise AuditFailure("prewrite target hardlink alias")
+    # A checked-out Gitlink can hide nested source authority. This direct
+    # matcher has no reviewed Git index/submodule closure, so refuse bounded
+    # claims if any submodule configuration is present (even unrelated paths).
+    gitmodules = repo_root / ".gitmodules"
+    if gitmodules.exists() or gitmodules.is_symlink():
+        raise AuditFailure("prewrite Git submodule inventory requires review")
+    # Nested .git directories and worktree gitdir files are distinct checkouts.
+    # The repository root's own .git is expected and is deliberately excluded.
+    for component in (target, *target.parents):
+        if component == repo_root:
+            break
+        marker = component / ".git"
+        if marker.exists() or marker.is_symlink():
+            raise AuditFailure("prewrite nested Git checkout requires review")
     directory = repo_root / ".github/workflows"
     # A normal workflow leaf beneath a symlinked .github ancestor is still
     # an alias outside the reviewed repository tree.
@@ -561,6 +575,33 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("hardlinked workflow source negative accepted")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-submodule-identity-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "w.yml").write_text('on: push\n', encoding="utf-8")
+        (root / "scripts").mkdir()
+        (root / ".git").mkdir()
+        if matching_workflows(root, "scripts/a.py") != [".github/workflows/w.yml"]:
+            raise AuditFailure("normal checkout root Git metadata positive failed")
+        gitmodules = root / ".gitmodules"
+        gitmodules.write_text('[submodule "x"]\npath = vendor/x\n', encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "prewrite Git submodule inventory requires review":
+                raise
+        else:
+            raise AuditFailure("submodule inventory prewrite negative accepted")
+        gitmodules.unlink()
+        (root / "scripts/.git").write_text("gitdir: ../external\n", encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "prewrite nested Git checkout requires review":
+                raise
+        else:
+            raise AuditFailure("nested Git checkout prewrite negative accepted")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
