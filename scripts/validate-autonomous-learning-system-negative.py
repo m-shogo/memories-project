@@ -364,6 +364,16 @@ def expected_diagnostic(name: str) -> str:
         }
         if label in targets:
             return "world-writable learning authority parent forbidden: " + targets[label].as_posix()
+    if name.startswith("group-writable ") and name.endswith(" parent directory"):
+        label = name[len("group-writable "):-len(" parent directory")]
+        targets = {
+            "checkout root": Path("."),
+            "scripts": Path("scripts"),
+            "contracts operations": Path("contracts/operations"),
+            "docs operations": Path("docs/operations"),
+        }
+        if label in targets:
+            return "group-writable learning authority parent forbidden: " + targets[label].as_posix()
     if name.startswith("nonregular "):
         for kind in ("fifo", "directory"):
             prefix = "nonregular " + kind + " "
@@ -479,6 +489,11 @@ def group_writable_authority(root: Path, relative: Path) -> None:
 def world_writable_parent_directory(root: Path, relative: Path) -> None:
     # Only a disposable in-repository parent is made writable.
     (root / relative).chmod(0o777)
+
+
+def group_writable_parent_directory(root: Path, relative: Path) -> None:
+    # Group write on an in-repository authority parent also permits replacement.
+    (root / relative).chmod(0o775)
 
 
 def oversized_learning_authority(root: Path) -> None:
@@ -6031,6 +6046,16 @@ def main() -> int:
         cases.append((
             f"world-writable {label} parent directory",
             lambda root, path=relative: world_writable_parent_directory(root, path),
+        ))
+    for label, relative in (
+        ("checkout root", Path(".")),
+        ("scripts", Path("scripts")),
+        ("contracts operations", Path("contracts/operations")),
+        ("docs operations", Path("docs/operations")),
+    ):
+        cases.append((
+            f"group-writable {label} parent directory",
+            lambda root, path=relative: group_writable_parent_directory(root, path),
         ))
     cases.append((
         "oversized learning history authority",

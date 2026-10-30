@@ -174,12 +174,18 @@ def validate(repo_root: Path) -> None:
         for depth in range(len(relative.parts)):
             parent = repo_root.joinpath(*relative.parts[:depth])
             try:
-                if (not parent.is_symlink() and parent.is_dir()
-                        and parent.stat().st_mode & 0o002):
-                    raise ValidationFailure(
-                        f"world-writable learning authority parent forbidden: "
-                        f"{parent.relative_to(repo_root)}"
-                    )
+                if not parent.is_symlink() and parent.is_dir():
+                    parent_mode = parent.stat().st_mode
+                    if parent_mode & 0o002:
+                        raise ValidationFailure(
+                            f"world-writable learning authority parent forbidden: "
+                            f"{parent.relative_to(repo_root)}"
+                        )
+                    if parent_mode & 0o020:
+                        raise ValidationFailure(
+                            f"group-writable learning authority parent forbidden: "
+                            f"{parent.relative_to(repo_root)}"
+                        )
             except OSError:
                 raise ValidationFailure(
                     f"unreadable learning authority parent: {parent}"
