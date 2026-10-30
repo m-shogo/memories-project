@@ -12,7 +12,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import SimpleQueue
 from threading import local
@@ -201,7 +200,34 @@ def require_reviewed_learning_negative_stdout(source: str) -> None:
     mains = [node for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name == "main"]
     stdout_calls = []
+    # Direct low-level writes bypass the reviewed print-only stdout inventory.
+    # They also contaminate the nested CI child's exact empty-stderr proof.
+    def unreviewed_stream_write(node: ast.Call) -> bool:
+        func = node.func
+        if not isinstance(func, ast.Attribute):
+            return False
+        if (isinstance(func.value, ast.Name) and func.value.id == "builtins"
+                and func.attr == "print"):
+            return True
+        if (isinstance(func.value, ast.Name) and func.value.id == "os"
+                and func.attr == "write" and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and type(node.args[0].value) is int
+                and node.args[0].value in (1, 2)):
+            return True
+        if func.attr not in {"write", "writelines"}:
+            return False
+        stream = func.value
+        if isinstance(stream, ast.Attribute) and stream.attr == "buffer":
+            stream = stream.value
+        return (isinstance(stream, ast.Attribute)
+                and stream.attr in {"stdout", "__stdout__", "stderr", "__stderr__"}
+                and isinstance(stream.value, ast.Name)
+                and stream.value.id == "sys")
+
     for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and unreviewed_stream_write(node):
+            raise RuntimeError("unreviewed learning negative stdout")
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "print"):
             continue
@@ -227,6 +253,22 @@ def prove_learning_negative_stdout_negatives() -> None:
     base = 'def main():\n    print(f"Autonomous learning negative validation PASS ({count} fail-closed cases)")\n'
     require_reviewed_learning_negative_stdout(base)
     require_reviewed_learning_negative_stdout(base + 'print("debug", file=sys.stderr)\n')
+    for label, injected in (
+        ("stdout write", 'sys.stdout.write("extra")\n'),
+        ("stdout buffer write", 'sys.stdout.buffer.write(b"extra")\n'),
+        ("dunder stdout writelines", 'sys.__stdout__.writelines(["extra"])\n'),
+        ("stderr write", 'sys.stderr.write("profile")\n'),
+        ("builtins print", 'builtins.print("extra")\n'),
+        ("os stdout fd", 'os.write(1, b"extra")\n'),
+        ("os stderr fd", 'os.write(2, b"extra")\n'),
+    ):
+        try:
+            require_reviewed_learning_negative_stdout(base + injected)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed learning negative stdout":
+                raise
+        else:
+            raise RuntimeError("learning negative direct stream bypass accepted: " + label)
     for label, candidate in (
         ("extra stdout", base + 'print("extra")\n'),
         ("wrong marker", base.replace("Autonomous learning", "Autonomous learn")),
@@ -489,24 +531,17 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
 
 
 def require_failure(source_root: Path, name: str, mutate,
-                    fixture_parent: Path | None = None) -> tuple[float, float, float]:
-    # Observe fixture-copy, fingerprint/mutation, and child-validation costs
-    # without changing the required negative admission or timeout contract.
+                    fixture_parent: Path | None = None) -> None:
     with tempfile.TemporaryDirectory(prefix="learning-negative-",
                                      dir=fixture_parent) as tmp:
         root = Path(tmp)
-        start = time.perf_counter()
         seed(source_root, root)
-        seeded = time.perf_counter()
         before = fixture_state(root)
         mutate(root)
         if fixture_state(root) == before:
             raise RuntimeError(f"negative fixture did not mutate canonical authority: {name}")
-        prepared = time.perf_counter()
         result = run(source_root, root)
         require_expected_rejection(name, result)
-        verified = time.perf_counter()
-    return seeded - start, prepared - seeded, verified - prepared
 
 
 def edit_contract(root: Path, edit) -> None:
@@ -7239,7 +7274,6 @@ def main() -> int:
     # dynamic executor.map scheduling avoids a slow fixed half exceeding the
     # independent nested 120-second deadline. Results remain source ordered.
     worker_state = local()
-    worker_started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="learning-negative-workers-") as tmp:
         available_parents = SimpleQueue()
         for index in range(2):
@@ -7253,23 +7287,13 @@ def main() -> int:
                 parent = available_parents.get_nowait()
                 worker_state.fixture_parent = parent
             name, mutate = item
-            phases = require_failure(source_root, name, mutate, parent)
-            return name, phases
+            require_failure(source_root, name, mutate, parent)
+            return name
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             completed = list(executor.map(execute_case, cases))
-    if [name for name, _ in completed] != [name for name, _ in cases]:
+    if completed != [name for name, _ in cases]:
         raise RuntimeError("canonical negative worker result/order drift")
-    # The profile is diagnostic only, never a success gate or production proof.
-    # Aggregated worker-seconds can exceed elapsed wall-seconds with two workers.
-    phase_totals = [sum(phases[index] for _, phases in completed)
-                    for index in range(3)]
-    sys.stderr.write(
-        "Canonical negative fixture profile (diagnostic only): "
-        f"cases={len(completed)} copy={phase_totals[0]:.2f}s "
-        f"prepare={phase_totals[1]:.2f}s child={phase_totals[2]:.2f}s "
-        f"wall={time.perf_counter() - worker_started:.2f}s\n"
-    )
 
     prove_parent_case_coverage_negatives()
     prove_canonical_descriptor_read_negatives(source_root)
