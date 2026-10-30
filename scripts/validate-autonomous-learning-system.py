@@ -859,7 +859,8 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                              if arg is not None and arg.annotation is not None)
                 if node.returns is not None:
                     eager.append(node.returns)
-                return ((not top_level and not class_local and node.name == "main")
+                return (((not top_level and not class_local and node.name == "main")
+                         or (not class_local and node.name == "__name__"))
                         or any(module_shadows_main(value, top_level=False, class_local=class_local)
                                for value in eager))
             if isinstance(node, ast.ClassDef):
@@ -868,7 +869,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 # unless a global declaration explicitly redirects them.
                 eager = [*node.decorator_list, *node.bases,
                          *(kw.value for kw in node.keywords)]
-                return ((not class_local and node.name == "main")
+                return ((not class_local and node.name in {"main", "__name__"})
                         or any(module_shadows_main(value, top_level=False,
                                                    class_local=class_local)
                                for value in eager)
@@ -878,7 +879,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(node, ast.Lambda):
                 return False
             if isinstance(node, ast.Global):
-                return "main" in node.names
+                return bool({"main", "__name__"} & set(node.names))
             # A for-loop or eager comprehension consumes a mapped callable;
             # generator expressions alone defer that iteration.
             def mapped_iter(value: ast.AST) -> bool:
@@ -906,11 +907,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return bool(node.generators) and module_shadows_main(
                     node.generators[0].iter, top_level=False, class_local=class_local
                 )
-            if (isinstance(node, ast.Name) and node.id == "main"
+            if (isinstance(node, ast.Name) and node.id in {"main", "__name__"}
                     and isinstance(node.ctx, (ast.Store, ast.Del))):
                 return not class_local
             if isinstance(node, (ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
-                if node.name == "main":
+                if node.name in {"main", "__name__"}:
                     return not class_local
             # A module-level reflective namespace call or immediately invoked
             # lambda can rebind main without a lexical Store/Del node.
@@ -919,7 +920,8 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return True
             if (isinstance(node, ast.Subscript) and
                     isinstance(node.ctx, (ast.Store, ast.Del)) and
-                    isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
+                    isinstance(node.slice, ast.Constant)
+                    and node.slice.value in {"main", "__name__"}):
                 return True
             if isinstance(node, ast.Call):
                 # Module-level direct calls into locally defined functions
@@ -987,7 +989,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                                    or key.value == "main" for key in arg.keys):
                                 return True
                     elif (not node.args or not isinstance(node.args[0], ast.Constant)
-                          or node.args[0].value == "main"):
+                          or node.args[0].value in {"main", "__name__"}):
                         return True
                 if isinstance(node.func, ast.Lambda):
                     return True
@@ -1022,7 +1024,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                         node.func.id in {"setattr", "delattr"} and
                         len(node.args) >= 2 and
                         (not isinstance(node.args[1], ast.Constant)
-                         or node.args[1].value == "main")):
+                         or node.args[1].value in {"main", "__name__"})):
                     return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 # A module-level star import may bind main without naming it
@@ -1030,7 +1032,7 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return not class_local and any(
                     (isinstance(node, ast.ImportFrom) and alias.name == "*")
                     or (alias.asname or (alias.name.split(".")[0]
-                                        if isinstance(node, ast.Import) else alias.name)) == "main"
+                                        if isinstance(node, ast.Import) else alias.name)) in {"main", "__name__"}
                     for alias in node.names
                 )
             return any(module_shadows_main(child, top_level=False, class_local=class_local)
@@ -1100,6 +1102,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
         ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
         ("deferred local helper call", 'def helper():\n    return 1\ndef wrapper():\n    return helper()\n', (4, 0)),
+        ("deferred entry-name local", 'def helper():\n    __name__ = "other"\n', (2, 0)),
+        ("class-local entry-name", 'class Helper:\n    __name__ = "other"\n', (2, 0)),
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
@@ -1155,6 +1159,21 @@ def prove_prewrite_python_negatives() -> None:
          "baseline Python line count exceeds reviewed bound", overlong),
         ("unchanged", baseline, sha, 40, 20, "no changes", baseline),
         ("bad baseline hash", candidate, "0" * 64, 40, 20, "SHA-256 mismatch", baseline),
+        ("module entry-name assignment", baseline.replace(
+            'if __name__', '__name__ = "__main__"\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module entry-name deletion", baseline.replace(
+            'if __name__', 'del __name__\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module entry-name import alias", baseline.replace(
+            'if __name__', 'import math as __name__\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module entry-name class", baseline.replace(
+            'if __name__', 'class __name__:\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module entry-name function", baseline.replace(
+            'if __name__', 'def __name__():\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("eager local helper call", baseline.replace(
             'if __name__', 'def mutate():\n    globals()["main"] = None\nmutate()\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
