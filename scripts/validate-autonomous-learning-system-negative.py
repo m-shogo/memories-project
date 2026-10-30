@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from queue import SimpleQueue
 from threading import local
@@ -488,17 +489,24 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
 
 
 def require_failure(source_root: Path, name: str, mutate,
-                    fixture_parent: Path | None = None) -> None:
+                    fixture_parent: Path | None = None) -> tuple[float, float, float]:
+    # Observe fixture-copy, fingerprint/mutation, and child-validation costs
+    # without changing the required negative admission or timeout contract.
     with tempfile.TemporaryDirectory(prefix="learning-negative-",
                                      dir=fixture_parent) as tmp:
         root = Path(tmp)
+        start = time.perf_counter()
         seed(source_root, root)
+        seeded = time.perf_counter()
         before = fixture_state(root)
         mutate(root)
         if fixture_state(root) == before:
             raise RuntimeError(f"negative fixture did not mutate canonical authority: {name}")
+        prepared = time.perf_counter()
         result = run(source_root, root)
         require_expected_rejection(name, result)
+        verified = time.perf_counter()
+    return seeded - start, prepared - seeded, verified - prepared
 
 
 def edit_contract(root: Path, edit) -> None:
@@ -7231,6 +7239,7 @@ def main() -> int:
     # dynamic executor.map scheduling avoids a slow fixed half exceeding the
     # independent nested 120-second deadline. Results remain source ordered.
     worker_state = local()
+    worker_started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="learning-negative-workers-") as tmp:
         available_parents = SimpleQueue()
         for index in range(2):
@@ -7244,13 +7253,23 @@ def main() -> int:
                 parent = available_parents.get_nowait()
                 worker_state.fixture_parent = parent
             name, mutate = item
-            require_failure(source_root, name, mutate, parent)
-            return name
+            phases = require_failure(source_root, name, mutate, parent)
+            return name, phases
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             completed = list(executor.map(execute_case, cases))
-    if completed != [name for name, _ in cases]:
+    if [name for name, _ in completed] != [name for name, _ in cases]:
         raise RuntimeError("canonical negative worker result/order drift")
+    # The profile is diagnostic only, never a success gate or production proof.
+    # Aggregated worker-seconds can exceed elapsed wall-seconds with two workers.
+    phase_totals = [sum(phases[index] for _, phases in completed)
+                    for index in range(3)]
+    sys.stderr.write(
+        "Canonical negative fixture profile (diagnostic only): "
+        f"cases={len(completed)} copy={phase_totals[0]:.2f}s "
+        f"prepare={phase_totals[1]:.2f}s child={phase_totals[2]:.2f}s "
+        f"wall={time.perf_counter() - worker_started:.2f}s\n"
+    )
 
     prove_parent_case_coverage_negatives()
     prove_canonical_descriptor_read_negatives(source_root)
