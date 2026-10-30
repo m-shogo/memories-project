@@ -1,0 +1,17 @@
+# Supplemental OPS learning — nested validator 120-second CI deadline (2026-10-31)
+
+Append-only learning only, never production evidence or readiness. Canonical learning and mandatory contract are unchanged. This cannot satisfy backup/restore, RPO/RTO/skew, drill, credential, traffic, generation/objective/request, typed eight-domain non-resurrection, independent review or human promotion.
+
+## Material failure and verified cause
+
+- **symptom:** Adding five additional real CLI source-path negatives for second-hop Go packages made the Autonomous Learning Guard fail even though its first invocation of the negative suite passed.
+- **evidence:** [Code commit 4dd5c62](https://github.com/m-shogo/memories-project/commit/4dd5c62289bdd7d373caa9a67b8d569cb207e58d) triggered [CI #41089936095](https://github.com/m-shogo/memories-project/actions/runs/41089936095), **FAILURE**. The first negative suite reported **606 fail-closed cases PASS**. The independent entry-document validator then reported `autonomous-learning guard timed out after 120s: scripts/validate-autonomous-learning-system-negative.py`. The log shows the second invocation exceeded the existing 120-second bounded subprocess deadline.
+- **rootCauseOrUnknown:** Verified immediate cause: the nested validation deadline was exceeded. The additional five subprocess-based workflow audits increased runtime from the previously passing 601-case suite into a non-deterministic near-limit regime; exact per-case time attribution is unknown.
+- **failedApproach:** Adding unbounded incremental subprocess-based CI classifications while treating the first direct negative-suite PASS as sufficient; ignoring the second entrypoint-invoked 120s validation.
+- **correction:** [f352767](https://github.com/m-shogo/memories-project/commit/f352767ba52508e6f830faf716dee7eaf62e0a9c) removes the five new subprocess-based classifications but retains deterministic second-hop Go import and package-declaration source identity checks. The suite's reported negative count returns to 601 if all other assumptions hold.
+- **recurrenceGuard:** Preserve the existing 120s entrypoint timeout; do not increase it to hide regression. A source comment explicitly limits the second-hop assertion to static source identity, **not** direct Push/PR CI reachability. Full CI requires both direct negative suite and nested entrypoint PASS.
+- **retryCondition:** Reintroduce per-path CLI coverage only with a measured, bounded batch mechanism or a separate authorized CI execution route that demonstrably stays below the existing nested deadline with headroom. Do not repeat the five extra subprocess approach without that changed precondition.
+
+## Protected authority and next safe target
+
+The failure and correction touched only the read-only negative validator; the canonical learning, contract, production status, OPS-P0-007 snapshot and six protected registries remain byte-identical. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/semantically eligible generations 0/0; no approved current objective, executable reviewed request, request-bound evidence, complete typed eight-domain record, independent review or human promotion. Exact-source CI for `f352767` was pending at record creation. Next: verify both direct and nested CI, then pursue a deterministic batched classifier rather than per-path subprocess proliferation. No workflow YAML or external MinIO retry without changed prerequisites.
