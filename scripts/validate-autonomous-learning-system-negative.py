@@ -3596,7 +3596,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             args, capture_output=True, text=True, check=False, timeout=10,
         )
         if (dirty.returncode != 1 or dirty.stdout or
-                dirty.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index content drift\n"):
+                dirty.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index raw blob drift\n"):
             raise RuntimeError("dirty tracked Git workflow CLI negative failed")
         workflow.write_text(original, encoding="utf-8")
         workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
