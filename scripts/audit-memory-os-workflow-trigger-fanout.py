@@ -932,7 +932,7 @@ def self_test(repo_root: Path) -> None:
         try:
             matching_workflows(root, "scripts/a.py", require_git_index=True)
         except AuditFailure as exc:
-            if str(exc) != "prewrite workflow Git index content drift":
+            if str(exc) != "prewrite workflow Git index raw blob drift":
                 raise
         else:
             raise AuditFailure("dirty Git workflow negative accepted")
