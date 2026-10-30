@@ -63,7 +63,12 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                     or before.st_mode & 0o002
                     or (preflight.st_dev, preflight.st_ino) !=
-                    (before.st_dev, before.st_ino)):
+                    (before.st_dev, before.st_ino)
+                    # Same-inode mutation between lstat and open is also
+                    # unreviewed, even if no bytes change after open.
+                    or (preflight.st_size, preflight.st_mtime_ns,
+                        preflight.st_ctime_ns) !=
+                    (before.st_size, before.st_mtime_ns, before.st_ctime_ns)):
                 raise ValidationFailure(diagnostic)
             if before.st_size > max_bytes:
                 raise ValidationFailure(too_large)
