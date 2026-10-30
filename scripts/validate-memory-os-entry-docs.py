@@ -115,7 +115,12 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
         if not output.startswith(prefix) or not output.endswith(suffix):
             return False
         count = output[len(prefix):-len(suffix)]
-        return count.isascii() and count.isdecimal() and int(count) >= MIN_LEARNING_NEGATIVE_CASES
+        # An untrusted child must not trigger Python's oversized-int limit or
+        # use zero-padding to disguise a noncanonical case count.
+        if (not count or len(count) > 9 or count[0] == "0"
+                or not count.isascii() or not count.isdecimal()):
+            return False
+        return int(count) >= MIN_LEARNING_NEGATIVE_CASES
     return False
 
 
@@ -147,6 +152,14 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
          f"Autonomous learning negative validation PASS ({MIN_LEARNING_NEGATIVE_CASES - 1} fail-closed cases)\n", "", False),
         ("nonnumeric count", LEARNING_GUARDS[1], 0,
          "Autonomous learning negative validation PASS (False fail-closed cases)\n", "", False),
+        ("zero-padded count", LEARNING_GUARDS[1], 0,
+         f"Autonomous learning negative validation PASS (0{MIN_LEARNING_NEGATIVE_CASES} fail-closed cases)\n", "", False),
+        ("oversized count", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS (" + "9" * 5000 + " fail-closed cases)\n", "", False),
+        ("non-ASCII decimal count", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS (６０１ fail-closed cases)\n", "", False),
+        ("empty count", LEARNING_GUARDS[1], 0,
+         "Autonomous learning negative validation PASS ( fail-closed cases)\n", "", False),
         ("extra output", LEARNING_GUARDS[1], 0, negative + "ignored", "", False),
         ("extra blank line", LEARNING_GUARDS[1], 0, negative + "\n", "", False),
         ("missing terminator", LEARNING_GUARDS[0], 0, positive[:-1], "", False),
