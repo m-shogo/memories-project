@@ -2698,6 +2698,84 @@ def prove_upload_route_focused_skip_inventory_negatives(source_root: Path) -> No
             raise RuntimeError("focused skip inventory negative accepted: " + label)
 
 
+REVIEWED_UPLOAD_ROUTE_SQL_MIGRATIONS = (
+    "001_memory_os_import_rls.sql",
+    "002_memory_os_account_control.sql",
+    "002_memory_os_upload_authorization.sql",
+    "003_memory_os_preview_domain.sql",
+    "004_memory_os_account_session.sql",
+    "005_memory_os_apply_memory.sql",
+    "006_memory_os_deletion_fencing.sql",
+    "007_memory_os_app_login.sql",
+    "008_memory_os_deletion_runtime.sql",
+    "009_memory_os_deletion_visibility.sql",
+    "010_memory_os_apple_identity.sql",
+)
+
+
+def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str) -> set[str]:
+    """Pin the live Go test runtime SQL inputs separately from compile inputs."""
+    expected_loop = (
+        "for _, name := range []string{\n"
+        + "".join('\t\t\t"' + name + '",\n'
+                  for name in REVIEWED_UPLOAD_ROUTE_SQL_MIGRATIONS)
+        + '\t\t} {\n\t\t\tpayload, err := os.ReadFile(filepath.Join('
+          '"..", "..", "..", "..", "infra", "postgresql", "security", name))'
+    )
+    failure = "unreviewed Upload Route SQL migration runtime input"
+    if source.count(expected_loop) != 1 or source.count("os.ReadFile(") != 1:
+        raise RuntimeError(failure)
+    paths = {"infra/postgresql/security/" + name
+             for name in REVIEWED_UPLOAD_ROUTE_SQL_MIGRATIONS}
+    require_reviewed_upload_route_input_set(
+        paths, 11, "42c8ba87cc722a92a254fbab74689ef1677f2caf2eb0faeee1471b30a0cdcf62"
+    )
+    for relative in sorted(paths):
+        path = source_root / relative
+        if not path.is_file():
+            raise RuntimeError("missing Upload Route SQL migration input: " + relative)
+        require_unaliased_go_path(source_root, path)
+    return paths
+
+
+def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
+    source = (source_root / "services/import-api/internal/httpserver/server_live_test.go").read_text(
+        encoding="utf-8"
+    )
+    paths = require_reviewed_upload_route_sql_migrations(source_root, source)
+    for label, changed in (
+        ("migration name", source.replace(
+            '"001_memory_os_import_rls.sql"', '"011_unreviewed.sql"', 1)),
+        ("migration directory", source.replace(
+            '"security", name)', '"unreviewed", name)', 1)),
+        ("additional file read", source + "\n// os.ReadFile(unreviewed)\n"),
+    ):
+        try:
+            require_reviewed_upload_route_sql_migrations(source_root, changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route SQL migration runtime input":
+                raise
+        else:
+            raise RuntimeError("Upload Route SQL migration negative accepted: " + label)
+    with tempfile.TemporaryDirectory(prefix="upload-sql-migration-input-") as tmp:
+        fixture_root = Path(tmp)
+        for relative in paths:
+            target = fixture_root / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("-- fixture\n", encoding="utf-8")
+        require_reviewed_upload_route_sql_migrations(fixture_root, source)
+        victim = fixture_root / sorted(paths)[0]
+        victim.unlink()
+        try:
+            require_reviewed_upload_route_sql_migrations(fixture_root, source)
+        except RuntimeError as exc:
+            if not str(exc).startswith("missing Upload Route SQL migration input: "):
+                raise
+        else:
+            raise RuntimeError("missing Upload Route SQL migration negative accepted")
+    return paths
+
+
 def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     """Report a compile-input lower bound; never claim transitive trigger closure."""
     import re
@@ -2707,6 +2785,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_live_skip_boundary_negatives(source_root)
     prove_upload_route_password_skip_negatives(source_root)
     prove_upload_route_focused_skip_inventory_negatives(source_root)
+    sql_runtime_inputs = prove_upload_route_sql_migration_negatives(source_root)
     prove_upload_route_toolchain_environment_negatives()
     prove_upload_route_action_negatives()
     prove_upload_route_runtime_command_negatives()
@@ -2969,6 +3048,11 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         uncovered_sets.append({path for path in inputs
                                if not any(matches(path, pat) for pat in patterns)})
     require_upload_route_event_path_parity(*reviewed_paths)
+    for event, patterns in zip(("push", "pull_request"), reviewed_paths):
+        sql_gaps = sorted(path for path in sql_runtime_inputs
+                          if not any(matches(path, pat) for pat in patterns))
+        print(f"upload-route SQL runtime input lower bound: {len(sql_runtime_inputs)}; "
+              f"{event} trigger gaps={len(sql_gaps)}; complete closure unproven")
     snapshot_paths = upload_route_snapshot_inventory(source_root)
     require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1687, 1620)
     guard_path = source_root / ".github/workflows/autonomous-learning-guard.yml"
