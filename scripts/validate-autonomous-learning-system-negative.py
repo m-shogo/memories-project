@@ -4479,6 +4479,80 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     raise
             else:
                 raise RuntimeError("comment-spoofed httpapi peer Go edge accepted: " + peer_name + "/" + package)
+        # A focused httpserver test compiles every httpapi non-test peer.
+        # Pin the complete package inventory and exact parsed local imports:
+        # the older per-edge checks prove presence, not absence of new edges.
+        reviewed_httpapi_peers = {
+            "account_handler.go": ("accountdelete", "epochguard", "security"),
+            "apple_handler.go": ("appleauth",),
+            "apply_handler.go": ("apply", "security"),
+            "fence_error.go": ("epochguard",),
+            "preview_handler.go": ("previewread", "security"),
+            "upload_handler.go": ("security", "upload"),
+        }
+        httpapi_root = source_root / "services/import-api/internal/httpapi"
+        observed_httpapi = {
+            path.name for path in httpapi_root.glob("*.go")
+            if not path.name.endswith("_test.go")
+        }
+
+        def require_httpapi_inventory(names: set[str]) -> None:
+            if names != set(reviewed_httpapi_peers):
+                raise RuntimeError("upload route httpapi compiled peer inventory drift")
+
+        require_httpapi_inventory(observed_httpapi)
+        for changed in (observed_httpapi - {"upload_handler.go"},
+                        observed_httpapi | {"unreviewed.go"}):
+            try:
+                require_httpapi_inventory(changed)
+            except RuntimeError as exc:
+                if str(exc) != "upload route httpapi compiled peer inventory drift":
+                    raise
+            else:
+                raise RuntimeError("httpapi compiled peer inventory negative accepted")
+
+        for name, dependencies in reviewed_httpapi_peers.items():
+            relative = "services/import-api/internal/httpapi/" + name
+            source = (source_root / relative).read_text(encoding="utf-8")
+            require_reviewed_upload_route_go_package(relative, source)
+
+            def require_httpapi_imports(candidate: str) -> None:
+                prefix = module + "/internal/"
+                imported = {
+                    item[len(prefix):]
+                    for item in upload_route_local_go_imports(candidate, include_external=True)
+                    if item.startswith(prefix)
+                }
+                if imported != set(dependencies):
+                    raise RuntimeError("upload route httpapi compiled peer import drift: " + name)
+
+            require_httpapi_imports(source)
+            declaration = "package httpapi\n"
+            if source.count(declaration) != 1:
+                raise RuntimeError("upload route httpapi compiled peer fixture anchor drift")
+            injected = source.replace(
+                declaration, declaration + 'import "' + module + '/internal/reqid"\n', 1
+            )
+            try:
+                require_httpapi_imports(injected)
+            except RuntimeError as exc:
+                if str(exc) != "upload route httpapi compiled peer import drift: " + name:
+                    raise
+            else:
+                raise RuntimeError("unreviewed httpapi compiled peer import accepted: " + name)
+            for dependency in dependencies:
+                anchor = '"' + module + '/internal/' + dependency + '"'
+                if source.count(anchor) != 1:
+                    raise RuntimeError("upload route httpapi compiled peer import fixture drift")
+                spoofed = source.replace(anchor, '"example.com/unreviewed"', 1) + "\n// " + anchor + "\n"
+                try:
+                    require_httpapi_imports(spoofed)
+                except RuntimeError as exc:
+                    if str(exc) != "upload route httpapi compiled peer import drift: " + name:
+                        raise
+                else:
+                    raise RuntimeError("comment-spoofed httpapi compiled peer import accepted: "
+                                       + name)
         # The imported httpapi account handler reaches these second-hop
         # packages; all non-test Go files in each package are build inputs.
         account_source = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
