@@ -740,6 +740,11 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
     for comment in re.finditer(r"/\*[\s\S]*?\*/", source):
         if re.search(r"(?m)^[ \t]*import\b", comment.group()):
             raise RuntimeError("unreviewed Go commented import")
+    # A Go raw string can contain import-shaped lines that are not compiled.
+    # Reject spoofed edges before treating regex extraction as an import graph.
+    for literal in re.finditer(r"`[^`]*`", source, re.S):
+        if re.search(r"(?m)^[ \t]*import\b", literal.group()):
+            raise RuntimeError("unreviewed Go raw-string import")
     blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
     paths = []
     aliases = []
@@ -833,6 +838,19 @@ def prove_upload_route_go_import_parser() -> None:
                 raise
         else:
             raise RuntimeError("Go commented import negative accepted: " + label)
+    # Raw Go strings may contain line-anchored import-shaped documentation.
+    upload_route_local_go_imports('package test\nvar note = `not an import`\nimport "fmt"\n')
+    for label, candidate in (
+        ("raw single import", 'package test\nvar doc = `\nimport "' + module + 'internal/metrics"\n`\n'),
+        ("raw grouped import", 'package test\nvar doc = `\nimport (\n  "' + module + 'internal/metrics"\n)\n`\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go raw-string import":
+                raise
+        else:
+            raise RuntimeError("Go raw-string import negative accepted: " + label)
     for label, candidate in (
         ("semicolon-prefixed import", 'package test; import "' + module + 'internal/reqid"\n'),
         ("comment-prefixed import", 'package test\n/* note */ import "' + module + 'internal/metrics"\n'),
