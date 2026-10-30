@@ -238,6 +238,13 @@ def validate_relative_path(relative: str) -> None:
 
 def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     validate_relative_path(relative)
+    # A caller-supplied repository root inside another checkout can inspect
+    # a copied .github/workflows tree instead of the parent checkout authority.
+    # The root's own .git marker is legitimate; an ancestor's is ambiguous.
+    for ancestor in repo_root.parents:
+        marker = ancestor / ".git"
+        if marker.exists() or marker.is_symlink():
+            raise AuditFailure("prewrite repository root nested under Git checkout")
     # Auditing a symlink alias is not proof about the underlying target.
     # Missing prospective files remain allowed; only existing aliases fail.
     target = repo_root / relative
@@ -584,6 +591,16 @@ def self_test(repo_root: Path) -> None:
         (root / ".git").mkdir()
         if matching_workflows(root, "scripts/a.py") != [".github/workflows/w.yml"]:
             raise AuditFailure("normal checkout root Git metadata positive failed")
+        outer_git = Path(tmp) / ".git"
+        outer_git.mkdir()
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "prewrite repository root nested under Git checkout":
+                raise
+        else:
+            raise AuditFailure("nested repository root prewrite negative accepted")
+        outer_git.rmdir()
         gitmodules = root / ".gitmodules"
         gitmodules.write_text('[submodule "x"]\npath = vendor/x\n', encoding="utf-8")
         try:

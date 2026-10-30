@@ -3263,6 +3263,15 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
                 not in positive.stdout.splitlines()):
             raise RuntimeError("normal checkout root Git metadata CLI positive failed")
+        outer_git = Path(tmp) / ".git"
+        outer_git.mkdir()
+        nested_root = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (nested_root.returncode != 1 or nested_root.stdout or
+                nested_root.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite repository root nested under Git checkout\n"):
+            raise RuntimeError("prewrite nested checkout root CLI negative failed")
+        outer_git.rmdir()
         gitmodules = root / ".gitmodules"
         gitmodules.write_text('[submodule "x"]\npath = vendor/x\n', encoding="utf-8")
         for label, diagnostic in (
