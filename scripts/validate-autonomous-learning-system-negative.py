@@ -2905,6 +2905,72 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         raise RuntimeError("upload route direct input trigger gap changed; review required")
 
 
+def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
+    """A Git clean filter must not disguise raw workflow bytes as HEAD."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    with tempfile.TemporaryDirectory(prefix="learning-git-clean-filter-") as tmp:
+        root = Path(tmp)
+        workflow = root / ".github/workflows/fixture.yml"
+        workflow.parent.mkdir(parents=True)
+        original = "on: push\n"
+        workflow.write_text(original, encoding="utf-8")
+
+        def git(*args: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+
+        for args in (
+            ("init", "-q"),
+            ("add", ".github/workflows/fixture.yml"),
+            ("-c", "user.name=Fixture", "-c",
+             "user.email=fixture@example.invalid", "commit", "-qm", "baseline"),
+        ):
+            result = git(*args)
+            if result.returncode != 0:
+                raise RuntimeError("prewrite Git clean-filter fixture setup failed")
+
+        command = [
+            sys.executable, str(guard), "--repo-root", str(root),
+            "--path", "scripts/a.py", "--require-git-index-identity",
+            "--require-direct-push-pr-match",
+        ]
+        clean = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        expected_clean = "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+        if (clean.returncode != 0 or clean.stderr
+                or expected_clean not in clean.stdout.splitlines()):
+            raise RuntimeError("prewrite Git clean-filter baseline positive failed")
+
+        attributes = root / ".gitattributes"
+        attributes.write_text(".github/workflows/*.yml filter=opaque\n", encoding="utf-8")
+        if git("config", "filter.opaque.clean", "printf 'on: push\\n'").returncode:
+            raise RuntimeError("prewrite Git clean-filter config failed")
+        workflow.write_text("on: workflow_dispatch\n", encoding="utf-8")
+        if git("diff", "--quiet", "HEAD", "--", ".github/workflows").returncode:
+            raise RuntimeError("prewrite Git clean-filter did not mask git diff")
+        blocked = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (blocked.returncode != 1 or blocked.stdout
+                or blocked.stderr.strip() !=
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index raw blob drift"):
+            raise RuntimeError("prewrite Git clean-filter raw-byte negative failed")
+
+        workflow.write_text(original, encoding="utf-8")
+        attributes.unlink()
+        if git("config", "--unset", "filter.opaque.clean").returncode:
+            raise RuntimeError("prewrite Git clean-filter config cleanup failed")
+        restored = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (restored.returncode != 0 or restored.stderr
+                or expected_clean not in restored.stdout.splitlines()):
+            raise RuntimeError("prewrite Git clean-filter restoration positive failed")
+
+
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
     """Require the actual fanout CLI to conservatively count ambiguous events."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -4618,6 +4684,7 @@ def main() -> int:
 
     prove_upload_route_go_import_parser()
     prove_upload_route_go_direct_inputs(source_root)
+    prove_prewrite_git_clean_filter_cli(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
