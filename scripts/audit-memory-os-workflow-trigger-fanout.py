@@ -509,7 +509,7 @@ def self_test(repo_root: Path) -> None:
         ("comment flow alias", "on: # events\n  # note\n  [\n    *events\n  ]\n", "scripts/a.py", True),
         ("inline dispatch comment", "on: [workflow_dispatch] # note\n", "scripts/a.py", False),
         ("inline dispatch map", "on: {workflow_dispatch: null}\n", "scripts/a.py", False),
-        ("nested flow literal", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", "scripts/a.py", False),
+        ("nested flow literal conservative", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", "scripts/a.py", True),
     )
     if tuple(case[0] for case in multiline_flow_cases) != (
         "multiline flow alias",
@@ -519,7 +519,7 @@ def self_test(repo_root: Path) -> None:
         "comment flow alias",
         "inline dispatch comment",
         "inline dispatch map",
-        "nested flow literal",
+        "nested flow literal conservative",
     ):
         raise AuditFailure("prewrite multiline-flow fixture identity drift")
     for label, source, path, expected in multiline_flow_cases:

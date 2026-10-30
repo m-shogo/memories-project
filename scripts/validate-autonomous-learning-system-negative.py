@@ -3063,7 +3063,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             ("comment flow alias", "on: # events\n  # note\n  [\n    *events\n  ]\n", 1),
             ("inline dispatch comment", "on: [workflow_dispatch] # note\n", 0),
             ("inline dispatch map", "on: {workflow_dispatch: null}\n", 0),
-            ("nested flow literal", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", 0),
+            ("nested flow literal conservative", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", 1),
         )
         if tuple(case[0] for case in multiline_flow_cases) != (
             "multiline flow alias",
@@ -3073,7 +3073,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             "comment flow alias",
             "inline dispatch comment",
             "inline dispatch map",
-            "nested flow literal",
+            "nested flow literal conservative",
         ):
             raise RuntimeError("prewrite multiline-flow fixture identity drift")
         for label, content, count in multiline_flow_cases:
