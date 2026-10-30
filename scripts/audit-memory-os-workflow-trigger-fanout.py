@@ -853,7 +853,7 @@ def self_test(repo_root: Path) -> None:
         root = Path(tmp)
         directory = root / ".github/workflows"
         directory.mkdir(parents=True)
-        source = 'on: push\\n'
+        source = 'on: push\n'
         (directory / "alpha.yml").write_text(source, encoding="utf-8")
         (directory / "beta.yaml").write_text(source, encoding="utf-8")
         if matching_workflows(root, "scripts/a.py") != [
