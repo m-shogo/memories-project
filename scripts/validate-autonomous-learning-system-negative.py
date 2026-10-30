@@ -181,8 +181,10 @@ def run(source_root: Path, root: Path) -> subprocess.CompletedProcess[str]:
 
 
 def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[str]) -> None:
-    if result.returncode != 1:
-        raise RuntimeError(f"negative case did not return canonical exit 1: {name}: {result.returncode}")
+    if type(result.returncode) is not int or result.returncode != 1:
+        raise RuntimeError(f"negative case did not return canonical integer exit 1: {name}: {result.returncode}")
+    if type(result.stdout) is not str or type(result.stderr) is not str:
+        raise RuntimeError(f"negative case returned unreviewed captured stream types: {name}")
     if result.stdout:
         raise RuntimeError(f"negative case emitted stdout before canonical rejection: {name}")
     if not result.stderr.startswith("AUTONOMOUS LEARNING VALIDATION FAILED: "):
@@ -250,6 +252,10 @@ def prove_failure_classifier() -> None:
         subprocess.CompletedProcess([], 1, "", "Traceback (most recent call last): injected"),
         subprocess.CompletedProcess([], 1, "false PASS marker\n",
                                     "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
+        subprocess.CompletedProcess([], True, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
+        subprocess.CompletedProcess([], 1.0, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
+        subprocess.CompletedProcess([], 1, None, "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
+        subprocess.CompletedProcess([], 1, "", None),
     )
     for index, result in enumerate(invalid):
         try:

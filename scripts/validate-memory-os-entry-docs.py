@@ -98,7 +98,9 @@ def learning_guard_timeout_reviewed(seconds: object) -> bool:
 
 def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[str]) -> bool:
     """An exit-zero child without its actual PASS proof is not an executed guard."""
-    if completed.returncode != 0 or completed.stderr:
+    if (type(completed.returncode) is not int or completed.returncode != 0
+            or type(completed.stdout) is not str
+            or type(completed.stderr) is not str or completed.stderr):
         return False
     # A validated child prints exactly one LF-terminated proof line. Do not
     # normalize away extra blank lines, CRLF, padding, or missing terminators.
@@ -136,6 +138,10 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
          f"Autonomous learning negative validation PASS ({MIN_LEARNING_NEGATIVE_CASES + 1} fail-closed cases)\n", "", True),
         ("missing output", LEARNING_GUARDS[0], 0, "", "", False),
         ("nonzero with success text", LEARNING_GUARDS[0], 1, positive, "", False),
+        ("boolean zero exit", LEARNING_GUARDS[0], False, positive, "", False),
+        ("floating zero exit", LEARNING_GUARDS[0], 0.0, positive, "", False),
+        ("nonstring stdout", LEARNING_GUARDS[0], 0, None, "", False),
+        ("nonstring stderr", LEARNING_GUARDS[0], 0, positive, None, False),
         ("stderr with success text", LEARNING_GUARDS[0], 0, positive, "injected", False),
         ("truncated negative", LEARNING_GUARDS[1], 0,
          f"Autonomous learning negative validation PASS ({MIN_LEARNING_NEGATIVE_CASES - 1} fail-closed cases)\n", "", False),
