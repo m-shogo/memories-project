@@ -5339,6 +5339,23 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
         after.unlink()
         accept("missing candidate", args, "prewrite input missing or symlinked")
         after.write_text(candidate, encoding="utf-8")
+        candidate_hardlink = Path(tmp) / "candidate-hardlink"
+        os.link(after, candidate_hardlink)
+        accept("hardlinked candidate", args, "prewrite input source identity unsafe")
+        candidate_hardlink.unlink()
+        baseline_hardlink = Path(tmp) / "baseline-hardlink"
+        os.link(before, baseline_hardlink)
+        accept("hardlinked baseline", args, "prewrite input source identity unsafe")
+        baseline_hardlink.unlink()
+        after.chmod(0o666)
+        accept("world-writable candidate", args, "prewrite input source identity unsafe")
+        after.chmod(0o644)
+        before.chmod(0o666)
+        accept("world-writable baseline", args, "prewrite input source identity unsafe")
+        before.chmod(0o644)
+        after.write_bytes(b"x" * (512 * 1024 + 1))
+        accept("oversized candidate", args, "prewrite input exceeds byte limit")
+        after.write_text(candidate, encoding="utf-8")
         alias = Path(tmp) / "aliased-parent"
         alias.symlink_to(Path(tmp), target_is_directory=True)
         candidate_args = args.copy()
@@ -5349,7 +5366,7 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
         accept("symlinked baseline parent", baseline_args, "prewrite input missing or symlinked")
         accept("incomplete CLI arguments", args[:4],
                "prewrite requires baseline, candidate and SHA-256")
-    return len(cases) + 6
+    return len(cases) + 11
 
 
 def main() -> int:
