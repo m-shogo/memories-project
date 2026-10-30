@@ -820,6 +820,13 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                  and node.name == "main"]
         if len(mains) != 1 or not isinstance(mains[0], ast.FunctionDef):
             raise ValidationFailure("prewrite " + label + " must have one sync main")
+        # A locally defined helper can mutate main when called at module
+        # scope; deferred function bodies alone do not prove that safe.
+        module_local_helpers = {
+            node.name for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name != "main"
+        }
         # A unique main definition can still be shadowed by eager module
         # control flow. Ignore deferred function/lambda bodies and class-local
         # assignments; this is not a reflective-mutation proof.
@@ -827,6 +834,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             # Decorator lambdas are invoked when applied, unlike ordinary
             # deferred lambdas. Their lexical bindings remain lambda-local.
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                # A local decorator executes at definition time, even when
+                # referenced by name without an explicit Call node.
+                if any(isinstance(dec, ast.Name) and dec.id in module_local_helpers
+                       for dec in node.decorator_list):
+                    return True
                 if any(isinstance(dec, ast.Lambda)
                        and module_shadows_main(dec.body, top_level=False,
                                                class_local=True)
@@ -910,6 +922,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
                 return True
             if isinstance(node, ast.Call):
+                # Module-level direct calls into locally defined functions
+                # can execute deferred main mutations immediately.
+                if (isinstance(node.func, ast.Name)
+                        and node.func.id in module_local_helpers):
+                    return True
                 # map is lazy alone, but these consumers iterate it eagerly.
                 # A mapped exec/import callable may rebind main on iteration.
                 if (isinstance(node.func, ast.Name)
@@ -1082,6 +1099,7 @@ def prove_prewrite_python_negatives() -> None:
         ("function-local reflection", 'def helper():\n    globals()["other"] = 1\n', (2, 0)),
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
         ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
+        ("deferred local helper call", 'def helper():\n    return 1\ndef wrapper():\n    return helper()\n', (4, 0)),
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
         ("deferred direct-name import", 'def helper():\n    import_module("math")\n', (2, 0)),
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
@@ -1137,6 +1155,12 @@ def prove_prewrite_python_negatives() -> None:
          "baseline Python line count exceeds reviewed bound", overlong),
         ("unchanged", baseline, sha, 40, 20, "no changes", baseline),
         ("bad baseline hash", candidate, "0" * 64, 40, 20, "SHA-256 mismatch", baseline),
+        ("eager local helper call", baseline.replace(
+            'if __name__', 'def mutate():\n    globals()["main"] = None\nmutate()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager local decorator", baseline.replace(
+            'if __name__', 'def decorate(fn):\n    globals()["main"] = None\n    return fn\n@decorate\ndef extra():\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
         ("syntax", baseline + 'def broken(:\n', sha, 40, 20, "syntax invalid", baseline),
         ("duplicate main", baseline + '\ndef main():\n    pass\n', sha, 40, 20, "one sync main", baseline),
         ("removed guard", baseline.replace('    raise SystemExit(main())\n',
