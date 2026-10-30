@@ -546,6 +546,27 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         if module.read_canonical_authority_bytes(
                 nested, 10, too_large="reviewed source oversized") != b"stable":
             raise RuntimeError("canonical parent-chain positive drift")
+        def chmod_parent_after_open(path, flags):
+            fd = original_open(path, flags)
+            if Path(path) == nested:
+                parent.chmod(0o777)
+            return fd
+        with mock.patch.object(module.os, "open", side_effect=chmod_parent_after_open):
+            try:
+                module.read_canonical_authority_bytes(
+                    nested, 10, too_large="reviewed source oversized"
+                )
+            except module.ValidationFailure as exc:
+                if str(exc) != f"canonical authority changed during read: {nested}":
+                    raise RuntimeError("canonical parent-mode wrong diagnostic") from exc
+            else:
+                raise RuntimeError("canonical parent chmod during read accepted")
+        if not parent.stat().st_mode & 0o002:
+            raise RuntimeError("canonical parent-mode fixture was not applied")
+        parent.chmod(0o755)
+        if module.read_canonical_authority_bytes(
+                nested, 10, too_large="reviewed source oversized") != b"stable":
+            raise RuntimeError("canonical parent-mode restoration failed")
         def swap_parent_after_open(path, flags):
             fd = original_open(path, flags)
             if Path(path) == nested:

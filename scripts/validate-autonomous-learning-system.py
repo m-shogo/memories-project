@@ -82,8 +82,12 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             live = path.lstat()
             for parent, prior in parents:
                 current = parent.lstat()
-                if ((current.st_dev, current.st_ino, stat.S_IFMT(current.st_mode)) !=
-                        (prior.st_dev, prior.st_ino, stat.S_IFMT(prior.st_mode))):
+                if ((current.st_dev, current.st_ino, stat.S_IFMT(current.st_mode),
+                     stat.S_IMODE(current.st_mode), current.st_ctime_ns) !=
+                        (prior.st_dev, prior.st_ino, stat.S_IFMT(prior.st_mode),
+                         stat.S_IMODE(prior.st_mode), prior.st_ctime_ns)):
+                    # A parent chmod can grant path-replacement authority
+                    # while its inode and the leaf descriptor remain stable.
                     raise ValidationFailure(diagnostic)
             if (not stat.S_ISREG(live.st_mode)
                     or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
