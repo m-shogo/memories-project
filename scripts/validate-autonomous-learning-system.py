@@ -1448,9 +1448,17 @@ def validate_prewrite_files(baseline_path: Path, candidate_path: Path,
         if path.stat().st_size > PREWRITE_MAX_SOURCE_BYTES:
             raise ValidationFailure("prewrite input exceeds byte limit")
         try:
-            sources.append(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError) as exc:
-            raise ValidationFailure("prewrite input unreadable or invalid UTF-8") from exc
+            raw = read_canonical_authority_bytes(
+                path, PREWRITE_MAX_SOURCE_BYTES,
+                too_large="prewrite input exceeds byte limit",
+            )
+            sources.append(raw.decode("utf-8"))
+        except ValidationFailure as exc:
+            if str(exc) == "prewrite input exceeds byte limit":
+                raise
+            raise ValidationFailure("prewrite input source identity unsafe") from None
+        except UnicodeError:
+            raise ValidationFailure("prewrite input unreadable or invalid UTF-8") from None
     return validate_prewrite_python(
         sources[0], sources[1], expected_sha256=expected_sha256,
         max_added=max_added, max_removed=max_removed,
