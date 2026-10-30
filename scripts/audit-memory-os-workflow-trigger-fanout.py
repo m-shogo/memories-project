@@ -1399,6 +1399,32 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("bounded workflow descriptor hardlink negative accepted")
 
+        # Simulate a same-content path replacement after descriptor bytes
+        # were read but before the final lstat identity reconciliation.
+        source.unlink()
+        source.write_text("on: push\n", encoding="utf-8")
+        old_inode = Path(tmp) / "previous.yml"
+        real_lstat = Path.lstat
+        swapped = [False]
+
+        def swap_at_lstat(path: Path) -> os.stat_result:
+            if path == source and not swapped[0]:
+                swapped[0] = True
+                source.rename(old_inode)
+                source.write_text("on: push\n", encoding="utf-8")
+            return real_lstat(path)
+
+        with mock.patch.object(Path, "lstat", swap_at_lstat):
+            try:
+                read_workflow_bytes_bounded(source)
+            except AuditFailure as exc:
+                if str(exc) != "workflow path missing or symlinked":
+                    raise
+            else:
+                raise AuditFailure("bounded workflow inode-swap negative accepted")
+        if not swapped[0] or not old_inode.is_file():
+            raise AuditFailure("bounded workflow inode-swap fixture did not execute")
+
     print(
         "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(extglob_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
