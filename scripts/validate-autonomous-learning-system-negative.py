@@ -2348,6 +2348,11 @@ def require_reviewed_upload_route_python_imports(source: str, count: int,
             isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name in bindings
         ) or (
             isinstance(node, ast.MatchMapping) and node.rest in bindings
+        ) or (
+            # Python 3.12 generic type parameters bind names in their own
+            # scope without creating an ast.Name(Store) or ast.arg node.
+            isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple))
+            and node.name in bindings
         )
         if shadow:
             raise RuntimeError("unreviewed Upload Route Python import binding shadow")
@@ -2397,6 +2402,26 @@ def prove_upload_route_python_import_negatives() -> None:
         "".join(entry + "\n" for entry in sorted(distinct_entries)).encode("utf-8")
     ).hexdigest()
     require_reviewed_upload_route_python_imports(distinct, 2, distinct_digest)
+    for label, candidate in (
+        ("generic TypeVar shadows Path",
+         base + "def helper[Path](value: Path):\n    return value\n"),
+        ("generic ParamSpec shadows json",
+         base + "def helper[**json]():\n    pass\n"),
+        ("generic TypeVarTuple shadows json",
+         base + "def helper[*json]():\n    pass\n"),
+        ("type alias TypeVar shadows Path",
+         base + "type Alias[Path] = list[Path]\n"),
+    ):
+        try:
+            require_reviewed_upload_route_python_imports(candidate, 2, digest)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route Python import binding shadow":
+                raise
+        else:
+            raise RuntimeError("Python generic import shadow accepted: " + label)
+    require_reviewed_upload_route_python_imports(
+        base + "def helper[T](value: T):\n    return value\n", 2, digest
+    )
     for label, candidate in (
         ("added local module", base + "import scripts.helper\n"),
         ("same-count replacement", base.replace("import json", "import scripts.helper")),
