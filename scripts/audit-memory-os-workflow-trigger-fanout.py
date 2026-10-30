@@ -328,6 +328,9 @@ def windows_component_ambiguous(part: str) -> bool:
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
             or ":" in relative
+            # Concrete cross-platform source paths cannot contain Win32
+            # wildcard or reserved filename metacharacters.
+            or any(char in '<>"|?*' for char in relative)
             or any(part in ("", ".", "..") or part.rstrip(" .").casefold() == ".git"
                    or windows_component_ambiguous(part)
                    for part in relative.split("/"))
@@ -452,6 +455,12 @@ def self_test(repo_root: Path) -> None:
         ("Windows 8dot3 nested alias", "scripts/PROGRA~2/config"),
         ("Windows 8dot3 no-extension alias", "DOCUME~1"),
         ("Windows 8dot3 lowercase alias", "docs/longfi~9.txt"),
+        ("Windows invalid left angle", "docs/<draft>.md"),
+        ("Windows invalid right angle", "docs/report>.md"),
+        ("Windows invalid quote", 'docs/report"draft.md'),
+        ("Windows invalid pipe", "docs/report|final.md"),
+        ("Windows invalid question", "docs/report?.md"),
+        ("Windows invalid star", "docs/report*.md"),
     ):
         try:
             validate_relative_path(path)
@@ -469,6 +478,7 @@ def self_test(repo_root: Path) -> None:
     validate_relative_path("docs/パス.md")
     validate_relative_path("docs/notes~draft.md")
     validate_relative_path("docs/longfi~0.txt")
+    validate_relative_path("docs/report-final.md")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
@@ -934,7 +944,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 43 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 49 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
