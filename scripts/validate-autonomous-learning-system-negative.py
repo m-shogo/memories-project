@@ -735,6 +735,11 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
     # A line-anchored parser would silently omit those legal dependencies.
     if re.search(r"(?:;|\*/)[ \t]*import(?:[ \t]+|[ \t]*\()", source):
         raise RuntimeError("unreviewed Go import placement")
+    # A line-anchored fake import inside a Go block comment must not satisfy
+    # the reviewed dependency inventory after the executable import is removed.
+    for comment in re.finditer(r"/\*[\s\S]*?\*/", source):
+        if re.search(r"(?m)^[ \t]*import\b", comment.group()):
+            raise RuntimeError("unreviewed Go commented import")
     blocks = list(re.finditer(r"(?m)^[ \t]*import[ \t]*\(([\s\S]*?)^[ \t]*\)", source))
     paths = []
     aliases = []
@@ -815,6 +820,19 @@ def prove_upload_route_go_import_parser() -> None:
             raise RuntimeError("Go import identity negative accepted: " + label)
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
+    # An import-shaped line in a block comment is not a compiled Go import.
+    upload_route_local_go_imports('package test\n/* ordinary note */\nimport "fmt"\n')
+    for label, candidate in (
+        ("commented grouped import", 'package test\n/*\nimport (\n  "' + module + 'internal/metrics"\n)\n*/\n'),
+        ("commented single import", 'package test\n/*\nimport "' + module + 'internal/reqid"\n*/\n'),
+    ):
+        try:
+            upload_route_local_go_imports(candidate)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go commented import":
+                raise
+        else:
+            raise RuntimeError("Go commented import negative accepted: " + label)
     for label, candidate in (
         ("semicolon-prefixed import", 'package test; import "' + module + 'internal/reqid"\n'),
         ("comment-prefixed import", 'package test\n/* note */ import "' + module + 'internal/metrics"\n'),
