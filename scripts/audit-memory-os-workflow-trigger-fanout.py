@@ -305,6 +305,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
 
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
+            or ":" in relative
             or any(part in ("", ".", "..") or part.rstrip(" .").casefold() == ".git"
                    for part in relative.split("/"))
             or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
@@ -406,6 +407,9 @@ def self_test(repo_root: Path) -> None:
         ("casefold nested Git metadata", "scripts/.GiT/hooks/pre-commit"),
         ("trailing-dot Git metadata", ".git./config"),
         ("trailing-space Git metadata", "scripts/.git /hooks"),
+        ("Windows drive-relative path", "C:config"),
+        ("Windows drive-prefixed path", "D:/outside/config"),
+        ("NTFS alternate stream", "scripts/a.py:stream"),
     ):
         try:
             validate_relative_path(path)
@@ -882,7 +886,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 24 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 27 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
