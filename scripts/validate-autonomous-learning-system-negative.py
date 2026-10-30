@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import stat
 import json
 import shutil
@@ -3592,6 +3593,44 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
                 not in restored.stdout.splitlines()):
             raise RuntimeError("Git index hidden-flag cleanup positive failed")
+        # A different GIT_INDEX_FILE can conceal staged workflow drift even
+        # while Git reports the same checkout root and clean HEAD comparisons.
+        alternate_index = Path(tmp) / "alternate-index"
+        alternate_index.write_bytes((root / ".git/index").read_bytes())
+        workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
+        fixture_git("-C", str(root), "add", ".github/workflows/fixture.yml")
+        workflow.write_text(original, encoding="utf-8")
+        actual_staged = subprocess.run(
+            ["git", "-C", str(root), "diff", "--cached", "--quiet",
+             "HEAD", "--", ".github/workflows"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if actual_staged.returncode != 1:
+            raise RuntimeError("alternate Git index fixture has no actual staged drift")
+        alternate_env = {**os.environ, "GIT_INDEX_FILE": str(alternate_index)}
+        alternate_staged = subprocess.run(
+            ["git", "-C", str(root), "diff", "--cached", "--quiet",
+             "HEAD", "--", ".github/workflows"],
+            env=alternate_env, capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+        if alternate_staged.returncode != 0:
+            raise RuntimeError("alternate Git index fixture did not mask staged drift")
+        for name, value in (
+            ("GIT_INDEX_FILE", str(alternate_index)),
+            ("GIT_DIR", str(root / ".git")),
+            ("GIT_WORK_TREE", str(root)),
+            ("GIT_COMMON_DIR", str(root / ".git")),
+        ):
+            substituted = subprocess.run(
+                args, env={**os.environ, name: value},
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (substituted.returncode != 1 or substituted.stdout or
+                    substituted.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git environment checkout override requires review\n"):
+                raise RuntimeError("Git checkout environment override CLI negative failed: " + name)
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
+                    ".github/workflows/fixture.yml")
         (root / ".git").rename(Path(tmp) / "detached-git")
         missing = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=10,
@@ -3771,7 +3810,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 75 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
