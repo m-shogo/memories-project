@@ -2745,6 +2745,7 @@ def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str)
     require_reviewed_upload_route_input_set(
         paths, 11, "42c8ba87cc722a92a254fbab74689ef1677f2caf2eb0faeee1471b30a0cdcf62"
     )
+    require_reviewed_upload_route_sql_lock(source)
     require_reviewed_upload_route_sql_application(source)
     if set(REVIEWED_UPLOAD_ROUTE_SQL_BLOBS) != paths:
         raise RuntimeError("unreviewed Upload Route SQL migration blob inventory")
@@ -2760,6 +2761,32 @@ def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str)
         if git_blob_sha1 != REVIEWED_UPLOAD_ROUTE_SQL_BLOBS[relative]:
             raise RuntimeError("unreviewed Upload Route SQL migration blob")
     return paths
+
+
+def require_reviewed_upload_route_sql_lock(source: str) -> None:
+    """Pin the cross-process migration lock and deferred release boundary."""
+    failure = "unreviewed Upload Route SQL migration advisory lock boundary"
+    lock_chain = (
+        "\t\tlockPool, err := pgxpool.New(ctx, maintenance.String())\n"
+        "\t\tif err != nil {\n"
+        "\t\t\tmigrateErr = err\n"
+        "\t\t\treturn\n"
+        "\t\t}\n"
+        "\t\tdefer lockPool.Close()\n"
+        "\t\tlock, err := lockPool.Acquire(ctx)\n"
+        "\t\tif err != nil {\n"
+        "\t\t\tmigrateErr = err\n"
+        "\t\t\treturn\n"
+        "\t\t}\n"
+        "\t\tdefer lock.Release()\n"
+        "\t\tif _, err := lock.Exec(ctx, \"SELECT pg_advisory_lock(730001)\"); err != nil {\n"
+        "\t\t\tmigrateErr = err\n"
+        "\t\t\treturn\n"
+        "\t\t}\n"
+        "\t\tdefer func() { _, _ = lock.Exec(ctx, \"SELECT pg_advisory_unlock(730001)\") }()\n"
+    )
+    if source.count(lock_chain) != 1:
+        raise RuntimeError(failure)
 
 
 def require_reviewed_upload_route_sql_application(source: str) -> None:
@@ -2824,6 +2851,29 @@ def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
                 raise
         else:
             raise RuntimeError("Upload Route SQL apply boundary negative accepted: " + label)
+    for label, old, new in (
+        ("wrong advisory lock ID", "SELECT pg_advisory_lock(730001)",
+         "SELECT pg_advisory_lock(730002)"),
+        ("wrong advisory unlock ID", "SELECT pg_advisory_unlock(730001)",
+         "SELECT pg_advisory_unlock(730002)"),
+        ("premature pool close", "defer lockPool.Close()", "lockPool.Close()"),
+        ("wrong lock connection", "lockPool.Acquire(ctx)", "pool.Acquire(ctx)"),
+        ("premature connection release", "defer lock.Release()", "lock.Release()"),
+        ("premature advisory unlock", 'defer func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()',
+         'func() { _, _ = lock.Exec(ctx, "SELECT pg_advisory_unlock(730001)") }()'),
+        ("ignore lock error", 'if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {\n\t\t\tmigrateErr = err',
+         'if _, err := lock.Exec(ctx, "SELECT pg_advisory_lock(730001)"); err != nil {\n\t\t\t_ = err'),
+    ):
+        if source.count(old) != 1:
+            raise RuntimeError("SQL advisory lock fixture anchor drift: " + label)
+        changed = source.replace(old, new, 1)
+        try:
+            require_reviewed_upload_route_sql_lock(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route SQL migration advisory lock boundary":
+                raise
+        else:
+            raise RuntimeError("Upload Route SQL advisory lock negative accepted: " + label)
     with tempfile.TemporaryDirectory(prefix="upload-sql-migration-input-") as tmp:
         fixture_root = Path(tmp)
         for relative in paths:
