@@ -108,6 +108,10 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     if section is None:
         return bool(re.search(r"(?m)^  (?:push|pull_request_target|pull_request):", source))
     block = section.group(1)
+    # YAML merge, complex, anchored or tagged keys can conceal event names.
+    # The narrow literal event parser cannot prove these dispatch-only.
+    if re.search(r"(?m)^  (?:<<[ \t]*:|[?&*!])", block):
+        return True
     # An escaped quoted mapping key may decode to push/pull_request.
     if re.search(r'(?m)^  "[^"\r\n]*\\[^"\r\n]*"[ \t]*:', block):
         return True
@@ -370,6 +374,19 @@ def self_test(repo_root: Path) -> None:
     for name, source, path, expected in cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite fanout negative/positive failed: " + name)
+    complex_event_cases = (
+        ("merged event alias", "name: &events\n  push:\n    paths:\n      - \"scripts/a.py\"\non:\n  <<: *events\n", "scripts/a.py", True),
+        ("spaced merge key", "name: &events push\non:\n  << : *events\n", "scripts/a.py", True),
+        ("complex push key", "on:\n  ? push\n  :\n    paths:\n      - \"scripts/a.py\"\n", "scripts/a.py", True),
+        ("anchored push key", "on:\n  &event push:\n    paths:\n      - \"scripts/a.py\"\n", "scripts/a.py", True),
+        ("tagged push key", "on:\n  !!str push:\n    paths:\n      - \"scripts/a.py\"\n", "scripts/a.py", True),
+        ("unrelated root anchor", "name: &events push\non:\n  workflow_dispatch:\n", "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in complex_event_cases) != ("merged event alias","spaced merge key","complex push key","anchored push key","tagged push key","unrelated root anchor",):
+        raise AuditFailure("prewrite complex-event fixture identity drift")
+    for label, source, path, expected in complex_event_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite complex-event negative/positive failed: " + label)
     if classify([".github/workflows/w" + str(i) + ".yml"
                  for i in range(MAX_REVIEWED_DIRECT_FANOUT + 1)]) != "BLOCKED_HIGH_FANOUT":
         raise AuditFailure("high-fanout threshold negative failed")
@@ -445,7 +462,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 10)
+        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
