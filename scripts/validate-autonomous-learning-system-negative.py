@@ -3368,6 +3368,17 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     elif (real_risk == "BLOCKED_NO_DIRECT_PUSH_PR_MATCH" or
           real_strict.returncode != (0 if real_risk == "BOUNDED_DIRECT_MATCH_ONLY" else 2)):
         raise RuntimeError("real prewrite audit source direct CI risk/exit mismatch")
+    # A real checkout with a clean tracked workflow tree must preserve the
+    # exact direct-match result when Git index identity is required.
+    real_index = subprocess.run(
+        [sys.executable, str(guard), "--repo-root", str(source_root),
+         "--path", "scripts/audit-memory-os-workflow-trigger-fanout.py",
+         "--require-direct-push-pr-match", "--require-git-index-identity"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+    if (real_index.returncode != real_strict.returncode or
+            real_index.stdout != real_strict.stdout or real_index.stderr):
+        raise RuntimeError("real prewrite Git index checkout identity CLI mismatch")
     # Preserve the single-line stdout contract required by the entrypoint verifier.
     with tempfile.TemporaryDirectory(prefix="learning-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
@@ -3689,7 +3700,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 66 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 67 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
