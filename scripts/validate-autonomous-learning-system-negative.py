@@ -3188,6 +3188,9 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         ("newline", "scripts/a\nb.py"),
         ("tab", "scripts/a\tb.py"),
         ("DEL", "scripts/a\x7fb.py"),
+        ("bidi override", "scripts/a\u202eb.py"),
+        ("zero-width joiner", "scripts/a\u200db.py"),
+        ("Unicode line separator", "scripts/a\u2028b.py"),
     ):
         result = subprocess.run(
             [sys.executable, str(guard), "--repo-root", str(source_root),
@@ -3216,7 +3219,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 8 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases)
+    return len(cases) + 11 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

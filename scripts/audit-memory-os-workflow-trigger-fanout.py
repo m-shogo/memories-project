@@ -14,6 +14,7 @@ import hashlib
 import re
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 MAX_REVIEWED_DIRECT_FANOUT = 12
@@ -226,7 +227,9 @@ def workflow_matches_path(source: str, relative: str) -> bool:
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
             or any(part in ("", ".", "..") for part in relative.split("/"))
-            or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)):
+            or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
+            or any(unicodedata.category(char) in {"Cf", "Cs", "Zl", "Zp"}
+                   for char in relative)):
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
@@ -269,6 +272,9 @@ def self_test(repo_root: Path) -> None:
         ("NUL", "scripts/a\x00b.py"),
         ("DEL", "scripts/a\x7fb.py"),
         ("C1 control", "scripts/a\u0085b.py"),
+        ("bidi override", "scripts/a\u202eb.py"),
+        ("zero-width joiner", "scripts/a\u200db.py"),
+        ("Unicode line separator", "scripts/a\u2028b.py"),
     ):
         try:
             validate_relative_path(path)
@@ -277,6 +283,8 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("prewrite control-character path negative accepted: " + label)
+    # Ordinary Japanese filename characters remain valid repository paths.
+    validate_relative_path("docs/日本語.md")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
@@ -501,7 +509,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
