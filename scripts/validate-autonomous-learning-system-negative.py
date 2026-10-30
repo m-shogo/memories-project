@@ -2471,7 +2471,7 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
             following = re.search(r"(?m)^func[ \t]+", source[matches[0].end():])
             body = source[matches[0].end():(
                 matches[0].end() + following.start() if following else len(source))]
-            if (re.search(r"\bt\.Skip(?:f|Now)?[ \t]*\(", body) or
+            if (re.search(r"\bt[ \t]*\.[ \t]*Skip(?:f|Now)?[ \t]*\(", body) or
                     not re.search(r"\bt\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
                 raise RuntimeError(failure)
 
@@ -2505,6 +2505,9 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     reject("skipped live test", live,
            "func TestUploadLifecycleOverHTTP(t *testing.T) {",
            "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tt.Skip(\"disabled\")")
+    reject("spaced skip selector", live,
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {",
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tt . Skip(\"disabled\")")
     reject("no route assertion", route,
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
     # Balanced block comments are legal Go and can conceal the first test
@@ -2566,7 +2569,7 @@ def require_reviewed_upload_route_live_skip_boundary(source: str) -> None:
     start = source.index(prefix)
     end = source.find("\nfunc ", start + len(prefix))
     helper = source[start:end if end >= 0 else len(source)]
-    if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", helper)) != 1:
+    if len(re.findall(r"\bt[ \t]*\.[ \t]*Skip(?:f|Now)?[ \t]*\(", helper)) != 1:
         raise RuntimeError(failure)
     for name in ("TestUploadLifecycleOverHTTP", "TestAccountDeletionFencesAndErasesOverHTTP"):
         match = re.search(rf"(?m)^func {name}\(t \*testing\.T\) \{{", source)
@@ -2619,7 +2622,7 @@ def require_reviewed_upload_route_password_skip_boundary(source: str) -> None:
     if start < 0:
         raise RuntimeError(failure)
     body = source[start:]
-    if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", body)) != 1:
+    if len(re.findall(r"\bt[ \t]*\.[ \t]*Skip(?:f|Now)?[ \t]*\(", body)) != 1:
         raise RuntimeError(failure)
 
 
@@ -2655,7 +2658,7 @@ def require_reviewed_upload_route_focused_skip_inventory(sources: dict[str, str]
     if set(sources) != set(reviewed):
         raise RuntimeError("unreviewed Upload Route focused skip inventory")
     for path, expected in reviewed.items():
-        if len(re.findall(r"\bt\.Skip(?:f|Now)?[ \t]*\(", sources[path])) != expected:
+        if len(re.findall(r"\bt[ \t]*\.[ \t]*Skip(?:f|Now)?[ \t]*\(", sources[path])) != expected:
             raise RuntimeError("unreviewed Upload Route focused skip inventory")
 
 
@@ -2667,6 +2670,7 @@ def prove_upload_route_focused_skip_inventory_negatives(source_root: Path) -> No
     route, live = paths
     for label, path, candidate in (
         ("new route skip", route, files[route] + "\nfunc extra(t *testing.T) { t.SkipNow() }\n"),
+        ("spaced route skip", route, files[route] + "\nfunc extra(t *testing.T) { t . SkipNow() }\n"),
         ("new unrelated live skip", live, files[live] + "\nfunc extra(t *testing.T) { t.Skip(\"new\") }\n"),
         ("missing password skip", live, files[live].replace(
             't.Skip("test database URL carries no password', 't.Log("test database URL carries no password', 1)),
