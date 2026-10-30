@@ -4173,6 +4173,37 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             )
             if not peer.startswith("package httpapi\n"):
                 raise RuntimeError("upload route transitive httpapi package identity changed: " + peer_name)
+        # Package-peer imports are compiled even when the focused workflow
+        # triggers name only upload_handler.go. Bind the other reviewed
+        # httpapi peer edges to parsed imports, not quoted comment strings.
+        peer_edges = (
+            ("apple_handler.go", "appleauth"),
+            ("apply_handler.go", "apply"),
+            ("apply_handler.go", "security"),
+            ("fence_error.go", "epochguard"),
+            ("preview_handler.go", "previewread"),
+            ("preview_handler.go", "security"),
+        )
+        for peer_name, package in peer_edges:
+            peer = (source_root / "services/import-api/internal/httpapi" / peer_name).read_text(
+                encoding="utf-8"
+            )
+            def require_peer_edge(source: str) -> None:
+                if module + "/internal/" + package not in upload_route_local_go_imports(
+                        source, include_external=True):
+                    raise RuntimeError("upload route httpapi peer Go import edge changed: " + peer_name + "/" + package)
+            require_peer_edge(peer)
+            anchor = f'"{module}/internal/{package}"'
+            if peer.count(anchor) != 1:
+                raise RuntimeError("upload route httpapi peer Go import fixture anchor drift")
+            spoofed = peer.replace(anchor, '"example.com/unreviewed"', 1) + "\n// " + anchor + "\n"
+            try:
+                require_peer_edge(spoofed)
+            except RuntimeError as exc:
+                if str(exc) != "upload route httpapi peer Go import edge changed: " + peer_name + "/" + package:
+                    raise
+            else:
+                raise RuntimeError("comment-spoofed httpapi peer Go edge accepted: " + peer_name + "/" + package)
         # The imported httpapi account handler reaches these second-hop
         # packages; all non-test Go files in each package are build inputs.
         account_source = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
