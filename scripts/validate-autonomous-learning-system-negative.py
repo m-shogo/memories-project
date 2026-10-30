@@ -194,6 +194,12 @@ def require_canonical_rejection(name: str, result: subprocess.CompletedProcess[s
     if (not result.stderr.endswith("\n") or result.stderr.endswith("\r\n")
             or result.stderr.count("\n") != 1 or "\r" in result.stderr):
         raise RuntimeError(f"negative case emitted noncanonical stderr: {name}")
+    # An empty or terminal-control-tainted reason is not a canonical failure proof.
+    # Keep the diagnostic text intact: never normalize it before classification.
+    reason = result.stderr[len("AUTONOMOUS LEARNING VALIDATION FAILED: "):-1]
+    if (not reason.strip() or
+            any(ord(char) < 32 or ord(char) == 127 for char in reason)):
+        raise RuntimeError(f"negative case emitted unreviewed diagnostic: {name}")
     if "Traceback (most recent call last)" in result.stderr:
         raise RuntimeError(f"negative case leaked implementation traceback: {name}")
 
@@ -353,6 +359,18 @@ def prove_failure_classifier() -> None:
                                     "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n\n"),
         subprocess.CompletedProcess([], 1, "",
                                     "AUTONOMOUS LEARNING VALIDATION FAILED: injected\rspoof\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: \n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED:    \n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\x1b[31m\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\x00\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\x7f\n"),
+        subprocess.CompletedProcess([], 1, "",
+                                    "AUTONOMOUS LEARNING VALIDATION FAILED: injected\ttext\n"),
         subprocess.CompletedProcess([], True, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
         subprocess.CompletedProcess([], 1.0, "", "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
         subprocess.CompletedProcess([], 1, None, "AUTONOMOUS LEARNING VALIDATION FAILED: injected\n"),
