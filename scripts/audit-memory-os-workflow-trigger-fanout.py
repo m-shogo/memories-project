@@ -12,6 +12,7 @@ import argparse
 import fnmatch
 import hashlib
 import re
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -343,7 +344,57 @@ def validate_relative_path(relative: str) -> None:
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
-def matching_workflows(repo_root: Path, relative: str) -> list[str]:
+def require_workflow_git_index_identity(
+        repo_root: Path, workflow_sources: list[Path]) -> None:
+    """Optional read-only proof of checkout root and clean tracked workflow tree.
+
+    Does not establish transitive CI reachability or permission to write.
+    """
+    if not (repo_root / ".git").is_dir():
+        raise AuditFailure("prewrite Git index checkout identity unavailable")
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                ["git", "-C", str(repo_root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise AuditFailure("prewrite Git index checkout identity unavailable") from exc
+
+    root = git("rev-parse", "--show-toplevel")
+    if (root.returncode != 0 or
+            Path(root.stdout.strip()).resolve() != repo_root.resolve()):
+        raise AuditFailure("prewrite Git index checkout root mismatch")
+    index = git("ls-files", "--stage", "-z", "--", ".github/workflows")
+    if index.returncode != 0:
+        raise AuditFailure("prewrite Git index checkout identity unavailable")
+    tracked: set[str] = set()
+    for item in index.stdout.split("\\0"):
+        if not item:
+            continue
+        if "\\t" not in item:
+            raise AuditFailure("prewrite workflow Git index mode or stage drift")
+        meta, relative = item.split("\\t", 1)
+        fields = meta.split()
+        if (len(fields) != 3 or fields[0] not in ("100644", "100755")
+                or fields[2] != "0" or len(fields[1]) not in (40, 64)
+                or not re.fullmatch(r"[0-9a-f]+", fields[1])
+                or relative in tracked):
+            raise AuditFailure("prewrite workflow Git index mode or stage drift")
+        tracked.add(relative)
+    observed = {path.relative_to(repo_root).as_posix() for path in workflow_sources}
+    if tracked != observed:
+        raise AuditFailure("prewrite workflow Git index inventory drift")
+    for args in (
+        ("diff", "--quiet", "HEAD", "--", ".github/workflows"),
+        ("diff", "--cached", "--quiet", "HEAD", "--", ".github/workflows"),
+    ):
+        if git(*args).returncode != 0:
+            raise AuditFailure("prewrite workflow Git index content drift")
+
+
+def matching_workflows(repo_root: Path, relative: str, *, require_git_index: bool = False) -> list[str]:
     validate_relative_path(relative)
     # A symlinked Git metadata root can point outside the reviewed checkout.
     if (repo_root / ".git").is_symlink():
@@ -415,6 +466,8 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
             raise AuditFailure("workflow source casefold alias")
         seen_workflow_names.add(folded)
         workflow_sources.append(entry)
+    if require_git_index:
+        require_workflow_git_index_identity(repo_root, workflow_sources)
     matches: list[str] = []
     for workflow in workflow_sources:
         if workflow.is_symlink() or not workflow.is_file():
@@ -805,6 +858,55 @@ def self_test(repo_root: Path) -> None:
     if (entry_risk != "BLOCKED_KNOWN_WRITER_CAS" or
             set(entry_docs) & KNOWN_WRITER_CAS_WORKFLOWS != KNOWN_WRITER_CAS_WORKFLOWS):
         raise AuditFailure("shared entrypoint writer CAS risk changed; review required")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-git-index-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        workflow = directory / "w.yml"
+        original = 'on: push\n'
+        workflow.write_text(original, encoding="utf-8")
+        def fixture_git(*args: str) -> None:
+            result = subprocess.run(
+                ["git", *args], capture_output=True, text=True,
+                check=False, timeout=10,
+            )
+            if result.returncode != 0:
+                raise AuditFailure("Git index fixture setup failed")
+        fixture_git("init", "-q", str(root))
+        fixture_git("-C", str(root), "add", ".github/workflows/w.yml")
+        fixture_git("-C", str(root), "-c", "user.name=Fixture",
+                    "-c", "user.email=fixture@example.invalid",
+                    "commit", "-qm", "baseline")
+        if matching_workflows(root, "scripts/a.py", require_git_index=True) != [
+                ".github/workflows/w.yml"]:
+            raise AuditFailure("tracked clean Git workflow positive failed")
+        workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index content drift":
+                raise
+        else:
+            raise AuditFailure("dirty Git workflow negative accepted")
+        workflow.write_text(original, encoding="utf-8")
+        extra = directory / "untracked.yml"
+        extra.write_text(original, encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index inventory drift":
+                raise
+        else:
+            raise AuditFailure("untracked Git workflow negative accepted")
+        extra.unlink()
+        (root / ".git").rename(Path(tmp) / "detached-git")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite Git index checkout identity unavailable":
+                raise
+        else:
+            raise AuditFailure("missing Git index negative accepted")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-target-alias-") as tmp:
         root = Path(tmp) / "repo"
         workflow_dir = root / ".github/workflows"
@@ -1010,7 +1112,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 63 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 67 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
@@ -1023,6 +1125,8 @@ def self_test(repo_root: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--require-git-index-identity", action="store_true",
+                        help="require clean tracked workflow sources in the exact Git checkout")
     parser.add_argument("--require-direct-push-pr-match", action="store_true",
                         help="fail closed when no push/PR workflow directly matches; not a CI closure proof")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -1033,7 +1137,8 @@ def main() -> int:
         if args.self_test:
             self_test(args.repo_root)
             return 0
-        matches = matching_workflows(args.repo_root, args.path)
+        matches = matching_workflows(args.repo_root, args.path,
+                                     require_git_index=args.require_git_index_identity)
         risk = classify(matches, require_direct_match=args.require_direct_push_pr_match)
         print("prewrite direct path audit: " + args.path)
         print("risk: " + risk + "; matched workflow count: " + str(len(matches)))
