@@ -827,6 +827,17 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name != "main"
         }
+        # A direct module-level alias of a local helper is still an eager
+        # helper call when invoked later; resolve only reviewed simple
+        # assignments in source order, not arbitrary reflective dispatch.
+        for stmt in tree.body:
+            if (isinstance(stmt, (ast.Assign, ast.AnnAssign))
+                    and isinstance(stmt.value, ast.Name)
+                    and stmt.value.id in module_local_helpers):
+                targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+                module_local_helpers.update(
+                    target.id for target in targets if isinstance(target, ast.Name)
+                )
         # A unique main definition can still be shadowed by eager module
         # control flow. Ignore deferred function/lambda bodies and class-local
         # assignments; this is not a reflective-mutation proof.
@@ -1102,6 +1113,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred lambda reflection", 'helper = lambda: globals()["other"]\n', (1, 0)),
         ("deferred lambda main reflection", 'helper = lambda: globals().__setitem__("main", None)\n', (1, 0)),
         ("deferred local helper call", 'def helper():\n    return 1\ndef wrapper():\n    return helper()\n', (4, 0)),
+        ("uninvoked local helper alias", 'def helper():\n    return 1\nalias = helper\n', (3, 0)),
+        ("deferred local helper alias", 'def helper(): pass\nalias = helper\ndef wrapper(): alias()\n', (3, 0)),
         ("deferred entry-name local", 'def helper():\n    __name__ = "other"\n', (2, 0)),
         ("class-local entry-name", 'class Helper:\n    __name__ = "other"\n', (2, 0)),
         ("deferred dynamic import", 'def helper():\n    importlib.import_module("math")\n', (2, 0)),
@@ -1173,6 +1186,18 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("module entry-name function", baseline.replace(
             'if __name__', 'def __name__():\n    pass\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager local helper alias", baseline.replace(
+            'if __name__', 'def mutate():\n    globals()["main"] = None\nalias = mutate\nalias()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager annotated helper alias", baseline.replace(
+            'if __name__', 'def mutate():\n    globals()["main"] = None\nalias: object = mutate\nalias()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager chained helper alias", baseline.replace(
+            'if __name__', 'def mutate():\n    globals()["main"] = None\na = mutate\nb = a\nb()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager local decorator alias", baseline.replace(
+            'if __name__', 'def decorate(fn):\n    globals()["main"] = None\n    return fn\nalias = decorate\n@alias\ndef extra():\n    pass\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager local helper call", baseline.replace(
             'if __name__', 'def mutate():\n    globals()["main"] = None\nmutate()\nif __name__'),
