@@ -258,6 +258,7 @@ def prove_failure_classifier() -> None:
 def expected_diagnostic(name: str) -> str:
     """Bind each negative to the invariant it intended to violate."""
     fixed = {
+        "oversized learning history authority": "oversized learning authority: docs/operations/AUTONOMOUS-OPS-LEARNING.md",
         "hardlinked contract authority": "hardlinked learning authority forbidden: contracts/operations/autonomous-learning-system.json",
         "hardlinked learning history authority": "hardlinked learning authority forbidden: docs/operations/AUTONOMOUS-OPS-LEARNING.md",
         "hardlinked positive guard authority": "hardlinked learning authority forbidden: scripts/validate-autonomous-learning-system.py",
@@ -459,6 +460,73 @@ def world_writable_authority(root: Path, relative: Path) -> None:
 def world_writable_parent_directory(root: Path, relative: Path) -> None:
     # Only a disposable in-repository parent is made writable.
     (root / relative).chmod(0o777)
+
+
+def oversized_learning_authority(root: Path) -> None:
+    # Isolated canonical CLI negative: the real history is never mutated.
+    (root / LEARNING).write_bytes(b"x" * (8 * 1024 * 1024 + 1))
+
+
+def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
+    """Exercise bounded descriptor identity, including a deterministic rename."""
+    import importlib.util
+    from unittest import mock
+
+    spec = importlib.util.spec_from_file_location(
+        "_reviewed_canonical_reader", source_root / VALIDATOR
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("canonical descriptor guard module unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with tempfile.TemporaryDirectory(prefix="learning-descriptor-negative-") as tmp:
+        target = Path(tmp) / "authority"
+        target.write_bytes(b"stable")
+        def read() -> bytes:
+            return module.read_canonical_authority_bytes(
+                target, 10, too_large="reviewed source oversized"
+            )
+        def reject(label: str, expected: str) -> None:
+            try:
+                read()
+            except module.ValidationFailure as exc:
+                if str(exc) != expected:
+                    raise RuntimeError(
+                        f"canonical descriptor wrong diagnostic: {label}: {exc}"
+                    ) from exc
+            else:
+                raise RuntimeError("canonical descriptor negative accepted: " + label)
+
+        if read() != b"stable":
+            raise RuntimeError("canonical descriptor positive drift")
+        target.write_bytes(b"x" * 11)
+        reject("oversized", "reviewed source oversized")
+        target.write_bytes(b"stable")
+        alias = Path(tmp) / "hardlink"
+        os.link(target, alias)
+        reject("hardlink", f"canonical authority changed during read: {target}")
+        alias.unlink()
+        target.chmod(0o666)
+        reject("world-writable", f"canonical authority changed during read: {target}")
+        target.chmod(0o644)
+        original_open = os.open
+        def swap_after_open(path, flags):
+            fd = original_open(path, flags)
+            if Path(path) == target:
+                replacement = Path(tmp) / "replacement"
+                replacement.write_bytes(b"swapped")
+                os.replace(replacement, target)
+            return fd
+        with mock.patch.object(module.os, "open", side_effect=swap_after_open):
+            reject("inode replacement", f"canonical authority changed during read: {target}")
+        if read() != b"swapped":
+            raise RuntimeError("canonical descriptor replacement recovery failed")
+        target.unlink()
+        os.mkfifo(target)
+        reject("FIFO", f"canonical authority changed during read: {target}")
+        target.unlink()
+        target.symlink_to("missing-target")
+        reject("symlink", f"unreadable authority: {target}")
 
 
 def nonregular_authority(root: Path, relative: Path, kind: str) -> None:
@@ -5823,6 +5891,10 @@ def main() -> int:
             f"world-writable {label} parent directory",
             lambda root, path=relative: world_writable_parent_directory(root, path),
         ))
+    cases.append((
+        "oversized learning history authority",
+        oversized_learning_authority,
+    ))
     for kind in ("fifo", "directory"):
         for label, relative in (
             ("contract", CONTRACT),
@@ -5869,6 +5941,7 @@ def main() -> int:
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
+    prove_canonical_descriptor_read_negatives(source_root)
     prove_upload_route_go_import_parser()
     prove_upload_route_go_direct_inputs(source_root)
     prove_prewrite_git_clean_filter_cli(source_root)
