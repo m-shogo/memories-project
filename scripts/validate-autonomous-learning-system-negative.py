@@ -4798,6 +4798,56 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     return len(cases) + 84 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
+def prove_prewrite_workflow_directory_membership_drift(source_root: Path) -> None:
+    """Exercise an added workflow after enumeration but before audit completion."""
+    import runpy
+    from types import SimpleNamespace
+    from unittest import mock
+
+    module = runpy.run_path(str(source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"))
+    matcher = module["matching_workflows"]
+    original_reader = module["read_workflow_bytes_bounded"]
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-directory-race-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "initial.yml").write_text("on: push\\n", encoding="utf-8")
+        expected = [".github/workflows/initial.yml"]
+        if matcher(root, "scripts/a.py") != expected:
+            raise RuntimeError("workflow directory membership baseline failed")
+        injected = [False]
+        real_lstat = Path.lstat
+
+        def inject_late_workflow(path: Path, *, strict: bool = False) -> bytes:
+            if not injected[0]:
+                injected[0] = True
+                (directory / "late.yml").write_text("on: push\\n", encoding="utf-8")
+            return original_reader(path, strict=strict)
+
+        def directory_ctime_drift(path: Path):
+            observed = real_lstat(path)
+            if path == directory and injected[0]:
+                return SimpleNamespace(
+                    st_mode=observed.st_mode, st_dev=observed.st_dev,
+                    st_ino=observed.st_ino, st_mtime_ns=observed.st_mtime_ns,
+                    st_ctime_ns=observed.st_ctime_ns + 1,
+                )
+            return observed
+
+        with mock.patch.dict(matcher.__globals__, {
+            "read_workflow_bytes_bounded": inject_late_workflow,
+        }), mock.patch.object(Path, "lstat", directory_ctime_drift):
+            try:
+                matcher(root, "scripts/a.py")
+            except module["AuditFailure"] as exc:
+                if str(exc) != "workflow directory changed during audit":
+                    raise
+            else:
+                raise RuntimeError("late workflow membership drift accepted")
+        if not injected[0] or not (directory / "late.yml").is_file():
+            raise RuntimeError("late workflow membership fixture did not execute")
+
+
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     """Exercise the real prewrite CLI, not just its in-process validator."""
     baseline = ('def main() -> int:\n    return 0\n\n'
@@ -5580,6 +5630,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    prove_prewrite_workflow_directory_membership_drift(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")

@@ -568,6 +568,12 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
     # filenames, while an uppercase extension or trailing dot/space may
     # alias a reviewed YAML leaf without matching the glob on this host.
     # Enumerate all leaves before trusting direct trigger fanout.
+    # Snapshot the workflow directory itself: adding a new YAML leaf after
+    # enumeration can otherwise produce a falsely bounded direct fanout.
+    try:
+        directory_before = directory.lstat()
+    except OSError:
+        raise AuditFailure("workflow directory changed during audit") from None
     workflow_sources: list[Path] = []
     seen_workflow_names: set[str] = set()
     for entry in sorted(directory.iterdir()):
@@ -607,6 +613,16 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
             raise AuditFailure("workflow source invalid UTF-8") from exc
         if workflow_matches_path(source, relative):
             matches.append(workflow.relative_to(repo_root).as_posix())
+    try:
+        directory_after = directory.lstat()
+    except OSError:
+        raise AuditFailure("workflow directory changed during audit") from None
+    if (not stat.S_ISDIR(directory_after.st_mode)
+            or (directory_after.st_dev, directory_after.st_ino,
+                directory_after.st_mtime_ns, directory_after.st_ctime_ns) !=
+               (directory_before.st_dev, directory_before.st_ino,
+                directory_before.st_mtime_ns, directory_before.st_ctime_ns)):
+        raise AuditFailure("workflow directory changed during audit")
     return matches
 
 
