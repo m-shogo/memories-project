@@ -3069,6 +3069,27 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite bracket CLI identity missing: " + label)
+        unicode_source_cases = (
+            ("NEL event separator", "on:  push:    paths:      - scripts/a.py", 1),
+            ("LS event separator", "on:   push:     paths:       - scripts/a.py", 1),
+            ("PS event separator", "on:   push:     paths:       - scripts/a.py", 1),
+            ("Japanese comment control", "name: テスト\non:\n  workflow_dispatch:\n", 0),
+        )
+        if tuple(case[0] for case in unicode_source_cases) != ("NEL event separator","LS event separator","PS event separator","Japanese comment control",):
+            raise RuntimeError("prewrite Unicode source CLI fixture identity drift")
+        for label, content, count in unicode_source_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite Unicode source CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite Unicode source CLI identity missing: " + label)
     # An actual writer-named workflow must block even with one direct match.
     with tempfile.TemporaryDirectory(prefix="learning-fanout-writer-cas-") as tmp:
         root = Path(tmp)
@@ -3219,7 +3240,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 11 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases)
+    return len(cases) + 11 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

@@ -67,6 +67,9 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # A second BOM is not a reviewed event-filter spelling: fail closed.
     if "\ufeff" in source:
         return True
+    # Unicode YAML line separators are outside the reviewed newline grammar.
+    if any(separator in source for separator in ("\u0085", "\u2028", "\u2029")):
+        return True
     # YAML double-quoted mapping keys can decode \u escapes into "on".
     # Unknown escaped root keys are not proof of a dispatch-only workflow.
     if re.search(r'(?m)^"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
@@ -434,6 +437,17 @@ def self_test(repo_root: Path) -> None:
     for label, source, path, expected in bracket_cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite bracket negative/positive failed: " + label)
+    unicode_source_cases = (
+        ("NEL event separator", "on:  push:    paths:      - scripts/a.py", "scripts/a.py", True),
+        ("LS event separator", "on:   push:     paths:       - scripts/a.py", "scripts/a.py", True),
+        ("PS event separator", "on:   push:     paths:       - scripts/a.py", "scripts/a.py", True),
+        ("Japanese comment control", "name: テスト\non:\n  workflow_dispatch:\n", "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in unicode_source_cases) != ("NEL event separator","LS event separator","PS event separator","Japanese comment control",):
+        raise AuditFailure("prewrite Unicode source fixture identity drift")
+    for label, source, path, expected in unicode_source_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite Unicode source negative/positive failed: " + label)
     if classify([".github/workflows/w" + str(i) + ".yml"
                  for i in range(MAX_REVIEWED_DIRECT_FANOUT + 1)]) != "BLOCKED_HIGH_FANOUT":
         raise AuditFailure("high-fanout threshold negative failed")
@@ -509,7 +523,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
