@@ -831,23 +831,9 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name != "main"
         }
-        # A direct module-level alias of a local helper is still an eager
-        # helper call when invoked later; resolve only reviewed simple
-        # assignments in source order, not arbitrary reflective dispatch.
-        for stmt in tree.body:
-            if (isinstance(stmt, (ast.Assign, ast.AnnAssign))
-                    and isinstance(stmt.value, ast.Name)
-                    and stmt.value.id in module_local_helpers):
-                targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-                module_local_helpers.update(
-                    target.id for target in targets if isinstance(target, ast.Name)
-                )
-        # A unique main definition can still be shadowed by eager module
-        # control flow. Ignore deferred function/lambda bodies and class-local
-        # assignments; this is not a reflective-mutation proof.
-        # A partial factory returns a callable whose invocation is eager.
-        # A partial used as a decorator is also invoked at definition time.
-        # This is conservative lexical detection, not callable-alias closure.
+        # A partial factory may wrap an unreviewed callable. Track a
+        # simple module-level assignment as a callable alias without
+        # evaluating the wrapped target or assuming general alias closure.
         def partial_factory(value: ast.AST) -> bool:
             return (isinstance(value, ast.Call)
                     and ((isinstance(value.func, ast.Name)
@@ -855,6 +841,20 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                          or (isinstance(value.func, ast.Attribute)
                              and value.func.attr == "partial")))
 
+        # Resolve only source-ordered, direct aliases and partial wrappers;
+        # construction alone remains deferred until an alias is invoked.
+        for stmt in tree.body:
+            if (isinstance(stmt, (ast.Assign, ast.AnnAssign))
+                    and ((isinstance(stmt.value, ast.Name)
+                          and stmt.value.id in module_local_helpers)
+                         or partial_factory(stmt.value))):
+                targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+                module_local_helpers.update(
+                    target.id for target in targets if isinstance(target, ast.Name)
+                )
+        # A unique main definition can still be shadowed by eager module
+        # control flow. Ignore deferred function/lambda bodies and class-local
+        # assignments; this is not a reflective-mutation proof.
         def module_shadows_main(node: ast.AST, *, top_level: bool, class_local: bool = False) -> bool:
             # Decorator lambdas are invoked when applied, unlike ordinary
             # deferred lambdas. Their lexical bindings remain lambda-local.
@@ -1122,6 +1122,7 @@ def prove_prewrite_python_negatives() -> None:
         ("safe explicit import", 'from math import sqrt\n', (1, 0)),
         ("deferred partial construction", 'pending = functools.partial(print, "hello")\n', (1, 0)),
         ("deferred partial local helper", 'def helper():\n    pass\npending = functools.partial(helper)\n', (3, 0)),
+        ("deferred partial alias chain", 'wrapped = functools.partial(print)\nalias = wrapped\n', (2, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
@@ -1396,6 +1397,18 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "main binding shadowed", baseline),
         ("partial class decorator", baseline.replace(
              'if __name__', 'def mutate(cls):\n    globals()["main"] = None\n    return cls\n@functools.partial(mutate)\nclass Helper:\n    pass\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager assigned partial helper", baseline.replace(
+             'if __name__', 'def mutate():\n    globals()["main"] = None\nwrapped = functools.partial(mutate)\nwrapped()\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager chained partial helper", baseline.replace(
+             'if __name__', 'def mutate():\n    globals()["main"] = None\nwrapped = functools.partial(mutate)\nalias = wrapped\nalias()\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager assigned partial exec", baseline.replace(
+             'if __name__', 'wrapped = functools.partial(exec, "main = None")\nwrapped()\nif __name__'),
+          sha, 40, 20, "main binding shadowed", baseline),
+        ("eager assigned partial decorator", baseline.replace(
+             'if __name__', 'def mutate(fn):\n    globals()["main"] = None\n    return fn\nwrapped = functools.partial(mutate)\n@wrapped\ndef helper():\n    pass\nif __name__'),
           sha, 40, 20, "main binding shadowed", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
