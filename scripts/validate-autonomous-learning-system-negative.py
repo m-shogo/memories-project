@@ -758,6 +758,11 @@ def reject_invalid_go_lexical_regions(source: str) -> None:
                 state = "code"
         elif state in ("quoted", "rune"):
             if char == "\\":
+                # A backslash cannot escape a physical newline in a Go
+                # interpreted string or rune literal. Skipping it would
+                # misclassify invalid source as a compiled import graph.
+                if index + 1 < len(source) and source[index + 1] in "\r\n":
+                    raise RuntimeError("unreviewed Go escaped newline in literal")
                 index += 2
                 continue
             if (state == "quoted" and char == '"') or (state == "rune" and char == "'"):
@@ -905,6 +910,12 @@ def prove_upload_route_go_import_parser() -> None:
          "unreviewed Go orphan block comment close"),
         ("unterminated raw string", 'package test\nvar doc = `\nimport "fmt"\n',
          "unreviewed Go unterminated lexical region"),
+        ("escaped quoted newline", 'package test\nvar doc = "x' + chr(92) + '\n"\nimport "fmt"\n',
+         "unreviewed Go escaped newline in literal"),
+        ("escaped rune newline", "package test\nvar doc = '" + chr(92) + "\n'\nimport \"fmt\"\n",
+         "unreviewed Go escaped newline in literal"),
+        ("escaped CRLF newline", 'package test\nvar doc = "x' + chr(92) + '\r\n"\nimport "fmt"\n',
+         "unreviewed Go escaped newline in literal"),
     ):
         try:
             upload_route_local_go_imports(candidate, include_external=True)
@@ -919,6 +930,7 @@ def prove_upload_route_go_import_parser() -> None:
         ("line comment delimiter", 'package test\n// /*\nimport "fmt"\n'),
         ("raw string delimiter", 'package test\nvar doc = `/*`\nimport "fmt"\n'),
         ("escaped interpreted quote", 'package test\nvar doc = "\\"/*"\nimport "fmt"\n'),
+        ("escaped backslash", 'package test\nvar doc = "x\\\\y"\nimport "fmt"\n'),
     ):
         if upload_route_local_go_imports(candidate, include_external=True) != {"fmt"}:
             raise RuntimeError("Go delimiter-looking data positive failed: " + label)
