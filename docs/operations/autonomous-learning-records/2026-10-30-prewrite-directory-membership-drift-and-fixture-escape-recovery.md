@@ -33,3 +33,7 @@ Append-only operational learning, separate from the canonical learning authority
 ## Next independent safe target
 
 Audit the remaining read-only checkout/directory source identity boundaries and prove complete Go/Python transitive input and Push/PR trigger coverage before proposing any workflow changes. Existing Upload Route Go tests remain after external MinIO startup in current workflows. Do not retry unchanged Quay 401, workflow-write permission, canonical large-file transport or human-promotion blockers. This learning-only HEAD is not a full production admission success.
+
+## Append-only clarification — byte notation in the correction bullet
+
+The correction bullet above accidentally displays an extra backslash in its Markdown representation of the Python byte literal. The authoritative committed fixture in `b6f0a117` contains exactly the ASCII bytes `6f 6e 3a 20 70 75 73 68 0a` (the final byte is LF, hexadecimal `0A`), not the two-byte backslash-plus-`n` sequence. Both `read_bytes()` assertions compare against this LF-terminated sequence. The original paragraph is retained unchanged for audit history; this append-only clarification prevents the rendered notation from being treated as test evidence.
