@@ -3013,6 +3013,64 @@ def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
             raise RuntimeError("prewrite Git CRLF restoration positive failed")
 
 
+def prove_prewrite_git_sha256_cli(source_root: Path) -> None:
+    """The raw-blob guard must handle Git SHA-256 repositories, not only SHA-1."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    with tempfile.TemporaryDirectory(prefix="learning-git-sha256-") as tmp:
+        root = Path(tmp)
+        workflow = root / ".github/workflows/fixture.yml"
+        workflow.parent.mkdir(parents=True)
+        original = "on: push\n"
+        workflow.write_text(original, encoding="utf-8")
+
+        def git(*args: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+
+        for args in (
+            ("init", "-q", "--object-format=sha256"),
+            ("add", ".github/workflows/fixture.yml"),
+            ("-c", "user.name=Fixture", "-c",
+             "user.email=fixture@example.invalid", "commit", "-qm", "baseline"),
+        ):
+            if git(*args).returncode:
+                raise RuntimeError("prewrite SHA-256 Git fixture setup failed")
+        index = git("ls-files", "--stage", "--", ".github/workflows")
+        if (index.returncode or len(index.stdout.split()) < 2
+                or len(index.stdout.split()[1]) != 64):
+            raise RuntimeError("prewrite SHA-256 index object identity missing")
+
+        command = [
+            sys.executable, str(guard), "--repo-root", str(root),
+            "--path", "scripts/a.py", "--require-git-index-identity",
+            "--require-direct-push-pr-match",
+        ]
+        clean = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        expected = "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+        if (clean.returncode or clean.stderr
+                or expected not in clean.stdout.splitlines()):
+            raise RuntimeError("prewrite SHA-256 clean source positive failed")
+        workflow.write_text("on: workflow_dispatch\n", encoding="utf-8")
+        dirty = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (dirty.returncode != 1 or dirty.stdout or
+                dirty.stderr.strip() !=
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index raw blob drift"):
+            raise RuntimeError("prewrite SHA-256 raw-blob negative failed")
+        workflow.write_text(original, encoding="utf-8")
+        restored = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (restored.returncode or restored.stderr
+                or expected not in restored.stdout.splitlines()):
+            raise RuntimeError("prewrite SHA-256 restored source positive failed")
+
+
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
     """Require the actual fanout CLI to conservatively count ambiguous events."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -4727,6 +4785,7 @@ def main() -> int:
     prove_upload_route_go_import_parser()
     prove_upload_route_go_direct_inputs(source_root)
     prove_prewrite_git_clean_filter_cli(source_root)
+    prove_prewrite_git_sha256_cli(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
