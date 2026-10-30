@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import hashlib
+import os
 import re
 import subprocess
 import sys
@@ -350,6 +351,13 @@ def require_workflow_git_index_identity(
 
     Does not establish transitive CI reachability or permission to write.
     """
+    # Git environment overrides can select a different index while leaving
+    # rev-parse --show-toplevel unchanged. Do not trust an alternate checkout
+    # authority as proof about the repository's actual staged workflows.
+    if any(name in os.environ for name in (
+        "GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR",
+    )):
+        raise AuditFailure("prewrite Git environment checkout override requires review")
     if not (repo_root / ".git").is_dir():
         raise AuditFailure("prewrite Git index checkout identity unavailable")
 
