@@ -70,6 +70,19 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # Unicode YAML line separators are outside the reviewed newline grammar.
     if any(separator in source for separator in ("\u0085", "\u2028", "\u2029")):
         return True
+    # Flow-style YAML document roots can define on/push without a block
+    # "on:" key. The block matcher cannot prove a non-match in this grammar.
+    for row in source.splitlines():
+        first = row.lstrip()
+        if not first or first.startswith(("#", "%")):
+            continue
+        if first.startswith("---"):
+            first = first[3:].lstrip()
+            if not first or first.startswith("#"):
+                continue
+        if first.startswith("{"):
+            return True
+        break
     # YAML double-quoted mapping keys can decode \u escapes into "on".
     # Unknown escaped root keys are not proof of a dispatch-only workflow.
     if re.search(r'(?m)^"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
@@ -457,8 +470,13 @@ def self_test(repo_root: Path) -> None:
         ("root anchored on", "&key on:\n    push:\n", "scripts/a.py", True),
         ("root complex on", "? on\n:\n    push:\n", "scripts/a.py", True),
         ("root unrelated anchor", "name: &e push\non: workflow_dispatch\n", "scripts/a.py", False),
+        ("root flow push", "{\"on\": {\"push\": {\"paths\": [\"scripts/a.py\"]}}}\n", "scripts/a.py", True),
+        ("root flow target", "{\"on\": [\"pull_request_target\"]}\n", "scripts/a.py", True),
+        ("root flow document marker", "--- {\"on\": [\"push\"]}\n", "scripts/a.py", True),
+        ("root flow dispatch conservative", "# header\n\n{\"on\": {\"workflow_dispatch\": {}}}\n", "scripts/a.py", True),
+        ("nested JSON block is not root flow", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    runs-on: ubuntu-latest\n    steps:\n      - run: |\n          {\"on\": {\"push\": {}}}\n", "scripts/a.py", False),
     )
-    if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor",):
+    if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor","root flow push","root flow target","root flow document marker","root flow dispatch conservative","nested JSON block is not root flow",):
         raise AuditFailure("prewrite root-event fixture identity drift")
     for label, source, path, expected in root_event_cases:
         if workflow_matches_path(source, path) is not expected:
