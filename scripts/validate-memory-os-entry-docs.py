@@ -164,9 +164,16 @@ def validate_learning_guards(failures: list[str]) -> None:
             )
             continue
         if not learning_guard_passed(relative, completed):
+            # Preserve the actual bounded child diagnostic on CI failure.
+            # A first direct PASS cannot establish this independent invocation.
+            # Never emit unbounded child output or treat diagnostics as proof.
+            child_diagnostic = (completed.stderr or completed.stdout).strip()
+            if child_diagnostic:
+                child_diagnostic = child_diagnostic[-800:].replace("\\n", " | ")
             failures.append(
                 f"autonomous-learning guard missing verified PASS: {relative} "
-                f"(exit {completed.returncode})"
+                f"(exit {completed.returncode}; "
+                f"child diagnostic: {child_diagnostic or 'empty'})"
             )
         else:
             # Emit only a previously validated, single-line success marker.
