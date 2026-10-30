@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 DEFAULT_ROOT = Path(__file__).resolve().parents[1]
@@ -7206,8 +7207,19 @@ def main() -> int:
             f"symlinked {label} parent directory",
             lambda root, path=relative: symlink_parent_directory(root, path),
         ))
-    for name, mutate in cases:
+    # Every canonical mutation owns a separate TemporaryDirectory and child
+    # validator process. Bound independent cases to two workers to preserve
+    # the nested 120-second entrypoint deadline without dropping negatives.
+    # executor.map yields in source order, keeping failure reporting stable.
+    def execute_case(item):
+        name, mutate = item
         require_failure(source_root, name, mutate)
+        return name
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        completed = list(executor.map(execute_case, cases))
+    if completed != [name for name, _ in cases]:
+        raise RuntimeError("canonical negative worker result/order drift")
 
     prove_parent_case_coverage_negatives()
     prove_canonical_descriptor_read_negatives(source_root)
