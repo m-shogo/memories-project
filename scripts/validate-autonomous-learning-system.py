@@ -1082,15 +1082,23 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         ]
         if len(guard_positions) != 1:
             raise ValidationFailure("prewrite " + label + " must have one live main guard")
-        # An exact AST guard is insufficient when an unconditional module
-        # statement exits first. This bounded check covers direct top-level
-        # terminators, not arbitrary control-flow or reflective aliases.
-        for statement in tree.body[:guard_positions[0]]:
+        # A class body is eager; a literal-boolean if executes exactly
+        # one branch. Deferred method/function bodies remain out of scope.
+        # This bounded source-order check is not general control-flow proof.
+        def eager_direct_termination(statement: ast.AST) -> bool:
             if isinstance(statement, ast.Raise):
-                raise ValidationFailure("prewrite " + label + " entry guard unreachable")
+                return True
+            if isinstance(statement, ast.ClassDef):
+                return any(eager_direct_termination(child)
+                           for child in statement.body)
+            if (isinstance(statement, ast.If)
+                    and isinstance(statement.test, ast.Constant)
+                    and type(statement.test.value) is bool):
+                selected = statement.body if statement.test.value else statement.orelse
+                return any(eager_direct_termination(child) for child in selected)
             if not (isinstance(statement, ast.Expr)
                     and isinstance(statement.value, ast.Call)):
-                continue
+                return False
             callee = statement.value.func
             direct_exit = (isinstance(callee, ast.Name)
                            and callee.id in {"exit", "quit", "_exit", "abort"})
@@ -1102,8 +1110,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                      or (callee.value.id == "builtins"
                          and callee.attr in {"exit", "quit"}))
             )
-            if direct_exit or qualified_exit:
-                raise ValidationFailure("prewrite " + label + " entry guard unreachable")
+            return direct_exit or qualified_exit
+
+        if any(eager_direct_termination(statement)
+               for statement in tree.body[:guard_positions[0]]):
+            raise ValidationFailure("prewrite " + label + " entry guard unreachable")
     left_lines, right_lines = baseline.splitlines(), candidate.splitlines()
     left_counts, right_counts = Counter(left_lines), Counter(right_lines)
     # Bound the number of equal-token comparisons available to the matcher,
@@ -1151,6 +1162,9 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred helper exit", 'def helper():\n    sys.exit(0)\n', (2, 0)),
         ("unreachable conditional exit", 'if False:\n    sys.exit(0)\n', (2, 0)),
         ("deferred lambda exit", 'later = lambda: sys.exit(0)\n', (1, 0)),
+        ("constant-false raise", 'if False:\n    raise SystemExit(0)\n', (2, 0)),
+        ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
+        ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
@@ -1458,6 +1472,18 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("unconditional module bare exit", baseline.replace(
              'if __name__', 'exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("literal-true conditional raise", baseline.replace(
+             'if __name__', 'if True:\n    raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("literal-false else exit", baseline.replace(
+             'if __name__', 'if False:\n    pass\nelse:\n    sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("eager class body raise", baseline.replace(
+             'if __name__', 'class Helper:\n    raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("eager class literal-true exit", baseline.replace(
+             'if __name__', 'class Helper:\n    if True:\n        os.abort()\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
