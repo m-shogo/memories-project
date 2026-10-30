@@ -91,6 +91,11 @@ LEARNING_GUARD_TIMEOUT_SECONDS = 120
 MIN_LEARNING_NEGATIVE_CASES = 128
 
 
+def learning_guard_timeout_reviewed(seconds: object) -> bool:
+    """A longer nested deadline would conceal a measured regression."""
+    return type(seconds) is int and seconds == 120
+
+
 def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[str]) -> bool:
     """An exit-zero child without its actual PASS proof is not an executed guard."""
     if completed.returncode != 0 or completed.stderr:
@@ -135,6 +140,11 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         ("extra output", LEARNING_GUARDS[1], 0, negative + "ignored", "", False),
         ("unbound guard", "scripts/unbound-guard.py", 0, positive, "", False),
     )
+    if not learning_guard_timeout_reviewed(120):
+        failures.append("learning guard reviewed timeout positive rejected")
+    for candidate in (0, 119, 121, 300, True, 120.0, "120"):
+        if learning_guard_timeout_reviewed(candidate):
+            failures.append("learning guard reviewed timeout negative accepted")
     for name, relative, code, stdout, stderr, expected in cases:
         completed = subprocess.CompletedProcess([], code, stdout, stderr)
         if learning_guard_passed(relative, completed) is not expected:
@@ -156,8 +166,8 @@ def validate_learning_guards(failures: list[str]) -> None:
     if len(LEARNING_GUARDS) != len(set(LEARNING_GUARDS)):
         failures.append("duplicate autonomous-learning guard binding")
         return
-    if not 1 <= LEARNING_GUARD_TIMEOUT_SECONDS <= 300:
-        failures.append("autonomous-learning guard timeout must remain bounded to 1..300 seconds")
+    if not learning_guard_timeout_reviewed(LEARNING_GUARD_TIMEOUT_SECONDS):
+        failures.append("autonomous-learning guard timeout must remain reviewed 120 seconds")
         return
     prove_learning_guard_classifier(failures)
     if failures:
