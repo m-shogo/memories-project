@@ -370,12 +370,12 @@ def require_workflow_git_index_identity(
     if index.returncode != 0:
         raise AuditFailure("prewrite Git index checkout identity unavailable")
     tracked: set[str] = set()
-    for item in index.stdout.split("\\0"):
+    for item in index.stdout.split("\0"):
         if not item:
             continue
-        if "\\t" not in item:
+        if "\t" not in item:
             raise AuditFailure("prewrite workflow Git index mode or stage drift")
-        meta, relative = item.split("\\t", 1)
+        meta, relative = item.split("\t", 1)
         fields = meta.split()
         if (len(fields) != 3 or fields[0] not in ("100644", "100755")
                 or fields[2] != "0" or len(fields[1]) not in (40, 64)
