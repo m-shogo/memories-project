@@ -4065,32 +4065,34 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route transitive MinIO-first CI classification failed: " + label)
-    # These are required by the focused workflow's Python installation or
-    # delegated observability validator, but none of the three scoped
-    # Upload Route workflows directly triggers on them. This is not a
-    # claim about unrelated workflows elsewhere in the repository.
-    for label, relative in (
-        ("Python requirements", "requirements-security-validation.txt"),
-        ("observability contract", "contracts/operations/observability-event-contract.v1.json"),
-        ("observability positive fixture", "docs/fixtures/memory-os-operability/observability-events.valid.v1.json"),
-        ("operability status", "contracts/operations/production-operability-status.json"),
-    ):
-        if not (source_root / relative).is_file():
-            raise RuntimeError("upload route Python dependency missing: " + label)
-        result = subprocess.run(
-            [sys.executable, str(guard), "--repo-root", str(root),
-             "--path", relative, "--require-direct-push-pr-match"],
-            capture_output=True, text=True, check=False, timeout=30,
-        )
-        if (result.returncode != 2 or result.stderr
-                or "risk: BLOCKED_NO_DIRECT_PUSH_PR_MATCH; matched workflow count: 0"
-                   not in result.stdout.splitlines()
-                or any(name in result.stdout for name in (
-                    "import-api-security-slice.yml",
-                    "reconcile-upload-route-authority.yml",
-                    "reconcile-upload-route-authority-pr.yml",
-                ))):
-            raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
+        # These are required by the focused workflow's Python installation or
+        # delegated observability validator, but none of the three scoped
+        # Upload Route workflows directly triggers on them. This is not a
+        # claim about unrelated workflows elsewhere in the repository.
+        for label, relative in (
+            ("Python requirements", "requirements-security-validation.txt"),
+            ("observability contract", "contracts/operations/observability-event-contract.v1.json"),
+            ("observability positive fixture", "docs/fixtures/memory-os-operability/observability-events.valid.v1.json"),
+            ("operability status", "contracts/operations/production-operability-status.json"),
+        ):
+            if not (source_root / relative).is_file():
+                raise RuntimeError("upload route Python dependency missing: " + label)
+            if not workflow.parent.is_dir():
+                raise RuntimeError("upload route Python CLI fixture directory escaped lifetime")
+            result = subprocess.run(
+                [sys.executable, str(guard), "--repo-root", str(root),
+                 "--path", relative, "--require-direct-push-pr-match"],
+                capture_output=True, text=True, check=False, timeout=30,
+            )
+            if (result.returncode != 2 or result.stderr
+                    or "risk: BLOCKED_NO_DIRECT_PUSH_PR_MATCH; matched workflow count: 0"
+                       not in result.stdout.splitlines()
+                    or any(name in result.stdout for name in (
+                        "import-api-security-slice.yml",
+                        "reconcile-upload-route-authority.yml",
+                        "reconcile-upload-route-authority-pr.yml",
+                    ))):
+                raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
     return 12
 
 
