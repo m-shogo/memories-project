@@ -4031,9 +4031,18 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             for dependency in inputs:
                 if f'"{dependency}"' not in validator_source:
                     raise RuntimeError("upload route delegated validator Go input changed: " + dependency)
+        # Go compiles every non-test source in the imported httpapi package;
+        # the module checksum file also governs dependency resolution.
+        peer = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
+            encoding="utf-8"
+        )
+        if not peer.startswith("package httpapi\n"):
+            raise RuntimeError("upload route transitive httpapi package identity changed")
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
+            ("Go checksums", "services/import-api/go.sum"),
+            ("transitive httpapi package", "services/import-api/internal/httpapi/account_handler.go"),
             ("metrics validator Go input", "services/import-api/internal/metrics/recorder.go"),
             ("rate-limit validator Go input", "services/import-api/internal/ratelimit/enforce.go"),
             ("observability codes Go input", "services/import-api/internal/obslog/codes.go"),
@@ -4056,7 +4065,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route transitive MinIO-first CI classification failed: " + label)
-    return 6
+    return 8
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
