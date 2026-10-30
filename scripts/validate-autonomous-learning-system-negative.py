@@ -3000,6 +3000,36 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count == 1 and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite fanout CLI matched identity missing: " + label)
+        # Strict prewrite mode must block zero direct push/PR matches.
+        # A positive direct match is still only a necessary condition,
+        # never proof of transitive CI reachability or write permission.
+        strict_args = [sys.executable, str(guard), "--repo-root", str(root),
+                       "--path", "scripts/a.py", "--require-direct-push-pr-match"]
+        workflow.write_text(
+            'on:\n  push:\n    paths:\n      - "docs/**"\n', encoding="utf-8"
+        )
+        absent = subprocess.run(
+            strict_args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (absent.returncode != 2 or absent.stderr or absent.stdout.splitlines() != [
+                "prewrite direct path audit: scripts/a.py",
+                "risk: BLOCKED_NO_DIRECT_PUSH_PR_MATCH; matched workflow count: 0",
+                "Do not write until independent scoped review changes the precondition.",
+        ]):
+            raise RuntimeError("strict prewrite zero-direct-CI-match negative failed")
+        workflow.write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', encoding="utf-8"
+        )
+        present = subprocess.run(
+            strict_args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (present.returncode != 0 or present.stderr or present.stdout.splitlines() != [
+                "prewrite direct path audit: scripts/a.py",
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1",
+                "- .github/workflows/fixture.yml",
+                "Direct matching alone is not permission or transitive closure proof.",
+        ]):
+            raise RuntimeError("strict prewrite direct-match positive failed")
         complex_event_cases = (
             ("merged event alias", "name: &events\n  push:\n    paths:\n      - \"scripts/a.py\"\non:\n  <<: *events\n", 1),
             ("spaced merge key", "name: &events push\non:\n  << : *events\n", 1),
@@ -3568,7 +3598,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 58 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 60 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
