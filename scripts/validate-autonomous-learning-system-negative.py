@@ -340,6 +340,15 @@ def expected_diagnostic(name: str) -> str:
         }
         if label in targets:
             return "world-writable learning authority forbidden: " + targets[label].as_posix()
+    if name.startswith("world-writable ") and name.endswith(" parent directory"):
+        label = name[len("world-writable "):-len(" parent directory")]
+        targets = {
+            "scripts": Path("scripts"),
+            "contracts operations": Path("contracts/operations"),
+            "docs operations": Path("docs/operations"),
+        }
+        if label in targets:
+            return "world-writable learning authority parent forbidden: " + targets[label].as_posix()
     if name.startswith("nonregular "):
         for kind in ("fifo", "directory"):
             prefix = "nonregular " + kind + " "
@@ -445,6 +454,11 @@ def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
 def world_writable_authority(root: Path, relative: Path) -> None:
     # The disposable fixture is the only file whose permissions are changed.
     (root / relative).chmod(0o666)
+
+
+def world_writable_parent_directory(root: Path, relative: Path) -> None:
+    # Only a disposable in-repository parent is made writable.
+    (root / relative).chmod(0o777)
 
 
 def nonregular_authority(root: Path, relative: Path, kind: str) -> None:
@@ -5799,6 +5813,15 @@ def main() -> int:
         cases.append((
             f"world-writable {label} authority",
             lambda root, path=relative: world_writable_authority(root, path),
+        ))
+    for label, relative in (
+        ("scripts", Path("scripts")),
+        ("contracts operations", Path("contracts/operations")),
+        ("docs operations", Path("docs/operations")),
+    ):
+        cases.append((
+            f"world-writable {label} parent directory",
+            lambda root, path=relative: world_writable_parent_directory(root, path),
         ))
     for kind in ("fifo", "directory"):
         for label, relative in (
