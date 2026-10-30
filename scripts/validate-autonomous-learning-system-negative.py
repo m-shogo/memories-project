@@ -2977,6 +2977,30 @@ def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
                 or expected_clean not in restored.stdout.splitlines()):
             raise RuntimeError("prewrite Git clean-filter restoration positive failed")
 
+        # Git eol=crlf is a second normalization path: git diff can
+        # report clean although the raw checked-out bytes differ.
+        attributes.write_text(
+            ".github/workflows/*.yml text eol=crlf\n", encoding="utf-8",
+        )
+        workflow.write_bytes(original.replace("\n", "\r\n").encode("utf-8"))
+        if git("diff", "--quiet", "HEAD", "--", ".github/workflows").returncode:
+            raise RuntimeError("prewrite Git CRLF fixture did not mask git diff")
+        crlf = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (crlf.returncode != 1 or crlf.stdout
+                or crlf.stderr.strip() !=
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index raw blob drift"):
+            raise RuntimeError("prewrite Git CRLF raw-byte negative failed")
+        workflow.write_text(original, encoding="utf-8")
+        attributes.unlink()
+        restored_crlf = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (restored_crlf.returncode != 0 or restored_crlf.stderr
+                or expected_clean not in restored_crlf.stdout.splitlines()):
+            raise RuntimeError("prewrite Git CRLF restoration positive failed")
+
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
     """Require the actual fanout CLI to conservatively count ambiguous events."""
