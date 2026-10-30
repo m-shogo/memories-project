@@ -383,6 +383,24 @@ def require_workflow_git_index_identity(
                 or relative in tracked):
             raise AuditFailure("prewrite workflow Git index mode or stage drift")
         tracked.add(relative)
+    # Git's assume-unchanged and skip-worktree index bits can make a dirty
+    # workflow invisible to git diff --quiet HEAD. Require ordinary tracked
+    # entries before using HEAD/index/worktree parity as source authority.
+    flags = git("ls-files", "-v", "-z", "--", ".github/workflows")
+    if flags.returncode != 0:
+        raise AuditFailure("prewrite Git index checkout identity unavailable")
+    flag_paths: set[str] = set()
+    for item in flags.stdout.split("\0"):
+        if not item:
+            continue
+        if len(item) < 3 or item[1] != " " or item[0] != "H":
+            raise AuditFailure("prewrite workflow Git index sparse or assume-unchanged flag")
+        relative = item[2:]
+        if relative in flag_paths:
+            raise AuditFailure("prewrite workflow Git index flag inventory drift")
+        flag_paths.add(relative)
+    if flag_paths != tracked:
+        raise AuditFailure("prewrite workflow Git index flag inventory drift")
     observed = {path.relative_to(repo_root).as_posix() for path in workflow_sources}
     if tracked != observed:
         raise AuditFailure("prewrite workflow Git index inventory drift")
