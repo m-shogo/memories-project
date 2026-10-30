@@ -100,7 +100,11 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
     """An exit-zero child without its actual PASS proof is not an executed guard."""
     if completed.returncode != 0 or completed.stderr:
         return False
-    output = completed.stdout.strip()
+    # A validated child prints exactly one LF-terminated proof line. Do not
+    # normalize away extra blank lines, CRLF, padding, or missing terminators.
+    if not completed.stdout.endswith("\n") or completed.stdout.endswith("\r\n"):
+        return False
+    output = completed.stdout[:-1]
     if relative == LEARNING_GUARDS[0]:
         return output == "Autonomous improvement/learning contract validation PASS"
     if relative == LEARNING_GUARDS[1]:
@@ -138,6 +142,10 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         ("nonnumeric count", LEARNING_GUARDS[1], 0,
          "Autonomous learning negative validation PASS (False fail-closed cases)\n", "", False),
         ("extra output", LEARNING_GUARDS[1], 0, negative + "ignored", "", False),
+        ("extra blank line", LEARNING_GUARDS[1], 0, negative + "\n", "", False),
+        ("missing terminator", LEARNING_GUARDS[0], 0, positive[:-1], "", False),
+        ("CRLF terminator", LEARNING_GUARDS[0], 0, positive.replace("\n", "\r\n"), "", False),
+        ("leading whitespace", LEARNING_GUARDS[0], 0, " " + positive, "", False),
         ("unbound guard", "scripts/unbound-guard.py", 0, positive, "", False),
     )
     if not learning_guard_timeout_reviewed(120):
