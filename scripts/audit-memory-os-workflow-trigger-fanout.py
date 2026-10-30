@@ -889,6 +889,18 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("dirty Git workflow negative accepted")
         workflow.write_text(original, encoding="utf-8")
+        # The working tree can match HEAD while the staged index differs.
+        workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
+        fixture_git("-C", str(root), "add", ".github/workflows/w.yml")
+        workflow.write_text(original, encoding="utf-8")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index content drift":
+                raise
+        else:
+            raise AuditFailure("staged-only Git workflow drift negative accepted")
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
         extra = directory / "untracked.yml"
         extra.write_text(original, encoding="utf-8")
         try:
@@ -1112,7 +1124,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 67 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 68 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
