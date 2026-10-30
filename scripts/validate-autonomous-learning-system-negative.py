@@ -2713,6 +2713,21 @@ REVIEWED_UPLOAD_ROUTE_SQL_MIGRATIONS = (
 )
 
 
+REVIEWED_UPLOAD_ROUTE_SQL_BLOBS = {
+    "infra/postgresql/security/001_memory_os_import_rls.sql": "b7b60d79cc368f255ea560267e3e833f5dc7765d",
+    "infra/postgresql/security/002_memory_os_account_control.sql": "4179e5c046865fa4131340641afd5bcb39ba19f7",
+    "infra/postgresql/security/002_memory_os_upload_authorization.sql": "d5cfe1e8c1bd69dc155b472fe89c8661a7d39802",
+    "infra/postgresql/security/003_memory_os_preview_domain.sql": "cf9a72626e94f944551921220df374c40969a5a1",
+    "infra/postgresql/security/004_memory_os_account_session.sql": "f37d63b2ac4baea2f44d9bf37b08b85712785a0f",
+    "infra/postgresql/security/005_memory_os_apply_memory.sql": "f63535251aed7310249ba240eeb40cf15803f620",
+    "infra/postgresql/security/006_memory_os_deletion_fencing.sql": "4704a2d7fdc87aca3ef033762bae625d3634cc45",
+    "infra/postgresql/security/007_memory_os_app_login.sql": "45ec3c7f44396fec2bb2d069baa2c32bf56f7e8d",
+    "infra/postgresql/security/008_memory_os_deletion_runtime.sql": "d4400c54a90b1e2dbebf9bddc35789df6c28637f",
+    "infra/postgresql/security/009_memory_os_deletion_visibility.sql": "612d9a223a386e64a84ebd15645ec6038fd2bc3e",
+    "infra/postgresql/security/010_memory_os_apple_identity.sql": "26945875daf7100c4c9aa22714ae750e0e666689",
+}
+
+
 def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str) -> set[str]:
     """Pin the live Go test runtime SQL inputs separately from compile inputs."""
     expected_loop = (
@@ -2730,11 +2745,19 @@ def require_reviewed_upload_route_sql_migrations(source_root: Path, source: str)
     require_reviewed_upload_route_input_set(
         paths, 11, "42c8ba87cc722a92a254fbab74689ef1677f2caf2eb0faeee1471b30a0cdcf62"
     )
+    if set(REVIEWED_UPLOAD_ROUTE_SQL_BLOBS) != paths:
+        raise RuntimeError("unreviewed Upload Route SQL migration blob inventory")
     for relative in sorted(paths):
         path = source_root / relative
         if not path.is_file():
             raise RuntimeError("missing Upload Route SQL migration input: " + relative)
         require_unaliased_go_path(source_root, path)
+        data = path.read_bytes()
+        git_blob_sha1 = hashlib.sha1(
+            b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+        ).hexdigest()
+        if git_blob_sha1 != REVIEWED_UPLOAD_ROUTE_SQL_BLOBS[relative]:
+            raise RuntimeError("unreviewed Upload Route SQL migration blob")
     return paths
 
 
@@ -2762,9 +2785,19 @@ def prove_upload_route_sql_migration_negatives(source_root: Path) -> set[str]:
         for relative in paths:
             target = fixture_root / relative
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text("-- fixture\n", encoding="utf-8")
+            target.write_bytes((source_root / relative).read_bytes())
         require_reviewed_upload_route_sql_migrations(fixture_root, source)
         victim = fixture_root / sorted(paths)[0]
+        original = victim.read_bytes()
+        victim.write_bytes(original + b"\n-- unreviewed change\n")
+        try:
+            require_reviewed_upload_route_sql_migrations(fixture_root, source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route SQL migration blob":
+                raise
+        else:
+            raise RuntimeError("SQL migration content mutation negative accepted")
+        victim.write_bytes(original)
         victim.unlink()
         try:
             require_reviewed_upload_route_sql_migrations(fixture_root, source)
