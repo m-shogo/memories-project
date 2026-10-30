@@ -5095,6 +5095,57 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     return len(cases) + 84 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
+def prove_prewrite_workflow_parent_permissions(source_root: Path) -> int:
+    """Real CLI rejection and recovery for every in-checkout workflow ancestor."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    cases = (
+        ("checkout root", Path(".")),
+        ("github parent", Path(".github")),
+        ("workflow directory", Path(".github/workflows")),
+    )
+    for label, relative in cases:
+        for kind, mode, diagnostic in (
+            ("world", 0o777, "prewrite workflow source parent world-writable"),
+            ("group", 0o775, "prewrite workflow source parent group-writable"),
+        ):
+            with tempfile.TemporaryDirectory(prefix="learning-prewrite-parent-mode-") as tmp:
+                root = Path(tmp)
+                workflow = root / ".github/workflows/fixture.yml"
+                workflow.parent.mkdir(parents=True)
+                workflow.write_bytes(b"on: push\n")
+                if workflow.read_bytes() != b"on: push\n":
+                    raise RuntimeError("prewrite parent-mode fixture bytes drift")
+                command = [
+                    sys.executable, str(guard), "--repo-root", str(root),
+                    "--path", "scripts/a.py",
+                ]
+                def positive() -> None:
+                    result = subprocess.run(
+                        command, capture_output=True, text=True, check=False, timeout=10,
+                    )
+                    if (result.returncode != 0 or result.stderr or
+                            "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                            not in result.stdout.splitlines()):
+                        raise RuntimeError("prewrite parent-mode positive failed: " + label)
+                positive()
+                parent = root / relative
+                original_mode = stat.S_IMODE(parent.stat().st_mode)
+                try:
+                    parent.chmod(mode)
+                    result = subprocess.run(
+                        command, capture_output=True, text=True, check=False, timeout=10,
+                    )
+                    if (result.returncode != 1 or result.stdout or
+                            result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
+                        raise RuntimeError(
+                            "prewrite parent-mode negative failed: " + label + " " + kind
+                        )
+                finally:
+                    parent.chmod(original_mode)
+                positive()
+    return len(cases) * 2
+
+
 def prove_prewrite_workflow_directory_membership_drift(source_root: Path) -> None:
     """Exercise an added workflow after enumeration but before audit completion."""
     import runpy
@@ -6136,13 +6187,14 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    parent_mode_cases = prove_prewrite_workflow_parent_permissions(source_root)
     prove_prewrite_workflow_directory_membership_drift(source_root)
     prove_prewrite_workflow_parent_swap(source_root)
     prove_prewrite_workflow_root_swap(source_root)
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases} fail-closed cases)")
     return 0
 
 

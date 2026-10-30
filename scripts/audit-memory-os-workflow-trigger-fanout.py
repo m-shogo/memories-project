@@ -564,6 +564,20 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
         marker = component / ".git"
         if marker.exists() or marker.is_symlink():
             raise AuditFailure("workflow directory nested Git checkout")
+    # In-repository write access to an ancestor permits workflow pathname
+    # replacement after enumeration even when the YAML leaf is read-only.
+    # Outer runner ancestors (e.g. /tmp) are outside checkout authority.
+    for ancestor in (repo_root, directory.parent, directory):
+        try:
+            mode = ancestor.lstat().st_mode
+        except OSError:
+            raise AuditFailure("prewrite workflow source parent unreadable") from None
+        if not stat.S_ISDIR(mode):
+            raise AuditFailure("prewrite workflow source parent substituted")
+        if mode & 0o002:
+            raise AuditFailure("prewrite workflow source parent world-writable")
+        if mode & 0o020:
+            raise AuditFailure("prewrite workflow source parent group-writable")
     # A case-insensitive checkout can collapse distinct workflow source
     # filenames, while an uppercase extension or trailing dot/space may
     # alias a reviewed YAML leaf without matching the glob on this host.
