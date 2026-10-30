@@ -331,7 +331,9 @@ def expected_diagnostic(name: str) -> str:
     # A wildcard import has an unbounded export set, so the canonical
     # validator rejects the main binding first even in the guard-labelled case.
     if (name in {"dynamic learning guard wildcard-import",
-                 "dynamic learning guard exec"}
+                 "dynamic learning guard exec",
+                 "dynamic learning guard dynamic-setattr",
+                 "dynamic learning guard dynamic-delattr"}
             or name.startswith("dynamic learning guard eager-")):
         # Both bindings are conservatively at risk; main is checked first.
         return "learning CI entrypoint main binding is shadowed by module control flow"
@@ -3457,6 +3459,7 @@ def main() -> int:
         ("deferred nested generator consumer", "def later():\n    list(x for x in map(sys.exit, [0]))\n"),
         ("benign immediate lambda", "(lambda: os.getpid())()\n"),
         ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
+        ("unrelated constant setattr", 'setattr(sys.modules[__name__], "other", None)\n'),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
         ("deferred module abort", 'def later():\n    os.__dict__["abort"]()\n'),
         ("deferred builtins exit", 'def later():\n    builtins.__dict__["exit"](0)\n'),
@@ -3814,6 +3817,8 @@ def main() -> int:
             ("globals-keyword", f"globals().update({symbol}=None)"),
             ("globals-dict", f"globals().update({{'{symbol}': None}})"),
             ("setattr", f"setattr(sys.modules[__name__], '{symbol}', None)"),
+            ("dynamic-setattr", f"attribute = '{symbol}'\nsetattr(sys.modules[__name__], attribute, None)"),
+            ("dynamic-delattr", f"attribute = '{symbol}'\ndelattr(sys.modules[__name__], attribute)"),
             ("exec", f"exec('{symbol} = None')"),
             # Class bodies, function defaults and decorators execute eagerly.
             # Their module-namespace side effects must not bypass a live call.

@@ -330,8 +330,11 @@ def validate(repo_root: Path) -> None:
                     return True
                 if (isinstance(node.func, ast.Name)
                         and node.func.id in {"setattr", "delattr"}
-                        and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
-                        and node.args[1].value == name):
+                        and len(node.args) >= 2
+                        and (not isinstance(node.args[1], ast.Constant)
+                             or node.args[1].value == name)):
+                    # A computed attribute name may resolve to either
+                    # protected binding; constant unrelated names are safe.
                     return True
                 if isinstance(node.func, ast.Attribute) and node.func.attr in {
                     "update", "pop", "popitem", "clear", "setdefault",
@@ -880,8 +883,9 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     return True
                 if (isinstance(node.func, ast.Name) and
                         node.func.id in {"setattr", "delattr"} and
-                        len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
-                        and node.args[1].value == "main"):
+                        len(node.args) >= 2 and
+                        (not isinstance(node.args[1], ast.Constant)
+                         or node.args[1].value == "main")):
                     return True
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 # A module-level star import may bind main without naming it
@@ -944,6 +948,7 @@ def prove_prewrite_python_negatives() -> None:
         ("function local", 'def helper():\n    main = 1\n', (2, 0)),
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("safe explicit import", 'from math import sqrt\n', (1, 0)),
+        ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("class conditional local", 'class Helper:\n    if True:\n        main = 1\n', (3, 0)),
         ("class method named main", 'class Helper:\n    def main(self):\n        pass\n', (3, 0)),
@@ -1240,6 +1245,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("module setattr main shadow", baseline.replace(
             'if __name__', 'setattr(module, "main", lambda: 1)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("dynamic setattr main shadow", baseline.replace(
+            'if __name__', 'attribute = "main"\nsetattr(module, attribute, None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("dynamic delattr main shadow", baseline.replace(
+            'if __name__', 'attribute = "main"\ndelattr(module, attribute)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module delattr main shadow", baseline.replace(
             'if __name__', 'delattr(module, "main")\nif __name__'),
