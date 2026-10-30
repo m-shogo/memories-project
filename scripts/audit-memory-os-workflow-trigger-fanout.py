@@ -207,6 +207,10 @@ def workflow_matches_path(source: str, relative: str) -> bool:
             # Do not claim a non-match without a compatible minimatch engine.
             if "?" in pattern or "+" in pattern:
                 return True
+            # GitHub minimatch bracket negation/POSIX classes are not
+            # fully represented by Python fnmatch (notably [^x] and [[:alpha:]]).
+            if re.search(r"\[(?:[!^]|\[:)", pattern):
+                return True
             # GitHub minimatch supports constructs fnmatch does not; never
             # mistake unsupported grammar for a proven non-match.
             if any(char in pattern for char in "{}") or re.search(r"[@+?!]\(", pattern):
@@ -410,6 +414,18 @@ def self_test(repo_root: Path) -> None:
     for label, source, path, expected in root_event_cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite root-event negative/positive failed: " + label)
+    bracket_cases = (
+        ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", "scripts/a.py", True),
+        ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", "scripts/a.py", True),
+        ("POSIX bracket class", "on:\n  push:\n    paths:\n      - \"scripts/[[:alpha:]].py\"\n", "scripts/a.py", True),
+        ("ordinary bracket match", "on:\n  push:\n    paths:\n      - \"scripts/[ab].py\"\n", "scripts/a.py", True),
+        ("ordinary bracket miss", "on:\n  push:\n    paths:\n      - \"scripts/[cd].py\"\n", "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in bracket_cases) != ("caret bracket negation","bang bracket negation","POSIX bracket class","ordinary bracket match","ordinary bracket miss",):
+        raise AuditFailure("prewrite bracket fixture identity drift")
+    for label, source, path, expected in bracket_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite bracket negative/positive failed: " + label)
     if classify([".github/workflows/w" + str(i) + ".yml"
                  for i in range(MAX_REVIEWED_DIRECT_FANOUT + 1)]) != "BLOCKED_HIGH_FANOUT":
         raise AuditFailure("high-fanout threshold negative failed")
@@ -485,7 +501,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases) + len(root_event_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))

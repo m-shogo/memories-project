@@ -3047,6 +3047,28 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite root-event CLI identity missing: " + label)
+        bracket_cases = (
+            ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", 1),
+            ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", 1),
+            ("POSIX bracket class", "on:\n  push:\n    paths:\n      - \"scripts/[[:alpha:]].py\"\n", 1),
+            ("ordinary bracket match", "on:\n  push:\n    paths:\n      - \"scripts/[ab].py\"\n", 1),
+            ("ordinary bracket miss", "on:\n  push:\n    paths:\n      - \"scripts/[cd].py\"\n", 0),
+        )
+        if tuple(case[0] for case in bracket_cases) != ("caret bracket negation","bang bracket negation","POSIX bracket class","ordinary bracket match","ordinary bracket miss",):
+            raise RuntimeError("prewrite bracket CLI fixture identity drift")
+        for label, content, count in bracket_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite bracket CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite bracket CLI identity missing: " + label)
     # An actual writer-named workflow must block even with one direct match.
     with tempfile.TemporaryDirectory(prefix="learning-fanout-writer-cas-") as tmp:
         root = Path(tmp)
@@ -3194,7 +3216,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 8 + len(complex_event_cases) + len(root_event_cases)
+    return len(cases) + 8 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
