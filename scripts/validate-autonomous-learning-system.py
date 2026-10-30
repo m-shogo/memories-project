@@ -121,6 +121,10 @@ def validate(repo_root: Path) -> None:
                 raise ValidationFailure(f"nonregular learning authority forbidden: {relative}")
             if path.is_file() and path.stat().st_nlink != 1:
                 raise ValidationFailure(f"hardlinked learning authority forbidden: {relative}")
+            # A world-writable canonical file can be altered by an unrelated
+            # local principal even when it is a unique regular inode.
+            if path.is_file() and path.stat().st_mode & 0o002:
+                raise ValidationFailure(f"world-writable learning authority forbidden: {relative}")
         except OSError:
             raise ValidationFailure(f"unreadable learning authority: {relative}") from None
         try:

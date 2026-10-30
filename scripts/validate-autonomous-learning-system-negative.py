@@ -329,6 +329,17 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("world-writable ") and name.endswith(" authority"):
+        label = name[len("world-writable "):-len(" authority")]
+        targets = {
+            "contract": CONTRACT,
+            "learning history": LEARNING,
+            "positive guard": VALIDATOR,
+            "negative guard": NEGATIVE_VALIDATOR,
+            "CI entrypoint": CI_ENTRYPOINT,
+        }
+        if label in targets:
+            return "world-writable learning authority forbidden: " + targets[label].as_posix()
     if name.startswith("nonregular "):
         for kind in ("fifo", "directory"):
             prefix = "nonregular " + kind + " "
@@ -429,6 +440,11 @@ def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
     if old not in text:
         raise RuntimeError(f"negative fixture missing expected CI fragment: {old}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def world_writable_authority(root: Path, relative: Path) -> None:
+    # The disposable fixture is the only file whose permissions are changed.
+    (root / relative).chmod(0o666)
 
 
 def nonregular_authority(root: Path, relative: Path, kind: str) -> None:
@@ -5773,6 +5789,17 @@ def main() -> int:
             ))
     require_reviewed_reflective_inventory(reviewed_reflective)
     prove_reviewed_reflective_inventory_negatives()
+    for label, relative in (
+        ("contract", CONTRACT),
+        ("learning history", LEARNING),
+        ("positive guard", VALIDATOR),
+        ("negative guard", NEGATIVE_VALIDATOR),
+        ("CI entrypoint", CI_ENTRYPOINT),
+    ):
+        cases.append((
+            f"world-writable {label} authority",
+            lambda root, path=relative: world_writable_authority(root, path),
+        ))
     for kind in ("fifo", "directory"):
         for label, relative in (
             ("contract", CONTRACT),
