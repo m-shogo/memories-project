@@ -2722,6 +2722,7 @@ def require_reviewed_upload_route_handler_composition(source: str) -> None:
         "\tt.Cleanup(server.Close)\n"
         "\treturn &liveServer{pool: pool, appPool: appPool, sessions: sessions,\n"
         "\t\tserver: server, executor: executor, objects: objects, accountControl: accountControl,\n"
+        "\t\tapple: appleHolder}\n"
         ),
     )
     if (any(helper.count(fragment) != 1 for fragment in reviewed) or
@@ -2896,6 +2897,7 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
          "httptest.NewServer(http.NotFoundHandler())"),
         ("return admin as appPool", "appPool: appPool, sessions:",
          "appPool: pool, sessions:"),
+        ("missing Apple holder", "apple: appleHolder}", "apple: nil}"),
     ):
         if helper.count(old) != 1:
             raise RuntimeError("handler composition fixture anchor drift: " + label)
