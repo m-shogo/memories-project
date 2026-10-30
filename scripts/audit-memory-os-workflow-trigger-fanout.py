@@ -23,6 +23,9 @@ from unittest import mock
 MAX_REVIEWED_DIRECT_FANOUT = 12
 MAX_WORKFLOW_SOURCE_BYTES = 256 * 1024
 KNOWN_EXTERNAL_BLOCKED_WORKFLOWS = {
+    # The broad Go-only CI route starts MinIO before go vet/test, so it
+    # cannot prove dependency-independent focused Upload Route regression.
+    ".github/workflows/import-api-security-slice.yml",
     ".github/workflows/reconcile-upload-route-authority.yml",
     ".github/workflows/reconcile-upload-route-authority-pr.yml",
 }
@@ -874,6 +877,9 @@ def self_test(repo_root: Path) -> None:
     if classify([".github/workflows/reconcile-upload-route-authority.yml"]) != (
             "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"):
         raise AuditFailure("known MinIO-coupled trigger negative failed")
+    if classify([".github/workflows/import-api-security-slice.yml"]) != (
+            "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"):
+        raise AuditFailure("import API MinIO-first trigger negative failed")
     if classify([".github/workflows/reconcile-metrics-scrape-status.yml"]) != (
             "BLOCKED_KNOWN_WRITER_CAS"):
         raise AuditFailure("known source-SHA writer CAS trigger negative failed")
