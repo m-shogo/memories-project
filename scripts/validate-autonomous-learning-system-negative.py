@@ -2302,12 +2302,18 @@ def require_reviewed_upload_route_python_imports(source: str, count: int,
         raise RuntimeError("unreviewed Upload Route Python duplicate import")
     # Import identity is insufficient if a later assignment, parameter, or
     # declaration shadows the imported runtime binding without a new import.
-    bindings = set()
+    import_bindings = []
     for node in tree.body:
         if isinstance(node, ast.Import):
-            bindings.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+            import_bindings.extend(alias.asname or alias.name.split(".")[0]
+                                   for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
-            bindings.update(alias.asname or alias.name for alias in node.names)
+            import_bindings.extend(alias.asname or alias.name for alias in node.names)
+    # Import-set digests are order-independent. Two distinct declarations
+    # binding one name can reverse the runtime object without digest drift.
+    if len(import_bindings) != len(set(import_bindings)):
+        raise RuntimeError("unreviewed Upload Route Python import binding collision")
+    bindings = set(import_bindings)
     for node in ast.walk(tree):
         shadow = (
             isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
@@ -2337,6 +2343,41 @@ def prove_upload_route_python_import_negatives() -> None:
     require_reviewed_upload_route_python_imports(
         base + "match value:\n    case local_capture:\n        pass\n", 2, digest
     )
+    collision_entries = {
+        "from:0:pathlib:Path:", "import:json:Path",
+    }
+    collision_digest = hashlib.sha256(
+        "".join(entry + "\n" for entry in sorted(collision_entries)).encode("utf-8")
+    ).hexdigest()
+    for label, candidate in (
+        ("from then alias", "from pathlib import Path\nimport json as Path\n"),
+        ("alias then from", "import json as Path\nfrom pathlib import Path\n"),
+    ):
+        try:
+            require_reviewed_upload_route_python_imports(candidate, 2, collision_digest)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route Python import binding collision":
+                raise
+        else:
+            raise RuntimeError("Python import binding collision accepted: " + label)
+    other = "import json\nfrom pathlib import Path as json\n"
+    other_entries = {"import:json:", "from:0:pathlib:Path:json"}
+    other_digest = hashlib.sha256(
+        "".join(entry + "\n" for entry in sorted(other_entries)).encode("utf-8")
+    ).hexdigest()
+    try:
+        require_reviewed_upload_route_python_imports(other, 2, other_digest)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route Python import binding collision":
+            raise
+    else:
+        raise RuntimeError("Python from-import binding collision accepted")
+    distinct = "from pathlib import Path\nimport json as json_alias\n"
+    distinct_entries = {"from:0:pathlib:Path:", "import:json:json_alias"}
+    distinct_digest = hashlib.sha256(
+        "".join(entry + "\n" for entry in sorted(distinct_entries)).encode("utf-8")
+    ).hexdigest()
+    require_reviewed_upload_route_python_imports(distinct, 2, distinct_digest)
     for label, candidate in (
         ("added local module", base + "import scripts.helper\n"),
         ("same-count replacement", base.replace("import json", "import scripts.helper")),
