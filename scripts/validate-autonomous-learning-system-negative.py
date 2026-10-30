@@ -3090,6 +3090,45 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite multiline-flow CLI identity missing: " + label)
 
+        block_scalar_cases = (
+            ("block scalar push", "on:\n  push\n", 1),
+            ("block quoted escaped scalar", "on:\n  \"p\\u0075sh\"\n", 1),
+            ("block aliased scalar", "name: &events push\non:\n  *events\n", 1),
+            ("commented block scalar", "on: # events\n  # note\n  push\n", 1),
+            ("block dispatch scalar conservative", "on:\n  workflow_dispatch\n", 1),
+            ("dispatch mapping unaffected", "on:\n  workflow_dispatch:\n", 0),
+            ("dispatch list unaffected", "on:\n  - workflow_dispatch\n", 0),
+            ("unrelated scalar outside on", "name:\n  push\non:\n  workflow_dispatch:\n", 0),
+            ("block alias after blank", "name: &events [pull_request]\non:\n\n  *events\n", 1),
+            ("quoted dispatch scalar conservative", "on:\n  \"workflow_dispatch\"\n", 1),
+        )
+        if tuple(case[0] for case in block_scalar_cases) != (
+            "block scalar push",
+            "block quoted escaped scalar",
+            "block aliased scalar",
+            "commented block scalar",
+            "block dispatch scalar conservative",
+            "dispatch mapping unaffected",
+            "dispatch list unaffected",
+            "unrelated scalar outside on",
+            "block alias after blank",
+            "quoted dispatch scalar conservative",
+        ):
+            raise RuntimeError("prewrite block-scalar fixture identity drift")
+        for label, content, count in block_scalar_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite block-scalar CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite block-scalar CLI identity missing: " + label)
+
         bracket_cases = (
             ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", 1),
             ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", 1),
@@ -3410,7 +3449,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases)
+    return len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

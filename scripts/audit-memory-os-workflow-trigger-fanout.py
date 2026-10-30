@@ -116,6 +116,15 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     if any(len(re.findall(r"(?m)^  " + event + ":", source)) > 1
            for event in ("push", "pull_request_target", "pull_request")):
         return True
+    # YAML permits a scalar event name or alias on the next indented
+    # line after "on:". A block-map-only matcher would miss these valid
+    # trigger spellings, including a comment-only "on:" header.
+    if re.search(
+        r"""(?m)^on:[ \t]*(?:#.*)?\n(?:(?:[ \t]*#.*|[ \t]*)\n)*[ \t]+(?:['"][^'"\r\n]*['"]|[A-Za-z_][A-Za-z0-9_-]*|\*[A-Za-z_][A-Za-z0-9_-]*)[ \t]*(?:#.*)?$""",
+        source,
+    ):
+        return True
+
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
     # A multi-line YAML flow collection can contain an aliased or escaped
     # push/PR event outside the first "on:" row. The narrow block parser
@@ -526,6 +535,35 @@ def self_test(repo_root: Path) -> None:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite multiline-flow negative/positive failed: " + label)
 
+    block_scalar_cases = (
+        ("block scalar push", "on:\n  push\n", "scripts/a.py", True),
+        ("block quoted escaped scalar", "on:\n  \"p\\u0075sh\"\n", "scripts/a.py", True),
+        ("block aliased scalar", "name: &events push\non:\n  *events\n", "scripts/a.py", True),
+        ("commented block scalar", "on: # events\n  # note\n  push\n", "scripts/a.py", True),
+        ("block dispatch scalar conservative", "on:\n  workflow_dispatch\n", "scripts/a.py", True),
+        ("dispatch mapping unaffected", "on:\n  workflow_dispatch:\n", "scripts/a.py", False),
+        ("dispatch list unaffected", "on:\n  - workflow_dispatch\n", "scripts/a.py", False),
+        ("unrelated scalar outside on", "name:\n  push\non:\n  workflow_dispatch:\n", "scripts/a.py", False),
+        ("block alias after blank", "name: &events [pull_request]\non:\n\n  *events\n", "scripts/a.py", True),
+        ("quoted dispatch scalar conservative", "on:\n  \"workflow_dispatch\"\n", "scripts/a.py", True),
+    )
+    if tuple(case[0] for case in block_scalar_cases) != (
+        "block scalar push",
+        "block quoted escaped scalar",
+        "block aliased scalar",
+        "commented block scalar",
+        "block dispatch scalar conservative",
+        "dispatch mapping unaffected",
+        "dispatch list unaffected",
+        "unrelated scalar outside on",
+        "block alias after blank",
+        "quoted dispatch scalar conservative",
+    ):
+        raise AuditFailure("prewrite block-scalar fixture identity drift")
+    for label, source, path, expected in block_scalar_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite block-scalar negative/positive failed: " + label)
+
     bracket_cases = (
         ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", "scripts/a.py", True),
         ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", "scripts/a.py", True),
@@ -741,7 +779,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 18 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 18 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
