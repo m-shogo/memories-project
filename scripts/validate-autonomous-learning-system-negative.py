@@ -4568,6 +4568,95 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     raise
             else:
                 raise RuntimeError("third-hop dbscope package identity negative accepted")
+        # Go builds every non-test peer in imported packages, even when the
+        # selected live test executes only two named functions. Pin the
+        # reviewed third-hop peers and their exact local imports, rather
+        # than relying on the presence of an expected package declaration.
+        reviewed_third_hop_peers = {
+            "dbscope": {
+                "executor.go": ("security",),
+                "sql_adapter.go": (),
+            },
+            "security": {
+                "context.go": (),
+                "principal.go": (),
+            },
+            "epochguard": {
+                "guard.go": ("dbscope", "security"),
+            },
+            "pgscope": {
+                "beginner.go": ("dbscope",),
+            },
+        }
+        for package, members in reviewed_third_hop_peers.items():
+            directory = source_root / "services/import-api/internal" / package
+            observed = {
+                path.name for path in directory.glob("*.go")
+                if not path.name.endswith("_test.go")
+            }
+            expected = set(members)
+
+            def require_peer_inventory(names: set[str]) -> None:
+                if names != expected:
+                    raise RuntimeError("upload route third-hop Go peer inventory drift: " + package)
+
+            require_peer_inventory(observed)
+            for changed in (observed - {next(iter(sorted(expected)))},
+                            observed | {"unreviewed.go"}):
+                try:
+                    require_peer_inventory(changed)
+                except RuntimeError as exc:
+                    if str(exc) != "upload route third-hop Go peer inventory drift: " + package:
+                        raise
+                else:
+                    raise RuntimeError("third-hop Go peer inventory negative accepted: " + package)
+
+            for name, dependencies in members.items():
+                relative = "services/import-api/internal/" + package + "/" + name
+                source = (source_root / relative).read_text(encoding="utf-8")
+                require_reviewed_upload_route_go_package(relative, source)
+
+                def require_peer_imports(candidate: str) -> None:
+                    prefix = module + "/internal/"
+                    imported = {
+                        item[len(prefix):]
+                        for item in upload_route_local_go_imports(candidate, include_external=True)
+                        if item.startswith(prefix)
+                    }
+                    if imported != set(dependencies):
+                        raise RuntimeError("upload route third-hop Go peer import drift: "
+                                           + package + "/" + name)
+
+                require_peer_imports(source)
+                declaration = "package " + package + "\n"
+                if source.count(declaration) != 1:
+                    raise RuntimeError("upload route third-hop Go peer fixture anchor drift")
+                injected = source.replace(
+                    declaration, declaration + 'import "' + module + '/internal/reqid"\n', 1
+                )
+                try:
+                    require_peer_imports(injected)
+                except RuntimeError as exc:
+                    if str(exc) != ("upload route third-hop Go peer import drift: "
+                                    + package + "/" + name):
+                        raise
+                else:
+                    raise RuntimeError("unreviewed third-hop Go peer import accepted: "
+                                       + package + "/" + name)
+                for dependency in dependencies:
+                    anchor = '"' + module + '/internal/' + dependency + '"'
+                    if source.count(anchor) != 1:
+                        raise RuntimeError("upload route third-hop Go peer import fixture drift")
+                    spoofed = source.replace(anchor, '"example.com/unreviewed"', 1) + "\n// " + anchor + "\n"
+                    try:
+                        require_peer_imports(spoofed)
+                    except RuntimeError as exc:
+                        if str(exc) != ("upload route third-hop Go peer import drift: "
+                                        + package + "/" + name):
+                            raise
+                    else:
+                        raise RuntimeError("comment-spoofed third-hop Go peer import accepted: "
+                                           + package + "/" + name)
         # Scoped fourth-hop compile inputs reached through the imported httpapi
         # package. These parsed Go edges are not independent pre-MinIO CI
         # coverage; the focused Push/PR filters still omit these paths.
