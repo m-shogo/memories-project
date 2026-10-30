@@ -1150,7 +1150,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred partial alias chain", 'wrapped = functools.partial(print)\nalias = wrapped\n', (2, 0)),
         ("deferred helper exit", 'def helper():\n    sys.exit(0)\n', (2, 0)),
         ("unreachable conditional exit", 'if False:\n    sys.exit(0)\n', (2, 0)),
-        ("exit after entry guard", 'sys.exit(0)\n', (1, 0)),
+        ("deferred lambda exit", 'later = lambda: sys.exit(0)\n', (1, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
