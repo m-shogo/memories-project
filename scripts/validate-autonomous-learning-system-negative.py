@@ -5160,6 +5160,13 @@ def prove_prewrite_git_head_ref_stability(source_root: Path) -> int:
         fired = [False]
         index_before = index.stat()
         root_before = git_root.stat()
+        # Change the loose branch ref itself: git update-ref also creates
+        # .git-level lock/reflog metadata, which would confound this
+        # independent HEAD-identity negative with the existing root guard.
+        ref_name = git("symbolic-ref", "HEAD").stdout.strip()
+        ref_file = git_root / ref_name
+        if not ref_name.startswith("refs/heads/") or not ref_file.is_file():
+            raise RuntimeError("prewrite HEAD ref fixture lacks a loose branch ref")
 
         def move_head_after_diff(*args: object, **kwargs: object):
             completed = real_run(*args, **kwargs)
@@ -5168,12 +5175,7 @@ def prove_prewrite_git_head_ref_stability(source_root: Path) -> int:
                     and "diff" in argv and "--cached" in argv and "--quiet" in argv):
                 if completed.returncode:
                     raise RuntimeError("prewrite HEAD ref cached workflow diff not clean")
-                moved = real_run(
-                    ["git", "-C", str(root), "update-ref", "HEAD", first_sha, second_sha],
-                    capture_output=True, text=True, check=False, timeout=10,
-                )
-                if moved.returncode:
-                    raise RuntimeError("prewrite HEAD ref mutation failed")
+                ref_file.write_text(first_sha + "\n", encoding="ascii")
                 fired[0] = True
             return completed
 
@@ -5195,7 +5197,7 @@ def prove_prewrite_git_head_ref_stability(source_root: Path) -> int:
                     after.st_dev, after.st_ino, after.st_mode,
                     after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                 raise RuntimeError("prewrite HEAD ref control also changed metadata identity")
-        git("update-ref", "HEAD", second_sha, first_sha)
+        ref_file.write_text(second_sha + "\n", encoding="ascii")
         positive()
     return 1
 
