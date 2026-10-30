@@ -1076,9 +1076,34 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
         entry_guard = ast.dump(ast.parse(
             'if __name__ == "__main__":\n    raise SystemExit(main())\n'
         ).body[0], include_attributes=False)
-        if sum(ast.dump(node, include_attributes=False) == entry_guard
-               for node in tree.body) != 1:
+        guard_positions = [
+            index for index, node in enumerate(tree.body)
+            if ast.dump(node, include_attributes=False) == entry_guard
+        ]
+        if len(guard_positions) != 1:
             raise ValidationFailure("prewrite " + label + " must have one live main guard")
+        # An exact AST guard is insufficient when an unconditional module
+        # statement exits first. This bounded check covers direct top-level
+        # terminators, not arbitrary control-flow or reflective aliases.
+        for statement in tree.body[:guard_positions[0]]:
+            if isinstance(statement, ast.Raise):
+                raise ValidationFailure("prewrite " + label + " entry guard unreachable")
+            if not (isinstance(statement, ast.Expr)
+                    and isinstance(statement.value, ast.Call)):
+                continue
+            callee = statement.value.func
+            direct_exit = (isinstance(callee, ast.Name)
+                           and callee.id in {"exit", "quit", "_exit", "abort"})
+            qualified_exit = (
+                isinstance(callee, ast.Attribute)
+                and isinstance(callee.value, ast.Name)
+                and ((callee.value.id == "sys" and callee.attr == "exit")
+                     or (callee.value.id == "os" and callee.attr in {"_exit", "abort"})
+                     or (callee.value.id == "builtins"
+                         and callee.attr in {"exit", "quit"}))
+            )
+            if direct_exit or qualified_exit:
+                raise ValidationFailure("prewrite " + label + " entry guard unreachable")
     left_lines, right_lines = baseline.splitlines(), candidate.splitlines()
     left_counts, right_counts = Counter(left_lines), Counter(right_lines)
     # Bound the number of equal-token comparisons available to the matcher,
@@ -1123,6 +1148,9 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred partial construction", 'pending = functools.partial(print, "hello")\n', (1, 0)),
         ("deferred partial local helper", 'def helper():\n    pass\npending = functools.partial(helper)\n', (3, 0)),
         ("deferred partial alias chain", 'wrapped = functools.partial(print)\nalias = wrapped\n', (2, 0)),
+        ("deferred helper exit", 'def helper():\n    sys.exit(0)\n', (2, 0)),
+        ("unreachable conditional exit", 'if False:\n    sys.exit(0)\n', (2, 0)),
+        ("exit after entry guard", 'sys.exit(0)\n', (1, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
@@ -1410,6 +1438,27 @@ def prove_prewrite_python_negatives() -> None:
         ("eager assigned partial decorator", baseline.replace(
              'if __name__', 'def mutate(fn):\n    globals()["main"] = None\n    return fn\nwrapped = functools.partial(mutate)\n@wrapped\ndef helper():\n    pass\nif __name__'),
           sha, 40, 20, "main binding shadowed", baseline),
+        ("unconditional module SystemExit", baseline.replace(
+             'if __name__', 'raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module RuntimeError", baseline.replace(
+             'if __name__', 'raise RuntimeError("stop")\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module sys.exit", baseline.replace(
+             'if __name__', 'sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module os.abort", baseline.replace(
+             'if __name__', 'os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module os._exit", baseline.replace(
+             'if __name__', 'os._exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module builtins.quit", baseline.replace(
+             'if __name__', 'builtins.quit()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional module bare exit", baseline.replace(
+             'if __name__', 'exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
