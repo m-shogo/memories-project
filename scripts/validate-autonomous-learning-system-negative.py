@@ -257,6 +257,47 @@ def prove_failure_classifier() -> None:
     )
 
 
+def require_parent_case_coverage(cases: tuple[tuple[str, Path], ...]) -> None:
+    expected = {Path(".")}
+    for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
+        expected.update(
+            Path(*relative.parts[:depth]) for depth in range(1, len(relative.parts))
+        )
+    if (len(cases) != len(expected)
+            or {path for _, path in cases} != expected
+            or len({label for label, _ in cases}) != len(cases)):
+        raise RuntimeError("canonical parent negative inventory drift")
+
+
+def canonical_parent_cases() -> tuple[tuple[str, Path], ...]:
+    cases = (
+        ("checkout root", Path(".")),
+        ("scripts", Path("scripts")),
+        ("contracts", Path("contracts")),
+        ("contracts operations", Path("contracts/operations")),
+        ("docs", Path("docs")),
+        ("docs operations", Path("docs/operations")),
+    )
+    require_parent_case_coverage(cases)
+    return cases
+
+
+def prove_parent_case_coverage_negatives() -> None:
+    cases = canonical_parent_cases()
+    for label, bad in (
+        ("missing", cases[:-1]),
+        ("duplicate", cases + cases[:1]),
+        ("substitution", cases[:-1] + (("unreviewed", Path("unreviewed")),)),
+    ):
+        try:
+            require_parent_case_coverage(bad)
+        except RuntimeError as exc:
+            if str(exc) != "canonical parent negative inventory drift":
+                raise
+        else:
+            raise RuntimeError("parent inventory negative accepted: " + label)
+
+
 def expected_diagnostic(name: str) -> str:
     """Bind each negative to the invariant it intended to violate."""
     fixed = {
@@ -356,26 +397,12 @@ def expected_diagnostic(name: str) -> str:
             return "world-writable learning authority forbidden: " + targets[label].as_posix()
     if name.startswith("world-writable ") and name.endswith(" parent directory"):
         label = name[len("world-writable "):-len(" parent directory")]
-        targets = {
-            "checkout root": Path("."),
-            "scripts": Path("scripts"),
-            "contracts": Path("contracts"),
-            "contracts operations": Path("contracts/operations"),
-            "docs": Path("docs"),
-            "docs operations": Path("docs/operations"),
-        }
+        targets = dict(canonical_parent_cases())
         if label in targets:
             return "world-writable learning authority parent forbidden: " + targets[label].as_posix()
     if name.startswith("group-writable ") and name.endswith(" parent directory"):
         label = name[len("group-writable "):-len(" parent directory")]
-        targets = {
-            "checkout root": Path("."),
-            "scripts": Path("scripts"),
-            "contracts": Path("contracts"),
-            "contracts operations": Path("contracts/operations"),
-            "docs": Path("docs"),
-            "docs operations": Path("docs/operations"),
-        }
+        targets = dict(canonical_parent_cases())
         if label in targets:
             return "group-writable learning authority parent forbidden: " + targets[label].as_posix()
     if name.startswith("nonregular "):
@@ -6041,26 +6068,12 @@ def main() -> int:
             f"group-writable {label} authority",
             lambda root, path=relative: group_writable_authority(root, path),
         ))
-    for label, relative in (
-        ("checkout root", Path(".")),
-        ("scripts", Path("scripts")),
-        ("contracts", Path("contracts")),
-        ("contracts operations", Path("contracts/operations")),
-        ("docs", Path("docs")),
-        ("docs operations", Path("docs/operations")),
-    ):
+    for label, relative in canonical_parent_cases():
         cases.append((
             f"world-writable {label} parent directory",
             lambda root, path=relative: world_writable_parent_directory(root, path),
         ))
-    for label, relative in (
-        ("checkout root", Path(".")),
-        ("scripts", Path("scripts")),
-        ("contracts", Path("contracts")),
-        ("contracts operations", Path("contracts/operations")),
-        ("docs", Path("docs")),
-        ("docs operations", Path("docs/operations")),
-    ):
+    for label, relative in canonical_parent_cases():
         cases.append((
             f"group-writable {label} parent directory",
             lambda root, path=relative: group_writable_parent_directory(root, path),
@@ -6115,6 +6128,7 @@ def main() -> int:
     for name, mutate in cases:
         require_failure(source_root, name, mutate)
 
+    prove_parent_case_coverage_negatives()
     prove_canonical_descriptor_read_negatives(source_root)
     prove_canonical_repo_root_alias_cli(source_root)
     prove_upload_route_go_import_parser()
