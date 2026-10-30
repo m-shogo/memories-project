@@ -5109,7 +5109,9 @@ def prove_prewrite_git_metadata_stable_through_audit(source_root: Path) -> int:
         root = Path(tmp) / "repo"
         workflow = root / ".github/workflows/fixture.yml"
         workflow.parent.mkdir(parents=True)
-        workflow.write_bytes(b"on: push\\n")
+        workflow.write_bytes(b"on: push\n")
+        if workflow.read_bytes() != b"on: push" + bytes((10,)):
+            raise RuntimeError("prewrite Git snapshot fixture newline drift")
         workflow.chmod(0o644)
 
         def git(*args: str) -> None:
