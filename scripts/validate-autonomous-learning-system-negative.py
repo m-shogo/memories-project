@@ -3800,6 +3800,18 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 "Direct matching alone is not permission or transitive closure proof.",
         ]):
             raise RuntimeError("strict prewrite direct-match positive failed")
+        # An unreviewed star-prefixed extglob must not silently become
+        # a zero-direct-CI-match result under Python fnmatch.
+        workflow.write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/*(a).py"\n',
+            encoding="utf-8",
+        )
+        star_extglob = subprocess.run(
+            strict_args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        require_exact_count(star_extglob, 1, "star extglob ambiguity")
+        if "- .github/workflows/fixture.yml" not in star_extglob.stdout.splitlines():
+            raise RuntimeError("prewrite star extglob CLI identity missing")
         complex_event_cases = (
             ("merged event alias", "name: &events\n  push:\n    paths:\n      - \"scripts/a.py\"\non:\n  <<: *events\n", 1),
             ("spaced merge key", "name: &events push\non:\n  << : *events\n", 1),

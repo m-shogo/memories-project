@@ -299,7 +299,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
                 return True
             # GitHub minimatch supports constructs fnmatch does not; never
             # mistake unsupported grammar for a proven non-match.
-            if any(char in pattern for char in "{}") or re.search(r"[@+?!]\(", pattern):
+            if any(char in pattern for char in "{}") or re.search(r"[*@+?!]\(", pattern):
                 return True
             if pattern.startswith("!"):
                 # Ignoring ordinary exclusions overestimates direct fanout.
@@ -872,6 +872,20 @@ def self_test(repo_root: Path) -> None:
     for label, source, path, expected in bracket_cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite bracket negative/positive failed: " + label)
+    # A star-prefixed extglob is outside Python fnmatch's reviewed grammar.
+    # Treat it as a possible trigger rather than silently undercounting.
+    extglob_cases = (
+        ("star extglob ambiguity", 'on:\n  push:\n    paths:\n      - "scripts/*(a).py"\n', "scripts/a.py", True),
+        ("ordinary parentheses literal", 'on:\n  push:\n    paths:\n      - "scripts/(a).py"\n', "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in extglob_cases) != (
+        "star extglob ambiguity", "ordinary parentheses literal",
+    ):
+        raise AuditFailure("prewrite extglob fixture identity drift")
+    for label, source, path, expected in extglob_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite extglob negative/positive failed: " + label)
+
     unicode_source_cases = (
         ("NEL event separator", "on:  push:    paths:      - scripts/a.py", "scripts/a.py", True),
         ("LS event separator", "on:   push:     paths:       - scripts/a.py", "scripts/a.py", True),
@@ -1293,7 +1307,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(extglob_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
