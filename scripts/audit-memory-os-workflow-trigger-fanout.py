@@ -362,6 +362,10 @@ def require_workflow_git_index_identity(
         "GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR",
     )):
         raise AuditFailure("prewrite Git environment checkout override requires review")
+    # Git trace destinations can create files outside the checkout even for
+    # read-only rev-parse/ls-files/diff. Refuse inherited tracing before Git.
+    if any(name.startswith("GIT_TRACE") for name in os.environ):
+        raise AuditFailure("prewrite Git tracing environment requires review")
     if not (repo_root / ".git").is_dir():
         raise AuditFailure("prewrite Git index checkout identity unavailable")
 
