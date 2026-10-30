@@ -571,6 +571,7 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
     # Snapshot the workflow directory itself: adding a new YAML leaf after
     # enumeration can otherwise produce a falsely bounded direct fanout.
     try:
+        parent_before = directory.parent.lstat()
         directory_before = directory.lstat()
     except OSError:
         raise AuditFailure("workflow directory changed during audit") from None
@@ -613,6 +614,16 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
             raise AuditFailure("workflow source invalid UTF-8") from exc
         if workflow_matches_path(source, relative):
             matches.append(workflow.relative_to(repo_root).as_posix())
+    try:
+        parent_after = directory.parent.lstat()
+    except OSError:
+        raise AuditFailure("workflow directory parent changed during audit") from None
+    if (not stat.S_ISDIR(parent_after.st_mode)
+            or (parent_after.st_dev, parent_after.st_ino,
+                parent_after.st_mtime_ns, parent_after.st_ctime_ns) !=
+               (parent_before.st_dev, parent_before.st_ino,
+                parent_before.st_mtime_ns, parent_before.st_ctime_ns)):
+        raise AuditFailure("workflow directory parent changed during audit")
     try:
         directory_after = directory.lstat()
     except OSError:
