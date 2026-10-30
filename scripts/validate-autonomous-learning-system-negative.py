@@ -5095,6 +5095,68 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     return len(cases) + 84 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
+def prove_prewrite_git_split_index_boundary(source_root: Path) -> int:
+    """Active sharedindex is an extra, unreviewed Git source authority."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    with tempfile.TemporaryDirectory(prefix="learning-prewrite-split-index-") as tmp:
+        root = Path(tmp) / "repo"
+        workflow = root / ".github/workflows/fixture.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_bytes(b"on: push\n")
+        workflow.chmod(0o644)
+
+        def git(*args: str) -> subprocess.CompletedProcess[str]:
+            result = subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if result.returncode != 0:
+                raise RuntimeError("prewrite split-index Git fixture failed: " + " ".join(args))
+            return result
+
+        git("init", "-q")
+        git("config", "user.name", "Fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        git("add", ".github/workflows/fixture.yml")
+        git("commit", "-qm", "initial")
+        command = [
+            sys.executable, str(guard), "--repo-root", str(root),
+            "--path", "scripts/a.py", "--require-git-index-identity",
+            "--require-direct-push-pr-match",
+        ]
+
+        def positive() -> None:
+            result = subprocess.run(
+                command, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (result.returncode != 0 or result.stderr or
+                    "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                    not in result.stdout.splitlines()):
+                raise RuntimeError("prewrite split-index positive drift")
+
+        if git("rev-parse", "--shared-index-path").stdout.strip():
+            raise RuntimeError("prewrite split-index initial state unexpectedly active")
+        positive()
+        git("update-index", "--split-index")
+        if not git("rev-parse", "--shared-index-path").stdout.strip():
+            raise RuntimeError("prewrite split-index activation did not occur")
+        git("diff", "--cached", "--quiet", "HEAD", "--", ".github/workflows")
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (result.returncode != 1 or result.stdout or
+                result.stderr !=
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite Git split-index authority requires review\n"):
+            raise RuntimeError("prewrite active split-index negative accepted")
+        git("update-index", "--no-split-index")
+        if git("rev-parse", "--shared-index-path").stdout.strip():
+            raise RuntimeError("prewrite split-index deactivation failed")
+        if not tuple((root / ".git").glob("sharedindex.*")):
+            raise RuntimeError("prewrite split-index stale-file control absent")
+        positive()
+    return 1
+
+
 def prove_prewrite_git_metadata_permissions(source_root: Path) -> int:
     """Real strict-CLI rejection of writable Git metadata root and index."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -6415,6 +6477,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    split_index_cases = prove_prewrite_git_split_index_boundary(source_root)
     git_metadata_mode_cases = prove_prewrite_git_metadata_permissions(source_root)
     executable_mode_cases = prove_prewrite_workflow_executable_mode_parity(source_root)
     leaf_mode_cases = prove_prewrite_workflow_leaf_permissions(source_root)
@@ -6425,7 +6488,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases} fail-closed cases)")
     return 0
 
 

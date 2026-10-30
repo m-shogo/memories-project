@@ -477,6 +477,15 @@ def require_workflow_git_index_identity(
     if (root.returncode != 0 or
             Path(root.stdout.strip()).resolve() != repo_root.resolve()):
         raise AuditFailure("prewrite Git index checkout root mismatch")
+    # Split-index may read a separate sharedindex object whose authority is
+    # not covered by the canonical .git/index inode and mode checks.
+    # Reject an active split index, but do not confuse stale sharedindex
+    # files left after --no-split-index with an active dependency.
+    shared_index = git("rev-parse", "--shared-index-path")
+    if shared_index.returncode != 0:
+        raise AuditFailure("prewrite Git split-index authority unavailable")
+    if shared_index.stdout.strip():
+        raise AuditFailure("prewrite Git split-index authority requires review")
     index = git("ls-files", "--stage", "-z", "--", ".github/workflows")
     if index.returncode != 0:
         raise AuditFailure("prewrite Git index checkout identity unavailable")
