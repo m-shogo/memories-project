@@ -3447,6 +3447,9 @@ def main() -> int:
         ("deferred generator body", "(globals().__setitem__('main', None) for _ in (0,))\n"),
         ("comprehension-local target", "[0 for main in (0,)]\n"),
         ("deferred lambda body", "(lambda: globals().__setitem__('main', None))\n"),
+        ("deferred lambda termination", "(lambda: sys.exit(0))\n"),
+        ("benign immediate lambda", "(lambda: os.getpid())()\n"),
+        ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
         ("deferred module abort", 'def later():\n    os.__dict__["abort"]()\n'),
         ("deferred builtins exit", 'def later():\n    builtins.__dict__["exit"](0)\n'),
@@ -3690,6 +3693,11 @@ def main() -> int:
     module_guard = 'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)
     for label, prefix in (
         ("sys-exit", "sys.exit(0)" + chr(10) + chr(10)),
+        ("immediate-lambda-exit", "(lambda: sys.exit(0))()" + chr(10) + chr(10)),
+        ("function-decorator-lambda-exit", "@(lambda fn: sys.exit(0))" + chr(10)
+         + "def eager():" + chr(10) + "    pass" + chr(10) + chr(10)),
+        ("class-decorator-lambda-exit", "@(lambda cls: sys.exit(0))" + chr(10)
+         + "class Early:" + chr(10) + "    pass" + chr(10) + chr(10)),
         ("os-abort", "os.abort()" + chr(10) + chr(10)),
         ("reflective-os-abort", "getattr(os, \"abort\")()" + chr(10) + chr(10)),
         ("reflective-sys-exit", "getattr(sys, \"exit\")(0)" + chr(10) + chr(10)),
@@ -3720,6 +3728,11 @@ def main() -> int:
         ("if-return", "    if True:" + newline + "        return 0" + newline),
         ("if-raise", "    if True:" + newline + "        raise SystemExit(0)" + newline),
         ("sys-exit", "    sys.exit(0)" + newline),
+        ("immediate-lambda-exit", "    (lambda: sys.exit(0))()" + newline),
+        ("function-decorator-lambda-abort", "    @(lambda fn: os.abort())" + newline
+         + "    def eager():" + newline + "        pass" + newline),
+        ("class-decorator-lambda-exit", "    @(lambda cls: sys.exit(0))" + newline
+         + "    class Early:" + newline + "        pass" + newline),
         ("os-exit", "    os._exit(0)" + newline),
         ("operator-methodcaller-abort", "    operator.methodcaller(\"abort\")(os)" + newline),
         ("direct-methodcaller-exit", "    methodcaller(\"exit\", 0)(sys)" + newline),
