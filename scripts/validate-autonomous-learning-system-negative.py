@@ -3055,6 +3055,41 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite root-event CLI identity missing: " + label)
+        multiline_flow_cases = (
+            ("multiline flow alias", "on: [\n  *events\n]\n", 1),
+            ("multiline flow escaped", "on: [\n  \"p\\u0075sh\"\n]\n", 1),
+            ("multiline flow map merge", "on: {\n  <<: *events\n}\n", 1),
+            ("multiline flow dispatch conservative", "on: [\n  workflow_dispatch\n]\n", 1),
+            ("comment flow alias", "on: # events\n  # note\n  [\n    *events\n  ]\n", 1),
+            ("inline dispatch comment", "on: [workflow_dispatch] # note\n", 0),
+            ("inline dispatch map", "on: {workflow_dispatch: null}\n", 0),
+            ("nested flow literal", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", 0),
+        )
+        if tuple(case[0] for case in multiline_flow_cases) != (
+            "multiline flow alias",
+            "multiline flow escaped",
+            "multiline flow map merge",
+            "multiline flow dispatch conservative",
+            "comment flow alias",
+            "inline dispatch comment",
+            "inline dispatch map",
+            "nested flow literal",
+        ):
+            raise RuntimeError("prewrite multiline-flow fixture identity drift")
+        for label, content, count in multiline_flow_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite multiline-flow CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite multiline-flow CLI identity missing: " + label)
+
         bracket_cases = (
             ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", 1),
             ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", 1),

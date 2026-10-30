@@ -117,6 +117,23 @@ def workflow_matches_path(source: str, relative: str) -> bool:
            for event in ("push", "pull_request_target", "pull_request")):
         return True
     inline = re.search(r"(?m)^on:[ \t]*([^\r\n]+)", source)
+    # A multi-line YAML flow collection can contain an aliased or escaped
+    # push/PR event outside the first "on:" row. The narrow block parser
+    # cannot prove a non-match for a flow value without a same-line close.
+    if inline:
+        flow_head = re.split(r"[ \t]+#", inline.group(1), maxsplit=1)[0].strip()
+        if flow_head.startswith(("[", "{")) and not flow_head.endswith(
+            "]" if flow_head[0] == "[" else "}"
+        ):
+            return True
+    # YAML also permits a flow value on a later indented row, after
+    # comment-only or blank lines following the root "on:" key.
+    if re.search(
+        r"(?m)^on:[ \t]*(?:#.*)?\n(?:(?:[ \t]*#.*|[ \t]*)\n)*[ \t]+[\[{]",
+        source,
+    ):
+        return True
+
     # YAML double-quoted values may decode an escaped event name.
     if inline and "\\" in inline.group(1):
         return True
@@ -484,6 +501,31 @@ def self_test(repo_root: Path) -> None:
     for label, source, path, expected in root_event_cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite root-event negative/positive failed: " + label)
+    multiline_flow_cases = (
+        ("multiline flow alias", "on: [\n  *events\n]\n", "scripts/a.py", True),
+        ("multiline flow escaped", "on: [\n  \"p\\u0075sh\"\n]\n", "scripts/a.py", True),
+        ("multiline flow map merge", "on: {\n  <<: *events\n}\n", "scripts/a.py", True),
+        ("multiline flow dispatch conservative", "on: [\n  workflow_dispatch\n]\n", "scripts/a.py", True),
+        ("comment flow alias", "on: # events\n  # note\n  [\n    *events\n  ]\n", "scripts/a.py", True),
+        ("inline dispatch comment", "on: [workflow_dispatch] # note\n", "scripts/a.py", False),
+        ("inline dispatch map", "on: {workflow_dispatch: null}\n", "scripts/a.py", False),
+        ("nested flow literal", "on:\n  workflow_dispatch:\njobs:\n  demo:\n    steps:\n      - run: |\n          on: [\n            push\n          ]\n", "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in multiline_flow_cases) != (
+        "multiline flow alias",
+        "multiline flow escaped",
+        "multiline flow map merge",
+        "multiline flow dispatch conservative",
+        "comment flow alias",
+        "inline dispatch comment",
+        "inline dispatch map",
+        "nested flow literal",
+    ):
+        raise AuditFailure("prewrite multiline-flow fixture identity drift")
+    for label, source, path, expected in multiline_flow_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite multiline-flow negative/positive failed: " + label)
+
     bracket_cases = (
         ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", "scripts/a.py", True),
         ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", "scripts/a.py", True),
