@@ -432,7 +432,11 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     return matches
 
 
-def classify(matches: list[str]) -> str:
+def classify(matches: list[str], *, require_direct_match: bool = False) -> str:
+    # Direct push/PR matching is necessary but not sufficient for CI reachability.
+    # In strict prewrite mode, zero matching workflows cannot authorize a write.
+    if require_direct_match and not matches:
+        return "BLOCKED_NO_DIRECT_PUSH_PR_MATCH"
     if set(matches) & KNOWN_EXTERNAL_BLOCKED_WORKFLOWS:
         return "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"
     if len(matches) > MAX_REVIEWED_DIRECT_FANOUT:
@@ -762,6 +766,12 @@ def self_test(repo_root: Path) -> None:
     if classify([".github/workflows/reconcile-metrics-scrape-status.yml"]) != (
             "BLOCKED_KNOWN_WRITER_CAS"):
         raise AuditFailure("known source-SHA writer CAS trigger negative failed")
+    if classify([]) != "BOUNDED_DIRECT_MATCH_ONLY":
+        raise AuditFailure("legacy diagnostic empty-fanout classification changed")
+    if classify([], require_direct_match=True) != "BLOCKED_NO_DIRECT_PUSH_PR_MATCH":
+        raise AuditFailure("strict prewrite empty-fanout negative accepted")
+    if classify([".github/workflows/fixture.yml"], require_direct_match=True) != "BOUNDED_DIRECT_MATCH_ONLY":
+        raise AuditFailure("strict prewrite direct-match positive failed")
     high = matching_workflows(repo_root, "scripts/validate-memory-os-operability.py")
     rate = matching_workflows(
         repo_root, "scripts/validate-memory-os-rate-limit-operations-source-negative.py"
@@ -1000,7 +1010,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 60 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 63 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
@@ -1013,6 +1023,8 @@ def self_test(repo_root: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--require-direct-push-pr-match", action="store_true",
+                        help="fail closed when no push/PR workflow directly matches; not a CI closure proof")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--path")
     group.add_argument("--self-test", action="store_true")
@@ -1022,7 +1034,7 @@ def main() -> int:
             self_test(args.repo_root)
             return 0
         matches = matching_workflows(args.repo_root, args.path)
-        risk = classify(matches)
+        risk = classify(matches, require_direct_match=args.require_direct_push_pr_match)
         print("prewrite direct path audit: " + args.path)
         print("risk: " + risk + "; matched workflow count: " + str(len(matches)))
         for workflow in matches:
