@@ -3071,6 +3071,36 @@ def prove_prewrite_git_sha256_cli(source_root: Path) -> None:
             raise RuntimeError("prewrite SHA-256 restored source positive failed")
 
 
+def prove_import_api_minio_first_classification(source_root: Path) -> None:
+    """Go-only source paths must not be marked independent of MinIO startup."""
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    source = (source_root / ".github/workflows/import-api-security-slice.yml").read_text(
+        encoding="utf-8"
+    )
+    if (source.count("- name: Start MinIO") != 1
+            or source.count("- name: Unit tests with race detector") != 1
+            or source.index("- name: Start MinIO") >=
+               source.index("- name: Unit tests with race detector")):
+        raise RuntimeError("import API MinIO-first source precondition changed")
+    with tempfile.TemporaryDirectory(prefix="learning-minio-first-fanout-") as tmp:
+        root = Path(tmp)
+        workflow = root / ".github/workflows/import-api-security-slice.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(source, encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "services/import-api/internal/httpserver/server.go",
+             "--require-direct-push-pr-match"],
+            capture_output=True, text=True, check=False, timeout=30,
+        )
+        if (result.returncode != 2 or result.stderr
+                or "risk: BLOCKED_KNOWN_EXTERNAL_DEPENDENCY; matched workflow count: 1"
+                   not in result.stdout.splitlines()
+                or "- .github/workflows/import-api-security-slice.yml"
+                   not in result.stdout.splitlines()):
+            raise RuntimeError("import API MinIO-first direct CI classification failed")
+
+
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
     """Require the actual fanout CLI to conservatively count ambiguous events."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -4786,6 +4816,7 @@ def main() -> int:
     prove_upload_route_go_direct_inputs(source_root)
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
+    prove_import_api_minio_first_classification(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases} fail-closed cases)")
