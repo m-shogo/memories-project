@@ -149,6 +149,7 @@ def fixture_state(root: Path) -> tuple[tuple[str, ...], ...]:
                 observed[key] = (
                     "file", hashlib.sha256(path.read_bytes()).hexdigest(),
                     str(stat.S_IMODE(path.stat().st_mode)),
+                    str(path.stat().st_nlink),
                 )
             elif path.is_dir():
                 observed[key] = ("directory", str(stat.S_IMODE(path.stat().st_mode)))
@@ -257,6 +258,11 @@ def prove_failure_classifier() -> None:
 def expected_diagnostic(name: str) -> str:
     """Bind each negative to the invariant it intended to violate."""
     fixed = {
+        "hardlinked contract authority": "hardlinked learning authority forbidden: contracts/operations/autonomous-learning-system.json",
+        "hardlinked learning history authority": "hardlinked learning authority forbidden: docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+        "hardlinked positive guard authority": "hardlinked learning authority forbidden: scripts/validate-autonomous-learning-system.py",
+        "hardlinked negative guard authority": "hardlinked learning authority forbidden: scripts/validate-autonomous-learning-system-negative.py",
+        "hardlinked CI entrypoint authority": "hardlinked learning authority forbidden: scripts/validate-memory-os-entry-docs.py",
         "weaken mandatory rule": "mandatory learning rule must remain true: unchangedBlockerIsNotRetried",
         "disable required CI reachability": "mandatory learning rule must remain true: ciReachabilityRequired",
         "weaken NO_GO default": "learning must not weaken the NO_GO default",
@@ -409,6 +415,14 @@ def replace_in_entrypoint(root: Path, old: str, new: str) -> None:
     if old not in text:
         raise RuntimeError(f"negative fixture missing expected CI fragment: {old}")
     path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def hardlink_authority(root: Path, relative: Path) -> None:
+    # Create only an isolated fixture alias. A hardlink keeps is_symlink()
+    # false and resolve() unchanged, but makes the inode externally writable.
+    path = root / relative
+    alias = path.with_name(path.name + ".fixture-hardlink")
+    os.link(path, alias)
 
 
 def symlink_authority(root: Path, relative: Path) -> None:
@@ -5732,6 +5746,17 @@ def main() -> int:
             ))
     require_reviewed_reflective_inventory(reviewed_reflective)
     prove_reviewed_reflective_inventory_negatives()
+    for label, relative in (
+        ("contract", CONTRACT),
+        ("learning history", LEARNING),
+        ("positive guard", VALIDATOR),
+        ("negative guard", NEGATIVE_VALIDATOR),
+        ("CI entrypoint", CI_ENTRYPOINT),
+    ):
+        cases.append((
+            f"hardlinked {label} authority",
+            lambda root, path=relative: hardlink_authority(root, path),
+        ))
     for label, relative in (
         ("contract", CONTRACT),
         ("learning history", LEARNING),

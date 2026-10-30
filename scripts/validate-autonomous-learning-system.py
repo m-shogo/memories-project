@@ -111,6 +111,14 @@ def validate(repo_root: Path) -> None:
         path = repo_root / relative
         if path.is_symlink():
             raise ValidationFailure(f"symlinked learning authority forbidden: {relative}")
+        # Hardlinks are not symlinks: a second directory entry can mutate a
+        # protected authority through an unreviewed path. Require one inode
+        # name for every canonical learning/CI authority in this checkout.
+        try:
+            if path.is_file() and path.stat().st_nlink != 1:
+                raise ValidationFailure(f"hardlinked learning authority forbidden: {relative}")
+        except OSError:
+            raise ValidationFailure(f"unreadable learning authority: {relative}") from None
         try:
             resolved = path.resolve(strict=True).relative_to(repo_root.resolve(strict=True))
         except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
