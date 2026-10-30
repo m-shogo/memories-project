@@ -1624,7 +1624,8 @@ def require_unaliased_go_path(source_root: Path, path: Path) -> None:
         resolved = path.resolve(strict=True).relative_to(source_root.resolve(strict=True))
     except (OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError("unreviewed Go source path alias/missing") from exc
-    if path.is_symlink() or resolved != relative:
+    if (path.is_symlink() or resolved != relative
+            or (path.is_file() and path.stat().st_nlink != 1)):
         raise RuntimeError("unreviewed Go source path alias/missing")
 
 
@@ -1661,6 +1662,21 @@ def prove_unaliased_go_path_negatives() -> None:
                 raise
         else:
             raise RuntimeError("Go symlinked parent negative accepted")
+        # A hardlinked Go file has a valid resolved path but shares its
+        # inode with another name; path identity alone cannot prove ownership.
+        go_source = other / "file.go"
+        hard_alias = root / "hardlinked.go"
+        os.link(go_source, hard_alias)
+        try:
+            require_unaliased_go_path(root, go_source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go source path alias/missing":
+                raise
+        else:
+            raise RuntimeError("Go hardlink source alias negative accepted")
+        hard_alias.unlink()
+        require_unaliased_go_path(root, go_source)
+
         data = root / "data.json"
         data.write_text("{}\n", encoding="utf-8")
         alias = root / "linked.json"
