@@ -109,6 +109,23 @@ def validate(repo_root: Path) -> None:
     # Path.is_file() and read_text() follow symlinks, so reject aliases first.
     for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
         path = repo_root / relative
+        # A writable directory can replace a checked authority's pathname
+        # without changing the authority file's own mode or link count.
+        # Limit this policy to the checkout root and its in-repo parents:
+        # /tmp and other outer runner ancestors are not our authority.
+        for depth in range(len(relative.parts)):
+            parent = repo_root.joinpath(*relative.parts[:depth])
+            try:
+                if (not parent.is_symlink() and parent.is_dir()
+                        and parent.stat().st_mode & 0o002):
+                    raise ValidationFailure(
+                        f"world-writable learning authority parent forbidden: "
+                        f"{parent.relative_to(repo_root)}"
+                    )
+            except OSError:
+                raise ValidationFailure(
+                    f"unreadable learning authority parent: {parent}"
+                ) from None
         if path.is_symlink():
             raise ValidationFailure(f"symlinked learning authority forbidden: {relative}")
         # Hardlinks are not symlinks: a second directory entry can mutate a
