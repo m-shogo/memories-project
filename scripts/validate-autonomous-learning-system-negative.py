@@ -2643,7 +2643,7 @@ def require_reviewed_upload_route_role_lock(source: str) -> None:
     if source.count(signature) != 1:
         raise RuntimeError(failure)
     start = source.index(signature)
-    end = source.find("\\nfunc ", start + len(signature))
+    end = source.find("\nfunc ", start + len(signature))
     if end < 0:
         raise RuntimeError(failure)
     helper = source[start:end]
