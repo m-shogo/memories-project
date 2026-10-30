@@ -4087,9 +4087,27 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
         account_source = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
             encoding="utf-8"
         )
+        # A quoted import path in a comment or raw string is not a compiled
+        # Go dependency. Bind the reviewed second-hop edges to parsed imports.
+        def require_second_hop_edges(source: str) -> None:
+            imported = upload_route_local_go_imports(source, include_external=True)
+            for package in ("accountdelete", "epochguard", "security"):
+                if module + "/internal/" + package not in imported:
+                    raise RuntimeError("upload route second-hop Go import edge changed: " + package)
+        require_second_hop_edges(account_source)
         for package in ("accountdelete", "epochguard", "security"):
-            if f'"{module}/internal/{package}"' not in account_source:
-                raise RuntimeError("upload route second-hop Go import edge changed: " + package)
+            anchor = f'"{module}/internal/{package}"'
+            if account_source.count(anchor) != 1:
+                raise RuntimeError("upload route second-hop Go import fixture anchor drift")
+            spoofed = (account_source.replace(anchor, '"example.com/unreviewed"', 1)
+                       + "\n// " + anchor + "\n")
+            try:
+                require_second_hop_edges(spoofed)
+            except RuntimeError as exc:
+                if str(exc) != "upload route second-hop Go import edge changed: " + package:
+                    raise
+            else:
+                raise RuntimeError("comment-spoofed second-hop Go edge accepted: " + package)
         # Static source identity only: do not claim independent CI trigger
         # coverage for second-hop files. Five extra CLI subprocesses exceeded
         # the entrypoint's existing 120s nested-validator deadline.
