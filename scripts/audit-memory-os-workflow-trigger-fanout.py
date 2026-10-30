@@ -70,6 +70,15 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # Unknown escaped root keys are not proof of a dispatch-only workflow.
     if re.search(r'(?m)^"[^"\r\n]*\\[^"\r\n]*"[ \t]*:', source):
         return True
+    # Root-level YAML merges or tagged/anchored/complex "on" keys may
+    # introduce a trigger without a literal root-level on: declaration.
+    if re.search(
+        r"(?m)^(?:<<[ \t]*:|\?[ \t]+on(?:[ \t]*:|[ \t]*$)"
+        r"|(?:!![A-Za-z0-9_-]+|!<[^>\r\n]+>)[ \t]+on[ \t]*:"
+        r"|&[A-Za-z_][A-Za-z0-9_-]*[ \t]+on[ \t]*:)",
+        source,
+    ):
+        return True
     # GitHub accepts quoted YAML event keys and inline scalar/map triggers.
     # Missing these forms would undercount prewrite fanout, not just overestimate.
     source = re.sub(r"""(?m)^(['"])on\1:""", "on:", source)
@@ -387,6 +396,20 @@ def self_test(repo_root: Path) -> None:
     for label, source, path, expected in complex_event_cases:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite complex-event negative/positive failed: " + label)
+    root_event_cases = (
+        ("root merged trigger", "events: &e {on: [push]}\n<<: *e\n", "scripts/a.py", True),
+        ("root spaced merge", "events: &e {on: [push]}\n<< : *e\n", "scripts/a.py", True),
+        ("root tagged on", "!!str on:\n    push:\n      paths:\n        - scripts/a.py\n", "scripts/a.py", True),
+        ("root verbatim tag on", "!<tag:yaml.org,2002:str> on:\n    push:\n", "scripts/a.py", True),
+        ("root anchored on", "&key on:\n    push:\n", "scripts/a.py", True),
+        ("root complex on", "? on\n:\n    push:\n", "scripts/a.py", True),
+        ("root unrelated anchor", "name: &e push\non: workflow_dispatch\n", "scripts/a.py", False),
+    )
+    if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor",):
+        raise AuditFailure("prewrite root-event fixture identity drift")
+    for label, source, path, expected in root_event_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite root-event negative/positive failed: " + label)
     if classify([".github/workflows/w" + str(i) + ".yml"
                  for i in range(MAX_REVIEWED_DIRECT_FANOUT + 1)]) != "BLOCKED_HIGH_FANOUT":
         raise AuditFailure("high-fanout threshold negative failed")
@@ -462,7 +485,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 10 + len(complex_event_cases) + len(root_event_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))

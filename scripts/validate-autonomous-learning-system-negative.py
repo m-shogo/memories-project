@@ -3023,6 +3023,30 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             require_exact_count(result, count, label)
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite complex-event CLI identity missing: " + label)
+        root_event_cases = (
+            ("root merged trigger", "events: &e {on: [push]}\n<<: *e\n", 1),
+            ("root spaced merge", "events: &e {on: [push]}\n<< : *e\n", 1),
+            ("root tagged on", "!!str on:\n    push:\n      paths:\n        - scripts/a.py\n", 1),
+            ("root verbatim tag on", "!<tag:yaml.org,2002:str> on:\n    push:\n", 1),
+            ("root anchored on", "&key on:\n    push:\n", 1),
+            ("root complex on", "? on\n:\n    push:\n", 1),
+            ("root unrelated anchor", "name: &e push\non: workflow_dispatch\n", 0),
+        )
+        if tuple(case[0] for case in root_event_cases) != ("root merged trigger","root spaced merge","root tagged on","root verbatim tag on","root anchored on","root complex on","root unrelated anchor",):
+            raise RuntimeError("prewrite root-event CLI fixture identity drift")
+        for label, content, count in root_event_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite root-event CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite root-event CLI identity missing: " + label)
     # An actual writer-named workflow must block even with one direct match.
     with tempfile.TemporaryDirectory(prefix="learning-fanout-writer-cas-") as tmp:
         root = Path(tmp)
@@ -3170,7 +3194,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 8 + len(complex_event_cases)
+    return len(cases) + 8 + len(complex_event_cases) + len(root_event_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
