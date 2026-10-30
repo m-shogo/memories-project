@@ -256,6 +256,8 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     for workflow in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml"))):
         if workflow.is_symlink() or not workflow.is_file():
             raise AuditFailure("workflow path missing or symlinked")
+        if workflow.stat().st_nlink != 1:
+            raise AuditFailure("workflow source hardlink alias")
         if workflow.stat().st_size > MAX_WORKFLOW_SOURCE_BYTES:
             raise AuditFailure("workflow source exceeds reviewed byte limit")
         try:
@@ -545,6 +547,20 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("hardlinked prewrite target negative accepted")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-workflow-hardlink-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        external = Path(tmp) / "external.yml"
+        external.write_text('on: push\n', encoding="utf-8")
+        (directory / "w.yml").hardlink_to(external)
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "workflow source hardlink alias":
+                raise
+        else:
+            raise AuditFailure("hardlinked workflow source negative accepted")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()

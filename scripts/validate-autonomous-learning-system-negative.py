@@ -3232,6 +3232,21 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 outside = Path(tmp) / "outside"
                 outside.mkdir()
                 (root / "scripts").symlink_to(outside, target_is_directory=True)
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-workflow-hardlink-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        external = Path(tmp) / "external.yml"
+        external.write_text('on: push\n', encoding="utf-8")
+        (directory / "fixture.yml").hardlink_to(external)
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/a.py"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (result.returncode != 1 or result.stdout or
+                result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow source hardlink alias\n"):
+            raise RuntimeError("prewrite workflow source hardlink CLI negative failed")
     with tempfile.TemporaryDirectory(prefix="learning-fanout-target-hardlink-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"
