@@ -1109,6 +1109,28 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 value = statement.value
                 return (isinstance(value, ast.Call)
                         and eager_direct_termination(ast.Expr(value=value)))
+            if isinstance(statement, ast.Match) and statement.cases:
+                # Only the first unguarded wildcard or literal-equal arm is
+                # guaranteed to execute. Do not assume guarded/later arms run.
+                first = statement.cases[0]
+                pattern = first.pattern
+                certain = (
+                    isinstance(pattern, ast.MatchAs)
+                    and pattern.name is None and pattern.pattern is None
+                ) or (
+                    isinstance(statement.subject, ast.Constant)
+                    and (
+                        (isinstance(pattern, ast.MatchValue)
+                         and isinstance(pattern.value, ast.Constant)
+                         and type(statement.subject.value) is type(pattern.value.value)
+                         and statement.subject.value == pattern.value.value)
+                        or (isinstance(pattern, ast.MatchSingleton)
+                            and statement.subject.value is pattern.value)
+                    )
+                )
+                if first.guard is None and certain:
+                    return any(eager_direct_termination(child)
+                               for child in first.body)
             if isinstance(statement, ast.With):
                 # A module-level with body executes eagerly after a successful
                 # context-manager entry; a direct exit prevents main dispatch.
@@ -1227,6 +1249,9 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred while exit", 'def helper():\n    while True:\n        sys.exit(0)\n', (3, 0)),
         ("with deferred function exit", 'from contextlib import nullcontext\nwith nullcontext():\n    def helper(): sys.exit(0)\n', (3, 0)),
         ("with untaken branch exit", 'from contextlib import nullcontext\nwith nullcontext():\n    if False: sys.exit(0)\n', (3, 0)),
+        ("unmatched literal match exit", 'match 1:\n    case 2:\n        sys.exit(0)\n', (3, 0)),
+        ("guarded literal match exit", 'match 1:\n    case 1 if False:\n        sys.exit(0)\n', (3, 0)),
+        ("deferred match exit", 'def helper():\n    match 1:\n        case 1:\n            sys.exit(0)\n', (4, 0)),
         ("caught module raise", 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\n', (4, 0)),
         ("untaken finally raise", 'try: pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (4, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
@@ -1587,6 +1612,15 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("module with body raise", baseline.replace(
              'if __name__', 'from contextlib import nullcontext\nwith nullcontext():\n    raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("first literal match sys.exit", baseline.replace(
+             'if __name__', 'match 1:\n    case 1:\n        sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("first singleton match raise", baseline.replace(
+             'if __name__', 'match None:\n    case None:\n        raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("first wildcard match abort", baseline.replace(
+             'if __name__', 'match value:\n    case _:\n        os.abort()\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("unconditional finally sys.exit", baseline.replace(
              'if __name__', 'try:\n    pass\nfinally:\n    sys.exit(0)\nif __name__'),
