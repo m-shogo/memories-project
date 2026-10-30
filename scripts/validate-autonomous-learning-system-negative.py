@@ -3771,7 +3771,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 69 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
