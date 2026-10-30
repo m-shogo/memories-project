@@ -1,0 +1,25 @@
+# Supplemental OPS learning — world-writable canonical authority mode (2026-10-30)
+
+Append-only supplemental learning/history only. Canonical learning is `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory policy is `contracts/operations/autonomous-learning-system.json`. This is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review or human-promotion evidence.
+
+## Material failure — prospective world-writable authority mutation
+
+- **Symptom:** A unique, regular, non-symlink canonical learning/CI authority file with the world-write permission bit could pass the prior path, inode-type and hardlink guards. An unrelated local principal could alter its bytes through the canonical filename. This is a prospective checkout-integrity gap, not an observed production incident.
+- **Observed evidence:** The previous validator checked path resolution, regular-file identity and `st_nlink == 1` but not `st_mode & 0o002`. In a disposable filesystem, `chmod(0o666)` preserves regular-file and single-link identity while granting other-write permission. The existing negative harness already fingerprints authority file mode, making a permission-only mutation observable without changing source bytes.
+- **Verified root cause:** Unique inode/path identity does not imply a protected write-permission boundary.
+- **Failed approach:** Treating non-symlink, regular, single-linked canonical files as sufficient integrity authority regardless of other-write mode.
+- **Correction:** [`db0baf2d`](https://github.com/m-shogo/memories-project/commit/db0baf2d73bcb2579e6de23851bbeeb64d997f58) rejects the world-write bit for each of five canonical learning/CI authorities, preserving the existing missing/nonregular/symlink/hardlink diagnostics.
+- **Executable recurrence guard:** Five disposable actual canonical CLI negatives change only the authority file mode to `0o666` and require an exact path-bound rejection. Existing positive fixtures remain valid with ordinary checkout modes. This does not claim a complete ACL/parent-directory/TOCTOU proof.
+- **Retry condition:** Reconsider a legitimate world-writable authority only with a reviewed principal/ACL threat model, explicit acceptable mode contract, executable positive/negative tests, exact-source CI and protected-authority comparison. Do not retry unchanged MinIO HTTP 401, workflow-write permission, canonical learning large-transfer or human-promotion blockers.
+
+## Material success
+
+- **Observed outcome/evidence:** [Autonomous Learning Guard #41044955995](https://github.com/m-shogo/memories-project/actions/runs/41044955995) completed **SUCCESS** on exact source `db0baf2d73bcb2579e6de23851bbeeb64d997f58`. Job logs show append-only PASS, learning contract PASS, **537 canonical fail-closed negatives**, **195 fanout synthetic cases**, **1,186 helper-ancestor negatives**, entry-document and clean/read-only checks PASS.
+- **Why safe:** The code commit changed only two already CI-reachable read-only Python validators (+31 lines total). Permission changes occurred solely inside disposable negative fixture roots. No workflow YAML, production code, credentials, traffic, recovery, environment generation, objective, drill, evidence, typed eight-domain coverage, independent review or promotion authority changed.
+- **Reusable mechanism:** Pair source path/inode checks with an explicit mode boundary and test permission-only mutation without altering bytes; do not treat a mode guard as full filesystem race or ACL proof.
+- **Protected-authority check:** Exact code diff is limited to `scripts/validate-autonomous-learning-system.py` and `scripts/validate-autonomous-learning-system-negative.py`. All ten protected authority blobs are unchanged from `edbcf442e1d2148cb310bc0416534c69f3ecd1c8`: canonical learning `b809c69d`, mandatory contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0`, and six generation/objective/drill/evidence/non-resurrection/promotion registries. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED` with registered/semantically eligible generations 0/0 and no current human-approved recovery objective, executable reviewed drill request, request-bound recovery evidence, complete typed eight-domain coverage, independent review, final candidate or separate human promotion.
+- **Evidence limitation:** Canonical learning's multi-megabyte full body could not be retrieved through the current connector. Its exact Git blob identity was checked; no full-body read success or production gate completion is inferred from this supplemental record.
+
+## Next independent safe target
+
+Audit read-time inode/metadata replacement and parent-directory write authority for the canonical learning inputs, with bounded nonblocking reads and deterministic negatives if feasible. Continue Go/Python transitive dependency closure and exact Push/PR trigger coverage for a MinIO-independent Focused Upload Route Test; workflow writes remain permission-scoped.
