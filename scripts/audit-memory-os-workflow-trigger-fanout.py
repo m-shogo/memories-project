@@ -373,6 +373,12 @@ def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False) -> byte
                 raise AuditFailure(alias)
             if before.st_nlink != 1:
                 raise AuditFailure(hardlink)
+            # Identical bytes are not sufficient source authority if another
+            # local principal can rewrite this workflow after the audit.
+            if before.st_mode & 0o002:
+                raise AuditFailure("workflow source world-writable")
+            if before.st_mode & 0o020:
+                raise AuditFailure("workflow source group-writable")
             if before.st_size > MAX_WORKFLOW_SOURCE_BYTES:
                 raise AuditFailure("workflow source exceeds reviewed byte limit")
             raw = stream.read(MAX_WORKFLOW_SOURCE_BYTES + 1)

@@ -5095,6 +5095,65 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     return len(cases) + 84 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
+def prove_prewrite_workflow_leaf_permissions(source_root: Path) -> int:
+    """Exercise descriptor and real CLI writable-leaf rejection and recovery."""
+    import runpy
+
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    module = runpy.run_path(str(guard))
+    reader = module["read_workflow_bytes_bounded"]
+    count = 0
+    for kind, mode, diagnostic in (
+        ("world", 0o666, "workflow source world-writable"),
+        ("group", 0o664, "workflow source group-writable"),
+    ):
+        with tempfile.TemporaryDirectory(prefix="learning-prewrite-leaf-mode-") as tmp:
+            root = Path(tmp)
+            workflow = root / ".github/workflows/fixture.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_bytes(b"on: push\n")
+            command = [
+                sys.executable, str(guard), "--repo-root", str(root),
+                "--path", "scripts/a.py",
+            ]
+            def positive() -> None:
+                for strict in (False, True):
+                    if reader(workflow, strict=strict) != b"on: push\n":
+                        raise RuntimeError("prewrite leaf-mode descriptor positive drift")
+                result = subprocess.run(
+                    command, capture_output=True, text=True, check=False, timeout=10,
+                )
+                if (result.returncode != 0 or result.stderr or
+                        "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                        not in result.stdout.splitlines()):
+                    raise RuntimeError("prewrite leaf-mode CLI positive drift")
+            positive()
+            workflow.chmod(mode)
+            try:
+                for strict in (False, True):
+                    try:
+                        reader(workflow, strict=strict)
+                    except module["AuditFailure"] as exc:
+                        if str(exc) != diagnostic:
+                            raise RuntimeError(
+                                "prewrite leaf-mode descriptor wrong diagnostic: " + kind
+                            ) from exc
+                    else:
+                        raise RuntimeError("prewrite leaf-mode descriptor accepted: " + kind)
+                    count += 1
+                result = subprocess.run(
+                    command, capture_output=True, text=True, check=False, timeout=10,
+                )
+                if (result.returncode != 1 or result.stdout or
+                        result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
+                    raise RuntimeError("prewrite leaf-mode CLI accepted: " + kind)
+                count += 1
+            finally:
+                workflow.chmod(0o644)
+            positive()
+    return count
+
+
 def prove_prewrite_workflow_parent_permissions(source_root: Path) -> int:
     """Real CLI rejection and recovery for every in-checkout workflow ancestor."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -6187,6 +6246,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    leaf_mode_cases = prove_prewrite_workflow_leaf_permissions(source_root)
     parent_mode_cases = prove_prewrite_workflow_parent_permissions(source_root)
     prove_prewrite_workflow_directory_membership_drift(source_root)
     prove_prewrite_workflow_parent_swap(source_root)
@@ -6194,7 +6254,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases} fail-closed cases)")
     return 0
 
 
