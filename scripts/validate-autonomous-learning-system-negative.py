@@ -731,6 +731,13 @@ def upload_route_local_go_imports(source: str, include_external: bool = False,
     """Parse reviewed Go import forms conservatively; reject unknown syntax."""
     import re
     module = "github.com/m-shogo/memories-project/services/import-api/"
+    # An unfinished comment or raw literal can leave import-shaped text
+    # lexically visible to a regex even though Go cannot compile the file.
+    # Fail closed before assigning any dependency edge to such source.
+    if source.count("/*") != source.count("*/"):
+        raise RuntimeError("unreviewed Go unbalanced block comment")
+    if source.count("`") % 2:
+        raise RuntimeError("unreviewed Go unbalanced raw string")
     # Go accepts "package p; import ..." and "/* note */ import ...".
     # A line-anchored parser would silently omit those legal dependencies.
     if re.search(r"(?:;|\*/)[ \t]*import(?:[ \t]+|[ \t]*\()", source):
@@ -825,6 +832,22 @@ def prove_upload_route_go_import_parser() -> None:
             raise RuntimeError("Go import identity negative accepted: " + label)
     if upload_route_local_go_imports('import "' + module + 'internal/reqid"\n') != {"internal/reqid"}:
         raise RuntimeError("Go single-line import positive fixture failed")
+    # Unterminated lexical regions must not contribute fake import edges.
+    for label, candidate, diagnostic in (
+        ("unterminated block comment", 'package test\n/*\nimport "fmt"\n',
+         "unreviewed Go unbalanced block comment"),
+        ("orphan block close", 'package test\n*/\nimport "fmt"\n',
+         "unreviewed Go unbalanced block comment"),
+        ("unterminated raw string", 'package test\nvar doc = `\nimport "fmt"\n',
+         "unreviewed Go unbalanced raw string"),
+    ):
+        try:
+            upload_route_local_go_imports(candidate, include_external=True)
+        except RuntimeError as exc:
+            if str(exc) != diagnostic:
+                raise
+        else:
+            raise RuntimeError("Go lexical delimiter negative accepted: " + label)
     # An import-shaped line in a block comment is not a compiled Go import.
     upload_route_local_go_imports('package test\n/* ordinary note */\nimport "fmt"\n')
     for label, candidate in (
