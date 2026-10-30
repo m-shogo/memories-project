@@ -2675,6 +2675,61 @@ def require_reviewed_upload_route_role_lock(source: str) -> None:
         raise RuntimeError(failure)
 
 
+def require_reviewed_upload_route_handler_composition(source: str) -> None:
+    """Bind the HTTP live server to the unprivileged, fenced service graph."""
+    failure = "unreviewed Upload Route unprivileged handler composition"
+    signature = "func newLiveServer(t *testing.T) *liveServer {"
+    if source.count(signature) != 1:
+        raise RuntimeError(failure)
+    start = source.index(signature)
+    end = source.find("\nfunc ", start + len(signature))
+    if end < 0:
+        raise RuntimeError(failure)
+    helper = source[start:end]
+    reviewed = (
+        (
+        "\tappPool := appLoginPool(t, ctx, pool, serverURL)\n"
+        "\tsessions := authstore.Store{Pool: appPool}\n"
+        "\texecutor := dbscope.New(pgscope.Beginner{Pool: appPool})\n"
+        ),
+        (
+        "\taccountControl := pgrepo.AccountControl{Pool: appPool, Transactions: executor}\n"
+        "\tguard := epochguard.Guard{Source: accountControl}\n"
+        "\tappleHolder := &appleLoginHolder{}\n"
+        ),
+        (
+        "\thandler := New(Config{\n"
+        "\t\tSessions: sessions,\n"
+        "\t\tUpload: fenced.Upload{Guard: guard, Inner: &upload.Service{\n"
+        "\t\t\tTransactions: executor,\n"
+        "\t\t\tRepository:   pgrepo.Upload{},\n"
+        "\t\t\tSigner:       objects,\n"
+        "\t\t\tObjects:      objects,\n"
+        "\t\t\tIDs:          cryptoids.Generator{},\n"
+        "\t\t}},\n"
+        "\t\tPreview: fenced.PreviewRead{Guard: guard, Inner: &previewread.Service{Transactions: executor}},\n"
+        "\t\tApply: fenced.Apply{Guard: guard, Inner: &apply.Service{\n"
+        "\t\t\tTransactions: executor,\n"
+        "\t\t\tRepository:   pgrepo.Apply{},\n"
+        "\t\t\tIDs:          cryptoids.Generator{},\n"
+        "\t\t}},\n"
+        "\t\tAccount:    accountdelete.Service{Repository: accountControl, Guard: guard},\n"
+        "\t\tAppleLogin: appleHolder,\n"
+        "\t})\n"
+        ),
+        (
+        "\tserver := httptest.NewServer(handler)\n"
+        "\tt.Cleanup(server.Close)\n"
+        "\treturn &liveServer{pool: pool, appPool: appPool, sessions: sessions,\n"
+        "\t\tserver: server, executor: executor, objects: objects, accountControl: accountControl,\n"
+        ),
+    )
+    if (any(helper.count(fragment) != 1 for fragment in reviewed) or
+            [helper.index(fragment) for fragment in reviewed] !=
+            sorted(helper.index(fragment) for fragment in reviewed)):
+        raise RuntimeError(failure)
+
+
 def require_reviewed_upload_route_principal_identity(source: str) -> None:
     """Pin the non-superuser/non-BYPASSRLS live test principal proof."""
     failure = "unreviewed Upload Route deployment principal RLS identity proof"
@@ -2724,6 +2779,7 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
     require_reviewed_upload_route_password_skip_boundary(source)
     require_reviewed_upload_route_role_lock(source)
     require_reviewed_upload_route_principal_identity(source)
+    require_reviewed_upload_route_handler_composition(source)
     for label, old, new in (
         ("unconditional skip", 'if password == "" {', 'if true {'),
         ("skip removed", '\t\tt.Skip("test database URL', '\t\tt.Log("test database URL'),
@@ -2814,6 +2870,44 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
                 raise
         else:
             raise RuntimeError("Upload Route principal identity negative accepted: " + label)
+
+
+    helper_start = source.index("func newLiveServer(t *testing.T) *liveServer {")
+    helper_end = source.find("\nfunc ", helper_start + 1)
+    if helper_end < 0:
+        raise RuntimeError("handler composition fixture helper boundary drift")
+    helper = source[helper_start:helper_end]
+    for label, old, new in (
+        ("sessions use admin", "sessions := authstore.Store{Pool: appPool}",
+         "sessions := authstore.Store{Pool: pool}"),
+        ("executor uses admin", "executor := dbscope.New(pgscope.Beginner{Pool: appPool})",
+         "executor := dbscope.New(pgscope.Beginner{Pool: pool})"),
+        ("account control uses admin", "accountControl := pgrepo.AccountControl{Pool: appPool",
+         "accountControl := pgrepo.AccountControl{Pool: pool"),
+        ("upload unfenced", "Upload: fenced.Upload{Guard: guard, Inner:",
+         "Upload: fenced.Upload{Inner:"),
+        ("preview unfenced", "Preview: fenced.PreviewRead{Guard: guard, Inner:",
+         "Preview: fenced.PreviewRead{Inner:"),
+        ("apply unfenced", "Apply: fenced.Apply{Guard: guard, Inner:",
+         "Apply: fenced.Apply{Inner:"),
+        ("account unfenced", "Account:    accountdelete.Service{Repository: accountControl, Guard: guard}",
+         "Account:    accountdelete.Service{Repository: accountControl}"),
+        ("server not using handler", "httptest.NewServer(handler)",
+         "httptest.NewServer(http.NotFoundHandler())"),
+        ("return admin as appPool", "appPool: appPool, sessions:",
+         "appPool: pool, sessions:"),
+    ):
+        if helper.count(old) != 1:
+            raise RuntimeError("handler composition fixture anchor drift: " + label)
+        changed = (source[:helper_start] + helper.replace(old, new, 1)
+                   + source[helper_end:])
+        try:
+            require_reviewed_upload_route_handler_composition(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route unprivileged handler composition":
+                raise
+        else:
+            raise RuntimeError("Upload Route handler composition negative accepted: " + label)
 
 
 def require_reviewed_upload_route_focused_skip_inventory(sources: dict[str, str]) -> None:
