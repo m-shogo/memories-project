@@ -2453,6 +2453,13 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
         # needs Go test discovery review rather than lexical trust.
         if "/*" in source or "*/" in source:
             raise RuntimeError(failure)
+        # Raw Go strings can contain line-starting fake test declarations or
+        # assertion calls that regexes mistake for executable test code.
+        literals = re.findall(r"`[^`]*`", source, flags=re.DOTALL)
+        if (source.count("`") != 2 * len(literals) or any(
+                re.search(r"(?m)^[ \t]*func[ \t]+Test|\bt\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow|Skip|Skipf|SkipNow)[ \t]*\(", literal)
+                for literal in literals)):
+            raise RuntimeError(failure)
         declarations = re.findall(r"(?m)^func[ \t]+(Test[A-Za-z0-9_]+)[ \t]*\(", source)
         if tuple(name for name in declarations if name in expected) != names:
             raise RuntimeError(failure)
@@ -2519,6 +2526,25 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
             raise
     else:
         raise RuntimeError("commented focused Go test negative accepted")
+    # A balanced raw string is legal Go; a line-anchored regex still sees
+    # the hidden declaration although go test does not discover it.
+    hidden_raw = dict(files)
+    hidden_raw[route] = files[route].replace(
+        "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {",
+        "var hiddenFocusedTest = `\nfunc TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {", 1
+    ).replace(
+        "func TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {",
+        "`\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {", 1
+    )
+    if hidden_raw[route].count("`") != 2:
+        raise RuntimeError("focused Go raw-string fixture anchor drift")
+    try:
+        require_reviewed_upload_route_focused_go_tests(hidden_raw)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route focused Go test target":
+            raise
+    else:
+        raise RuntimeError("raw-string hidden focused Go test negative accepted")
 
 
 def require_reviewed_upload_route_live_skip_boundary(source: str) -> None:
