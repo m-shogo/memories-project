@@ -479,6 +479,20 @@ def validate(repo_root: Path) -> None:
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
         if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Call):
+                # Reflective lookup can invoke an abort/exit callable before
+                # the canonical CI guard even without a direct attribute call.
+                lookup = node.func
+                reflective = ((isinstance(lookup.func, ast.Name)
+                               and lookup.func.id == "getattr")
+                              or (isinstance(lookup.func, ast.Attribute)
+                                  and lookup.func.attr == "getattr"))
+                if (reflective and len(lookup.args) >= 2
+                        and isinstance(lookup.args[0], ast.Name)
+                        and lookup.args[0].id in {"os", "sys", "builtins"}
+                        and (not isinstance(lookup.args[1], ast.Constant)
+                             or lookup.args[1].value in {"abort", "_exit", "exit", "quit"})):
+                    return True
             if isinstance(node.func, ast.Subscript):
                 # An eager module-dictionary call may terminate execution
                 # without a visible os.abort()/sys.exit() attribute callee.
