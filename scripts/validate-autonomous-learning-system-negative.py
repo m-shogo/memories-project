@@ -135,7 +135,9 @@ def seed(source_root: Path, root: Path) -> None:
 
 def fixture_state(root: Path) -> tuple[tuple[str, ...], ...]:
     """Fingerprint canonical fixture bytes, modes, and every path component."""
-    observed: dict[str, tuple[str, ...]] = {}
+    observed: dict[str, tuple[str, ...]] = {
+        ".": ("directory", str(stat.S_IMODE(root.stat().st_mode))),
+    }
     for relative in (CONTRACT, LEARNING, VALIDATOR, NEGATIVE_VALIDATOR, CI_ENTRYPOINT):
         path = root
         for part in relative.parts:
@@ -344,6 +346,7 @@ def expected_diagnostic(name: str) -> str:
     if name.startswith("world-writable ") and name.endswith(" parent directory"):
         label = name[len("world-writable "):-len(" parent directory")]
         targets = {
+            "checkout root": Path("."),
             "scripts": Path("scripts"),
             "contracts operations": Path("contracts/operations"),
             "docs operations": Path("docs/operations"),
@@ -510,6 +513,14 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         reject("world-writable", f"canonical authority changed during read: {target}")
         target.chmod(0o644)
         original_open = os.open
+        def rewrite_before_open(path, flags):
+            if Path(path) == target:
+                target.write_bytes(b"ALTERED")
+            return original_open(path, flags)
+        with mock.patch.object(module.os, "open", side_effect=rewrite_before_open):
+            reject("same-inode pre-open rewrite",
+                   f"canonical authority changed during read: {target}")
+        target.write_bytes(b"stable")
         def swap_after_open(path, flags):
             fd = original_open(path, flags)
             if Path(path) == target:
@@ -5883,6 +5894,7 @@ def main() -> int:
             lambda root, path=relative: world_writable_authority(root, path),
         ))
     for label, relative in (
+        ("checkout root", Path(".")),
         ("scripts", Path("scripts")),
         ("contracts operations", Path("contracts/operations")),
         ("docs operations", Path("docs/operations")),
