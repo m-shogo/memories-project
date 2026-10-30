@@ -1625,6 +1625,7 @@ def require_unaliased_go_path(source_root: Path, path: Path) -> None:
     except (OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError("unreviewed Go source path alias/missing") from exc
     if (path.is_symlink() or resolved != relative
+            or not (path.is_file() or path.is_dir())
             or (path.is_file() and path.stat().st_nlink != 1)):
         raise RuntimeError("unreviewed Go source path alias/missing")
 
@@ -1676,6 +1677,20 @@ def prove_unaliased_go_path_negatives() -> None:
             raise RuntimeError("Go hardlink source alias negative accepted")
         hard_alias.unlink()
         require_unaliased_go_path(root, go_source)
+
+        # A named pipe resolves inside the checkout, but is not a regular
+        # compile input: reading it would block the static dependency audit.
+        fifo = root / "unreviewed.go"
+        os.mkfifo(fifo)
+        try:
+            require_unaliased_go_path(root, fifo)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Go source path alias/missing":
+                raise
+        else:
+            raise RuntimeError("Go FIFO source input negative accepted")
+        finally:
+            fifo.unlink()
 
         data = root / "data.json"
         data.write_text("{}\n", encoding="utf-8")
