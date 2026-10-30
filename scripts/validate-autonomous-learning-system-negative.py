@@ -4673,6 +4673,99 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     raise
             else:
                 raise RuntimeError("unreviewed appleauth local import accepted: " + name)
+        # The focused live test imports these additional Go packages. Go
+        # compiles every non-test source peer in each package even when the
+        # workflow's -run selector executes only two named test functions.
+        compiled_test_peers = {
+            "pgrepo": {
+                "accountcontrol.go": ("accountdelete", "dbscope", "epochguard", "pgscope", "security"),
+                "apply.go": ("apply", "dbscope", "pgscope"),
+                "upload.go": ("dbscope", "pgscope", "upload"),
+            },
+            "objectstore": {
+                "client.go": ("upload",),
+                "erase.go": (),
+                "sigv4.go": (),
+            },
+            "previewcommit": {
+                "commitkey.go": ("previewspool",),
+                "committer.go": ("previewspool",),
+            },
+        }
+
+        def require_live_test_peer_edges(candidate: str) -> None:
+            imported = upload_route_local_go_imports(candidate, include_external=True)
+            for package in compiled_test_peers:
+                if module + "/internal/" + package not in imported:
+                    raise RuntimeError("upload route live test Go import edge changed: " + package)
+
+        require_live_test_peer_edges(live_test)
+        for package in compiled_test_peers:
+            anchor = f'"{module}/internal/{package}"'
+            if live_test.count(anchor) != 1:
+                raise RuntimeError("upload route live test peer import fixture anchor drift")
+            spoofed = live_test.replace(anchor, '"example.com/unreviewed"', 1) + "\n// " + anchor + "\n"
+            try:
+                require_live_test_peer_edges(spoofed)
+            except RuntimeError as exc:
+                if str(exc) != "upload route live test Go import edge changed: " + package:
+                    raise
+            else:
+                raise RuntimeError("comment-spoofed live test peer edge accepted: " + package)
+
+        for package, members in compiled_test_peers.items():
+            directory = source_root / "services/import-api/internal" / package
+            observed = {
+                path.name for path in directory.glob("*.go")
+                if not path.name.endswith("_test.go")
+            }
+
+            def require_compiled_peer_inventory(names: set[str]) -> None:
+                if names != set(members):
+                    raise RuntimeError("upload route compiled Go peer inventory drift: " + package)
+
+            require_compiled_peer_inventory(observed)
+            for changed in (observed - {next(iter(members))},
+                            observed | {"unreviewed.go"}):
+                try:
+                    require_compiled_peer_inventory(changed)
+                except RuntimeError as exc:
+                    if str(exc) != "upload route compiled Go peer inventory drift: " + package:
+                        raise
+                else:
+                    raise RuntimeError("compiled Go peer inventory negative accepted: " + package)
+
+            def require_compiled_peer_edges(name: str, source: str) -> None:
+                prefix = module + "/internal/"
+                imported = {
+                    path[len(prefix):]
+                    for path in upload_route_local_go_imports(source, include_external=True)
+                    if path.startswith(prefix)
+                }
+                if imported != set(members[name]):
+                    raise RuntimeError("upload route compiled Go peer local import drift: "
+                                       + package + "/" + name)
+
+            for name in members:
+                relative = "services/import-api/internal/" + package + "/" + name
+                source = (source_root / relative).read_text(encoding="utf-8")
+                require_reviewed_upload_route_go_package(relative, source)
+                require_compiled_peer_edges(name, source)
+                declaration = "package " + package + "\n"
+                if source.count(declaration) != 1:
+                    raise RuntimeError("upload route compiled Go peer fixture anchor drift")
+                added_edge = source.replace(
+                    declaration, declaration + 'import "' + module + '/internal/reqid"\n', 1
+                )
+                try:
+                    require_compiled_peer_edges(name, added_edge)
+                except RuntimeError as exc:
+                    if str(exc) != ("upload route compiled Go peer local import drift: "
+                                    + package + "/" + name):
+                        raise
+                else:
+                    raise RuntimeError("unreviewed compiled Go peer import accepted: "
+                                       + package + "/" + name)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
