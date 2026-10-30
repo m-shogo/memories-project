@@ -4090,7 +4090,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     "reconcile-upload-route-authority.yml",
                     "reconcile-upload-route-authority-pr.yml",
                 ))):
-            raise RuntimeError("upload route Python dependency no-direct-CI classification failed: " + label)
+            raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
     return 12
 
 
