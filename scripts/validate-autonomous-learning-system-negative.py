@@ -3637,7 +3637,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         monitor = Path(tmp) / "fsmonitor.sh"
         marker = Path(tmp) / "fsmonitor-invoked"
         monitor.write_text(
-            "#!/bin/sh\nprintf invoked >> '" + str(marker) + "'\nprintf '/\\\n'\n",
+            "#!/bin/sh\nprintf invoked >> '" + str(marker) + "'\necho /\n",
             encoding="utf-8",
         )
         monitor.chmod(0o755)
