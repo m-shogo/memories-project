@@ -3129,6 +3129,45 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
                 raise RuntimeError("prewrite block-scalar CLI identity missing: " + label)
 
+        flow_lexical_cases = (
+            ("quoted bracket masks continuation", "on: [\"fake] # text\",\n  *events]\n", 1),
+            ("quoted brace masks continuation", "on: {\"fake} # text\": {},\n  push: null}\n", 1),
+            ("nested flow map incomplete", "on: [{workflow_dispatch: null}\n, *events]\n", 1),
+            ("single-line quoted dispatch", "on: [\"workflow_dispatch\"]\n", 0),
+            ("single-line nested dispatch map", "on: {workflow_dispatch: {}}\n", 0),
+            ("quoted bracket complete", "on: [\"fake] # text\"]\n", 0),
+            ("comment after complete", "on: [workflow_dispatch] # note\n", 0),
+            ("single doubled quote complete", "on: ['work''flow_dispatch']\n", 0),
+            ("invalid mismatched closer conservative", "on: [workflow_dispatch}\n", 1),
+            ("trailing flow data conservative", "on: [workflow_dispatch] junk\n", 1),
+        )
+        if tuple(case[0] for case in flow_lexical_cases) != (
+            "quoted bracket masks continuation",
+            "quoted brace masks continuation",
+            "nested flow map incomplete",
+            "single-line quoted dispatch",
+            "single-line nested dispatch map",
+            "quoted bracket complete",
+            "comment after complete",
+            "single doubled quote complete",
+            "invalid mismatched closer conservative",
+            "trailing flow data conservative",
+        ):
+            raise RuntimeError("prewrite flow-lexer fixture identity drift")
+        for label, content, count in flow_lexical_cases:
+            workflow.write_text(content, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    [sys.executable, str(guard), "--repo-root", str(root),
+                     "--path", "scripts/a.py"],
+                    capture_output=True, text=True, check=False, timeout=10,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError("prewrite flow-lexer CLI timed out: " + label) from exc
+            require_exact_count(result, count, label)
+            if count and "- .github/workflows/fixture.yml" not in result.stdout.splitlines():
+                raise RuntimeError("prewrite flow-lexer CLI identity missing: " + label)
+
         bracket_cases = (
             ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", 1),
             ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", 1),
@@ -3449,7 +3488,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases)
+    return len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:

@@ -58,6 +58,46 @@ def conservative_glob_match(relative: str, pattern: str) -> bool:
     return any(fnmatch.fnmatchcase(relative, candidate) for candidate in candidates)
 
 
+def flow_inline_complete(value: str) -> bool:
+    """Recognize only a complete single-line YAML flow value.
+
+    Brackets inside quoted scalars and comments are not delimiters.
+    Any unknown or multiline form is conservatively treated as a trigger.
+    """
+    text = value.lstrip()
+    if not text.startswith(("[", "{")):
+        return True
+    stack: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if quote == '"' and char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                if quote == "'" and index + 1 < len(text) and text[index + 1] == "'":
+                    index += 2
+                    continue
+                quote = ""
+        elif char in "'\"":
+            quote = char
+        elif char == "#" and (index == 0 or text[index - 1].isspace()):
+            break
+        elif char in "[{":
+            stack.append(char)
+        elif char in "]}":
+            if not stack or (stack[-1], char) not in (("[", "]"), ("{", "}")):
+                return False
+            stack.pop()
+            if not stack:
+                tail = text[index + 1:].strip()
+                return not tail or tail.startswith("#")
+        index += 1
+    return False
+
+
 def workflow_matches_path(source: str, relative: str) -> bool:
     """Conservatively match direct push/PR events; ambiguous filters are risky."""
     # UTF-8 BOM is legal at the beginning of a YAML stream. Preserve its
@@ -130,10 +170,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
     # push/PR event outside the first "on:" row. The narrow block parser
     # cannot prove a non-match for a flow value without a same-line close.
     if inline:
-        flow_head = re.split(r"[ \t]+#", inline.group(1), maxsplit=1)[0].strip()
-        if flow_head.startswith(("[", "{")) and not flow_head.endswith(
-            "]" if flow_head[0] == "[" else "}"
-        ):
+        if not flow_inline_complete(inline.group(1)):
             return True
     # YAML also permits a flow value on a later indented row, after
     # comment-only or blank lines following the root "on:" key.
@@ -564,6 +601,35 @@ def self_test(repo_root: Path) -> None:
         if workflow_matches_path(source, path) is not expected:
             raise AuditFailure("prewrite block-scalar negative/positive failed: " + label)
 
+    flow_lexical_cases = (
+        ("quoted bracket masks continuation", "on: [\"fake] # text\",\n  *events]\n", "scripts/a.py", True),
+        ("quoted brace masks continuation", "on: {\"fake} # text\": {},\n  push: null}\n", "scripts/a.py", True),
+        ("nested flow map incomplete", "on: [{workflow_dispatch: null}\n, *events]\n", "scripts/a.py", True),
+        ("single-line quoted dispatch", "on: [\"workflow_dispatch\"]\n", "scripts/a.py", False),
+        ("single-line nested dispatch map", "on: {workflow_dispatch: {}}\n", "scripts/a.py", False),
+        ("quoted bracket complete", "on: [\"fake] # text\"]\n", "scripts/a.py", False),
+        ("comment after complete", "on: [workflow_dispatch] # note\n", "scripts/a.py", False),
+        ("single doubled quote complete", "on: ['work''flow_dispatch']\n", "scripts/a.py", False),
+        ("invalid mismatched closer conservative", "on: [workflow_dispatch}\n", "scripts/a.py", True),
+        ("trailing flow data conservative", "on: [workflow_dispatch] junk\n", "scripts/a.py", True),
+    )
+    if tuple(case[0] for case in flow_lexical_cases) != (
+        "quoted bracket masks continuation",
+        "quoted brace masks continuation",
+        "nested flow map incomplete",
+        "single-line quoted dispatch",
+        "single-line nested dispatch map",
+        "quoted bracket complete",
+        "comment after complete",
+        "single doubled quote complete",
+        "invalid mismatched closer conservative",
+        "trailing flow data conservative",
+    ):
+        raise AuditFailure("prewrite flow-lexer fixture identity drift")
+    for label, source, path, expected in flow_lexical_cases:
+        if workflow_matches_path(source, path) is not expected:
+            raise AuditFailure("prewrite flow-lexer negative/positive failed: " + label)
+
     bracket_cases = (
         ("caret bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[^b].py\"\n", "scripts/a.py", True),
         ("bang bracket negation", "on:\n  push:\n    paths:\n      - \"scripts/[!b].py\"\n", "scripts/a.py", True),
@@ -779,7 +845,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 18 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 18 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
