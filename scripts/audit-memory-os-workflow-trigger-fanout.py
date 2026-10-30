@@ -19,6 +19,7 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 MAX_REVIEWED_DIRECT_FANOUT = 12
@@ -386,8 +387,11 @@ def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False) -> byte
                     or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
                     or after.st_nlink != 1):
                 raise AuditFailure(alias)
-            if (after.st_size, after.st_mtime_ns) != (
-                    before.st_size, before.st_mtime_ns):
+            # A same-size in-place rewrite can restore mtime while ctime
+            # still changes. Check both descriptor and final path metadata.
+            if ((after.st_size, after.st_mtime_ns, after.st_ctime_ns) !=
+                    (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                    or live.st_ctime_ns != before.st_ctime_ns):
                 raise AuditFailure("workflow source changed during read")
             return raw
     except OSError:
@@ -415,7 +419,8 @@ def require_workflow_git_index_identity(
     # can change source semantics or block on an inherited config FIFO.
     if (any(name in os.environ for name in (
             "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
-            "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"))
+            "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+            "GIT_CONFIG_NOSYSTEM"))
             or any(name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"))
                    for name in os.environ)):
         raise AuditFailure("prewrite Git configuration environment requires review")
@@ -1433,6 +1438,26 @@ def self_test(repo_root: Path) -> None:
                 raise AuditFailure("bounded workflow inode-swap negative accepted")
         if not swapped[0] or not old_inode.is_file():
             raise AuditFailure("bounded workflow inode-swap fixture did not execute")
+
+        # Simulate a same-inode, same-size, same-mtime rewrite between the
+        # descriptor read and final path check. Only ctime exposes the drift.
+        real_lstat = Path.lstat
+        def altered_ctime_lstat(path: Path):
+            info = real_lstat(path)
+            if path == source:
+                return SimpleNamespace(
+                    st_mode=info.st_mode, st_dev=info.st_dev, st_ino=info.st_ino,
+                    st_ctime_ns=info.st_ctime_ns + 1,
+                )
+            return info
+        with mock.patch.object(Path, "lstat", altered_ctime_lstat):
+            try:
+                read_workflow_bytes_bounded(source)
+            except AuditFailure as exc:
+                if str(exc) != "workflow source changed during read":
+                    raise
+            else:
+                raise AuditFailure("bounded workflow ctime-drift negative accepted")
 
     print(
         "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(extglob_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
