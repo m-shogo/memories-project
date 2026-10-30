@@ -36,6 +36,10 @@ REVIEWED_REFLECTIVE_EXECUTION = (
     ("eager-qualified-import", 'builtins.__import__("math")'),
     ("eager-qualified-exec", 'builtins.exec("pass")'),
     ("eager-qualified-eval", 'builtins.eval("1")'),
+    ("eager-module-dict-exec", 'builtins.__dict__["exec"]("pass")'),
+    ("eager-module-dict-import", 'importlib.__dict__["import_module"]("math")'),
+    ("eager-vars-dict-eval", 'vars(builtins)["eval"]("1")'),
+    ("eager-dunder-builtins-import", '__builtins__["__import__"]("math")'),
     ("eager-direct-exec", 'exec("pass")'),
     ("eager-direct-eval", 'eval("1")'),
     ("eager-reflective-exec", 'getattr(builtins, "exec")("pass")'),
@@ -64,6 +68,10 @@ REVIEWED_REFLECTIVE_CLI_LABELS = (
     ("qualified import execution", "eager-qualified-import"),
     ("qualified exec execution", "eager-qualified-exec"),
     ("qualified eval execution", "eager-qualified-eval"),
+    ("module dict exec execution", "eager-module-dict-exec"),
+    ("module dict import execution", "eager-module-dict-import"),
+    ("vars dict eval execution", "eager-vars-dict-eval"),
+    ("dunder builtins import execution", "eager-dunder-builtins-import"),
     ("direct exec execution", "eager-direct-exec"),
     ("direct eval execution", "eager-direct-eval"),
     ("reflective exec execution", "eager-reflective-exec"),
@@ -3224,6 +3232,18 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
             ("qualified eval execution", baseline.replace(
                 'if __name__', 'builtins.eval("1")\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
+            ("module dict exec execution", baseline.replace(
+                'if __name__', "builtins.__dict__[\"exec\"](\"pass\")\nif __name__").encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("module dict import execution", baseline.replace(
+                'if __name__', "importlib.__dict__[\"import_module\"](\"math\")\nif __name__").encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("vars dict eval execution", baseline.replace(
+                'if __name__', "vars(builtins)[\"eval\"](\"1\")\nif __name__").encode(),
+             "prewrite candidate main binding shadowed", []),
+            ("dunder builtins import execution", baseline.replace(
+                'if __name__', "__builtins__[\"__import__\"](\"math\")\nif __name__").encode(),
+             "prewrite candidate main binding shadowed", []),
             ("direct exec execution", baseline.replace(
                 'if __name__', 'exec("pass")\nif __name__').encode(),
              "prewrite candidate main binding shadowed", []),
@@ -3751,6 +3771,10 @@ def main() -> int:
             ("eager-qualified-import", 'builtins.__import__("math")'),
             ("eager-qualified-exec", 'builtins.exec("pass")'),
             ("eager-qualified-eval", 'builtins.eval("1")'),
+            ("eager-module-dict-exec", 'builtins.__dict__["exec"]("pass")'),
+            ("eager-module-dict-import", 'importlib.__dict__["import_module"]("math")'),
+            ("eager-vars-dict-eval", 'vars(builtins)["eval"]("1")'),
+            ("eager-dunder-builtins-import", '__builtins__["__import__"]("math")'),
             ("eager-direct-exec", 'exec("pass")'),
             ("eager-direct-eval", 'eval("1")'),
             ("eager-reflective-exec", 'getattr(builtins, "exec")("pass")'),
@@ -3781,7 +3805,9 @@ def main() -> int:
                     or kind.endswith("-reload")
                     or kind.endswith(("-find-spec", "-resolve-name"))
                     or kind.endswith(("-exec", "-eval"))
-                    or kind == "eager-qualified-import"):
+                    or kind == "eager-qualified-import"
+                    or kind in {"eager-module-dict-exec", "eager-module-dict-import",
+                                "eager-vars-dict-eval", "eager-dunder-builtins-import"}):
                 reviewed_reflective.append((label, kind, mutation))
             cases.append((
                 f"dynamic {label} {kind}",

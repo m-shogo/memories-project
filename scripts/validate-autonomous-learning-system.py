@@ -271,6 +271,27 @@ def validate(repo_root: Path) -> None:
                     and not node.value.args and not node.value.keywords):
                 return True
             if isinstance(node, ast.Call):
+                # Builtin/module dictionary lookup can hide eager code execution.
+                # Conservative lexical rejection; this is not alias closure.
+                if isinstance(node.func, ast.Subscript):
+                    target = node.func.value
+                    module_dict = (isinstance(target, ast.Attribute)
+                                   and target.attr == "__dict__"
+                                   and isinstance(target.value, ast.Name)
+                                   and target.value.id in {"builtins", "__builtins__", "importlib", "runpy", "pkgutil"})
+                    vars_dict = (isinstance(target, ast.Call)
+                                 and isinstance(target.func, ast.Name)
+                                 and target.func.id == "vars" and len(target.args) == 1
+                                 and not target.keywords and isinstance(target.args[0], ast.Name)
+                                 and target.args[0].id in {"builtins", "__builtins__", "importlib", "runpy", "pkgutil"})
+                    builtins_dict = isinstance(target, ast.Name) and target.id == "__builtins__"
+                    if (module_dict or vars_dict or builtins_dict) and (
+                        not isinstance(node.func.slice, ast.Constant)
+                        or node.func.slice.value in {"__import__", "exec", "eval",
+                                                     "import_module", "run_module", "run_path",
+                                                     "reload", "find_spec", "resolve_name", "exec_module"}
+                    ):
+                        return True
                 # Eager dynamic module execution can mutate either protected
                 # binding through imported code without a local Name(Store).
                 # This is conservative lexical rejection, not alias closure.
@@ -666,6 +687,27 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
                 return True
             if isinstance(node, ast.Call):
+                # Builtin/module dictionary lookup can hide eager code execution.
+                # Conservative lexical rejection; this is not alias closure.
+                if isinstance(node.func, ast.Subscript):
+                    target = node.func.value
+                    module_dict = (isinstance(target, ast.Attribute)
+                                   and target.attr == "__dict__"
+                                   and isinstance(target.value, ast.Name)
+                                   and target.value.id in {"builtins", "__builtins__", "importlib", "runpy", "pkgutil"})
+                    vars_dict = (isinstance(target, ast.Call)
+                                 and isinstance(target.func, ast.Name)
+                                 and target.func.id == "vars" and len(target.args) == 1
+                                 and not target.keywords and isinstance(target.args[0], ast.Name)
+                                 and target.args[0].id in {"builtins", "__builtins__", "importlib", "runpy", "pkgutil"})
+                    builtins_dict = isinstance(target, ast.Name) and target.id == "__builtins__"
+                    if (module_dict or vars_dict or builtins_dict) and (
+                        not isinstance(node.func.slice, ast.Constant)
+                        or node.func.slice.value in {"__import__", "exec", "eval",
+                                                     "import_module", "run_module", "run_path",
+                                                     "reload", "find_spec", "resolve_name", "exec_module"}
+                    ):
+                        return True
                 if isinstance(node.func, ast.Lambda):
                     return True
                 # Eager dynamic imports or runpy can execute unreviewed module
@@ -777,6 +819,8 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred direct-name runpy", 'def helper():\n    run_module("math")\n', (2, 0)),
         ("deferred builtins exec", 'def helper():\n    builtins.exec("pass")\n', (2, 0)),
         ("deferred builtins eval", 'def helper():\n    builtins.eval("1")\n', (2, 0)),
+        ("deferred module dict exec", 'def helper():\n    builtins.__dict__["exec"]("pass")\n', (2, 0)),
+        ("deferred module dict import", 'def helper():\n    importlib.__dict__["import_module"]("math")\n', (2, 0)),
         ("deferred find_spec", 'def helper():\n    importlib.util.find_spec("samplepkg.child")\n', (2, 0)),
         ("deferred resolve_name", 'def helper():\n    pkgutil.resolve_name("samplepkg")\n', (2, 0)),
         ("deferred direct reload", 'def helper():\n    reload(importlib)\n', (2, 0)),
@@ -858,6 +902,18 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("qualified eval", baseline.replace(
             'if __name__', 'builtins.eval("1")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict exec execution", baseline.replace(
+            'if __name__', "builtins.__dict__[\"exec\"](\"pass\")\nif __name__"),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict import execution", baseline.replace(
+            'if __name__', "importlib.__dict__[\"import_module\"](\"math\")\nif __name__"),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("vars dict eval execution", baseline.replace(
+            'if __name__', "vars(builtins)[\"eval\"](\"1\")\nif __name__"),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("dunder builtins import execution", baseline.replace(
+            'if __name__', "__builtins__[\"__import__\"](\"math\")\nif __name__"),
          sha, 40, 20, "main binding shadowed", baseline),
         ("direct exec", baseline.replace(
             'if __name__', 'exec("pass")\nif __name__'),
