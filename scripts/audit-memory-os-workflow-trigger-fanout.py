@@ -446,6 +446,21 @@ def require_workflow_git_index_identity(
     if not (repo_root / ".git").is_dir():
         raise AuditFailure("prewrite Git index checkout identity unavailable")
 
+    # A writable Git metadata root can replace the index pathname, and a
+    # writable index inode can be rewritten independently of workflow bytes.
+    # This is a scoped index/root check, not a full Git object-store proof.
+    git_root = repo_root / ".git"
+    try:
+        git_root_mode = git_root.lstat().st_mode
+        index_info = (git_root / "index").lstat()
+    except OSError:
+        raise AuditFailure("prewrite Git metadata authority unavailable") from None
+    if not stat.S_ISDIR(git_root_mode) or git_root_mode & 0o022:
+        raise AuditFailure("prewrite Git metadata root writable or substituted")
+    if (not stat.S_ISREG(index_info.st_mode) or index_info.st_nlink != 1
+            or index_info.st_mode & 0o022):
+        raise AuditFailure("prewrite Git index file authority unsafe")
+
     def git(*args: str) -> subprocess.CompletedProcess[str]:
         try:
             return subprocess.run(
