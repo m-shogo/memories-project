@@ -1,0 +1,25 @@
+# Supplemental OPS learning — assigned partial callable aliases in prewrite guard (2026-10-30)
+
+Append-only supplemental history, governed by `contracts/operations/autonomous-learning-system.json`; canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` is unchanged. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, approved recovery objective, executable reviewed request, request-bound evidence, typed eight-domain non-resurrection, independent review or human promotion evidence.
+
+## Material failure — prospective indirect eager alias bypass
+
+- **symptom:** A module-level `wrapped = functools.partial(mutate); wrapped()` or `alias = wrapped; alias()` could rebind `main` without matching direct local-helper calls or the immediate `functools.partial(mutate)()` form. An assigned partial can also be applied as a decorator.
+- **evidence:** At `06b52c2b433910d5377e8ab7119b17e0efcfd4ad`, the prewrite alias inventory added names only for direct `ast.Name` assignments from known local helpers; it did not add `ast.Call(func=...partial)` assignments. Local Python runtime probes using `functools.partial` verified that three source forms (assigned local mutator, assigned `exec`, chained alias) each changed the module `main` binding to `None`. This is a bounded source-level bypass, not evidence of a production or live CI incident.
+- **rootCauseOrUnknown:** Verified: callable-factory assignment was omitted from the module-level source-ordered callable alias inventory. The existing immediate-partial guard only classified a factory directly used as the callee or decorator.
+- **failedApproach:** Treating direct Name aliases plus immediate partial factory calls as a complete proof for assigned callable wrappers.
+- **correction:** [`504475cd`](https://github.com/m-shogo/memories-project/commit/504475cdf9899f090d7218a35a887e5ed467f708) moves the bounded partial-factory classifier ahead of the alias inventory and tracks direct module-level assignments of partial wrappers. An eager alias invocation or named decorator now fails closed; merely creating or aliasing a deferred wrapper remains admissible.
+- **recurrenceGuard:** Four new executable `validate_prewrite_python` negatives cover assigned local-helper partial invocation, chained partial alias invocation, assigned `exec` partial invocation and assigned partial decorator. One positive control preserves a deferred two-name partial alias chain. All require exact `main binding shadowed` diagnostics for the negatives.
+- **retryCondition:** Revisit only for a reviewed callable/binding identity proof and changed source preconditions, with paired exact-diagnostic fixtures, exact-source CI and protected-authority comparison. This is **not** full dynamic alias closure or proof about arbitrary reflection. Do not retry unchanged MinIO HTTP 401, workflow-write permission, large canonical-learning transport or human promotion blockers.
+
+## Material success
+
+- **outcome:** [Autonomous Learning Guard #41054468313](https://github.com/m-shogo/memories-project/actions/runs/41054468313) completed **SUCCESS** on exact source `504475cdf9899f090d7218a35a887e5ed467f708`.
+- **evidence:** Exact-source job log confirms append-only PASS, learning contract PASS, **547 canonical fail-closed cases**, **195 fanout synthetic cases**, entry-document PASS, **1,186 helper-ancestor negatives**, and clean/read-only completion. The five new prewrite fixtures are nested inside the learning guard's self-test and are not individually reflected in the printed 547 count.
+- **whySafe:** Only the read-only, CI-triggered Python validator was changed (+28/-15 lines); fixture source is AST-compiled but not executed by the guard. No workflow, Go runtime, production traffic, credentials, evidence, readiness, recovery objective, registry or promotion authority was modified.
+- **reusableMechanism:** Track simple source-ordered aliases of deferred callable factories and reject their eager invocation/decorator application without equating factory creation to execution.
+- **protectedAuthorityCheck:** Ten protected Git blobs remained unchanged: canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, objective registry `f4d74f33`, drill request registry `acebcd02`, recovery evidence registry `ae7e57ef`, typed non-resurrection registry `26bb1cc7`, promotion review registry `99cb895f`. `productionDecision=NO_GO`, OPS-P0-007=`PREREQUISITES_BLOCKED`; registered/eligible generations 0/0 and all separate human/recovery/eight-domain gates remain unsatisfied.
+
+## Next safe target
+
+Review prewrite canonical `__main__` guard source-order reachability against unconditional early termination (`raise SystemExit`, direct process exits), preserving deferred function bodies and existing exact entry-guard AST. Continue the Go-only pre-MinIO CI trigger and transitive dependency closure audit without changing workflow YAML.
