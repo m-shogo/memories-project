@@ -1091,6 +1091,15 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(statement, ast.ClassDef):
                 return any(eager_direct_termination(child)
                            for child in statement.body)
+            if isinstance(statement, (ast.Try, ast.TryStar)):
+                # A finally body executes after normal completion or caught
+                # exceptions. A direct exit in an unhandled try body also
+                # prevents the later entry guard from running.
+                return (any(eager_direct_termination(child)
+                            for child in statement.finalbody)
+                        or (not statement.handlers and
+                            any(eager_direct_termination(child)
+                                for child in statement.body)))
             if (isinstance(statement, ast.If)
                     and isinstance(statement.test, ast.Constant)
                     and type(statement.test.value) is bool):
@@ -1165,6 +1174,8 @@ def prove_prewrite_python_negatives() -> None:
         ("constant-false raise", 'if False:\n    raise SystemExit(0)\n', (2, 0)),
         ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
         ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
+        ("caught module raise", 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\n', (4, 0)),
+        ("untaken finally raise", 'try:\n    pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (5, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
         ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
         ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
@@ -1484,6 +1495,18 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("eager class literal-true exit", baseline.replace(
              'if __name__', 'class Helper:\n    if True:\n        os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional finally sys.exit", baseline.replace(
+             'if __name__', 'try:\n    pass\nfinally:\n    sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unconditional finally raise", baseline.replace(
+             'if __name__', 'try:\n    pass\nfinally:\n    raise SystemExit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("unhandled try raise", baseline.replace(
+             'if __name__', 'try:\n    raise SystemExit(0)\nfinally:\n    pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("caught try with fatal finally", baseline.replace(
+             'if __name__', 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\nfinally:\n    os.abort()\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("module wildcard import", baseline.replace(
             'if __name__', 'from math import *\nif __name__'),
