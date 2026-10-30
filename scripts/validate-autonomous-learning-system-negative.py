@@ -540,6 +540,37 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         reject("symlink", f"unreadable authority: {target}")
 
 
+def prove_canonical_repo_root_alias_cli(source_root: Path) -> None:
+    """The explicit CLI root must not silently resolve an unreviewed alias."""
+    with tempfile.TemporaryDirectory(prefix="learning-root-alias-") as tmp:
+        base = Path(tmp)
+        real = base / "real-repo"
+        seed(source_root, real)
+        positive = run(source_root, real)
+        if (positive.returncode != 0 or
+                positive.stdout != "Autonomous improvement/learning contract validation PASS\\n"):
+            raise RuntimeError("canonical root alias positive control failed")
+        root_alias = base / "root-alias"
+        root_alias.symlink_to(real, target_is_directory=True)
+        parent = base / "real-parent"
+        nested = parent / "repo"
+        seed(source_root, nested)
+        parent_alias = base / "parent-alias"
+        parent_alias.symlink_to(parent, target_is_directory=True)
+        for label, path in (
+            ("root symlink", root_alias),
+            ("ancestor symlink", parent_alias / "repo"),
+        ):
+            result = run(source_root, path)
+            require_canonical_rejection(label, result)
+            expected = ("AUTONOMOUS LEARNING VALIDATION FAILED: "
+                        "learning repository root alias forbidden\\n")
+            if result.stdout or result.stderr != expected:
+                raise RuntimeError(
+                    f"canonical root alias wrong diagnostic: {label}: {result.stderr!r}"
+                )
+
+
 def nonregular_authority(root: Path, relative: Path, kind: str) -> None:
     # Never open the FIFO: the validator must reject its inode type before
     # any blocking read. Only disposable canonical fixture paths are changed.
@@ -5954,6 +5985,7 @@ def main() -> int:
         require_failure(source_root, name, mutate)
 
     prove_canonical_descriptor_read_negatives(source_root)
+    prove_canonical_repo_root_alias_cli(source_root)
     prove_upload_route_go_import_parser()
     prove_upload_route_go_direct_inputs(source_root)
     prove_prewrite_git_clean_filter_cli(source_root)
