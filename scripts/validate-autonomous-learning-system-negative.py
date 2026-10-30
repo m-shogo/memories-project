@@ -5095,6 +5095,95 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     return len(cases) + 84 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
+
+def prove_prewrite_git_metadata_stable_through_audit(source_root: Path) -> int:
+    """Deterministic Git-command-time index and metadata mutation negatives."""
+    import runpy
+    from unittest import mock
+
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    namespace = runpy.run_path(str(guard))
+    auditor = namespace["matching_workflows"]
+    audit_failure = namespace["AuditFailure"]
+    with tempfile.TemporaryDirectory(prefix="learning-prewrite-git-snapshot-") as tmp:
+        root = Path(tmp) / "repo"
+        workflow = root / ".github/workflows/fixture.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_bytes(b"on: push\\n")
+        workflow.chmod(0o644)
+
+        def git(*args: str) -> None:
+            completed = subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if completed.returncode:
+                raise RuntimeError("prewrite Git snapshot fixture setup failed")
+
+        git("init", "-q")
+        git("config", "user.name", "Fixture")
+        git("config", "user.email", "fixture@example.invalid")
+        git("add", ".github/workflows/fixture.yml")
+        git("commit", "-qm", "initial")
+        git_root = root / ".git"
+        index = git_root / "index"
+        git_root.chmod(0o755)
+        index.chmod(0o644)
+        command = [
+            sys.executable, str(guard), "--repo-root", str(root),
+            "--path", "scripts/a.py", "--require-git-index-identity",
+            "--require-direct-push-pr-match",
+        ]
+
+        def positive() -> None:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (completed.returncode or completed.stderr or
+                    "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                    not in completed.stdout.splitlines()):
+                raise RuntimeError("prewrite Git snapshot restoration positive drift")
+
+        positive()
+        real_run = subprocess.run
+        for label in ("index chmod", "index inode replacement", "metadata chmod"):
+            index.chmod(0o644)
+            git_root.chmod(0o755)
+            fired = [False]
+
+            def mutate_after_stage(*args: object, **kwargs: object):
+                completed = real_run(*args, **kwargs)
+                argv = args[0] if args else ()
+                if (not fired[0] and isinstance(argv, (list, tuple))
+                        and "ls-files" in argv and "--stage" in argv):
+                    fired[0] = True
+                    if label == "index chmod":
+                        index.chmod(0o664)
+                    elif label == "index inode replacement":
+                        replacement = git_root / "index.snapshot-replacement"
+                        replacement.write_bytes(index.read_bytes())
+                        replacement.chmod(0o644)
+                        os.replace(replacement, index)
+                    else:
+                        git_root.chmod(0o775)
+                return completed
+
+            with mock.patch("subprocess.run", side_effect=mutate_after_stage):
+                try:
+                    auditor(root, "scripts/a.py", require_git_index=True)
+                except audit_failure as exc:
+                    if str(exc) != "prewrite Git metadata changed during audit":
+                        raise RuntimeError("prewrite Git snapshot wrong failure: " + label) from exc
+                else:
+                    raise RuntimeError("prewrite Git snapshot mutation accepted: " + label)
+            if not fired[0]:
+                raise RuntimeError("prewrite Git snapshot mutation never reached: " + label)
+            index.chmod(0o644)
+            git_root.chmod(0o755)
+            positive()
+    return 3
+
+
 def prove_prewrite_git_split_index_boundary(source_root: Path) -> int:
     """Active sharedindex is an extra, unreviewed Git source authority."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
@@ -6477,6 +6566,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     prove_import_api_minio_first_classification(source_root)
+    git_snapshot_cases = prove_prewrite_git_metadata_stable_through_audit(source_root)
     split_index_cases = prove_prewrite_git_split_index_boundary(source_root)
     git_metadata_mode_cases = prove_prewrite_git_metadata_permissions(source_root)
     executable_mode_cases = prove_prewrite_workflow_executable_mode_parity(source_root)
@@ -6488,7 +6578,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases} fail-closed cases)")
     return 0
 
 

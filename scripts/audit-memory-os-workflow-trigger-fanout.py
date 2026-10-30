@@ -451,7 +451,8 @@ def require_workflow_git_index_identity(
     # This is a scoped index/root check, not a full Git object-store proof.
     git_root = repo_root / ".git"
     try:
-        git_root_mode = git_root.lstat().st_mode
+        git_root_info = git_root.lstat()
+        git_root_mode = git_root_info.st_mode
         index_info = (git_root / "index").lstat()
     except OSError:
         raise AuditFailure("prewrite Git metadata authority unavailable") from None
@@ -548,6 +549,25 @@ def require_workflow_git_index_identity(
         if digest(payload).hexdigest() != expected:
             raise AuditFailure("prewrite workflow Git index raw blob drift")
         verified_sources[workflow] = raw
+    # A clean Git diff and raw workflow blobs do not prove that the index
+    # inode or its containing metadata directory stayed authoritative during
+    # the intervening Git commands. Recheck both snapshots before returning.
+    try:
+        final_git_root = git_root.lstat()
+        final_index = (git_root / "index").lstat()
+    except OSError:
+        raise AuditFailure("prewrite Git metadata changed during audit") from None
+    root_identity = lambda info: (
+        info.st_dev, info.st_ino, info.st_mode,
+        info.st_mtime_ns, info.st_ctime_ns,
+    )
+    index_identity = lambda info: (
+        info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+        info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+    )
+    if (root_identity(final_git_root) != root_identity(git_root_info)
+            or index_identity(final_index) != index_identity(index_info)):
+        raise AuditFailure("prewrite Git metadata changed during audit")
     # Consume these same verified bytes in the matcher: a second filesystem
     # read could observe different YAML after the Git identity check.
     return verified_sources
