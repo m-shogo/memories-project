@@ -1,0 +1,25 @@
+# Supplemental OPS learning — canonical parent-mode read-time authority guard (2026-10-30)
+
+Append-only learning/history under `contracts/operations/autonomous-learning-system.json`. The canonical learning authority `docs/operations/AUTONOMOUS-OPS-LEARNING.md` was unchanged (blob `b809c69d`); full canonical content remains unavailable through the existing oversized-blob connector transport. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed request, request-bound evidence, typed eight-domain non-resurrection, independent review, or human-promotion evidence.
+
+## Material failure risk
+
+- **symptom:** During a descriptor-pinned canonical authority read, an ancestor directory can be changed from non-world-writable to world-writable without changing its inode, type or the leaf file's descriptor/bytes. The previous post-read parent comparison could accept the altered path authority. This is a prospective checkout integrity gap, not an observed production incident.
+- **evidence:** Starting at `570dded24b81027154906c7bc13beb55884850a4`, `read_canonical_authority_bytes` compared parent `st_dev`, `st_ino` and file type only. An isolated filesystem reproduction changed parent mode `0755 → 0777` after opening the leaf: the old parent identity tuple stayed equal, the leaf bytes stayed `stable`, and the parent `st_ctime_ns` changed. Existing parent-world-writable preflight and parent-symlink-swap negatives did not cover this mode-only read-time mutation.
+- **rootCauseOrUnknown:** Verified missing parent permission/ctime comparison in the descriptor read. Whether an unrelated principal could exploit this depends on runner ownership, ACLs and concurrency; no exploit or production mutation was observed.
+- **failedApproach:** Relying on a stable leaf descriptor and unchanged parent device/inode/type to establish unchanged parent write authority.
+- **correction:** [`d8cf25d2`](https://github.com/m-shogo/memories-project/commit/d8cf25d2caa7bfbc04c68293fd21bf0b700c01b5) compares each parent directory's mode and ctime as well as device/inode/type, rejecting a chmod during the bounded canonical read.
+- **recurrenceGuard:** The same code commit adds a deterministic disposable-directory negative: a patched `os.open` changes the canonical parent to `0777` after obtaining the leaf descriptor; the reader must reject with `canonical authority changed during read`. The fixture verifies the mutation occurred, restores `0755`, proves the unchanged positive read succeeds, then runs the existing parent-symlink substitution negative.
+- **retryCondition:** Revisit only after a reviewed filesystem/permission semantics change, an exact-source CI regression, or independently observed evidence requiring a different parent-identity policy. Do not retry unchanged MinIO HTTP 401, workflow-write permission, canonical large-file transport or human approval blockers.
+
+## Material success and authority check
+
+- **outcome:** [Autonomous Learning Guard #41050400691](https://github.com/m-shogo/memories-project/actions/runs/41050400691) completed **SUCCESS** on exact source `d8cf25d2caa7bfbc04c68293fd21bf0b700c01b5`.
+- **evidence:** Job log confirms append-only PASS, learning contract PASS, **547 fail-closed cases**, **195 fanout synthetic cases**, **1,186 helper-ancestor negative mutations**, entry-document PASS and clean/read-only completion. The new deterministic descriptor fixture is executed within the negative harness but is not separately included in the printed 547 count.
+- **whySafe:** The code commit modified only two CI-reachable read-only Python validators. The chmod fixture uses a disposable temporary directory and restores permissions; no workflow YAML, production code, credentials, traffic or recovery authority changed.
+- **reusableMechanism:** Bind read-time canonical path identity to parent permission and ctime stability, and prove the exact mutation boundary with a real chmod-after-open negative plus recovery positive.
+- **protectedAuthorityCheck:** Start `570dded24` versus code commit `d8cf25d2`: all ten protected authority Git blobs unchanged, including canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0`, and six environment-generation/objective/drill-request/recovery-evidence/non-resurrection/promotion registries. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/semantically eligible generations 0/0, no approved current recovery objective, executable reviewed request, request-bound evidence, complete typed eight-domain record, independent review, final candidate or human promotion.
+
+## Next safe target
+
+Audit the full Go/Python transitive input closure and exact Push/PR CI trigger coverage. Current Upload Route Go tests run after MinIO startup; do not treat them as a proven MinIO-independent focused regression path or modify workflow YAML without the required permission. This learning-only commit does not establish full production admission-chain success.
