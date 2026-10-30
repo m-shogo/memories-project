@@ -917,6 +917,28 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("Git workflow symlink index-mode negative accepted")
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
+        object_id = blob.stdout.strip()
+        path_name = ".github/workflows/w.yml"
+        index_info = (
+            "0 " + "0" * len(object_id) + "\t" + path_name + "\n"
+            + "100644 " + object_id + " 1\t" + path_name + "\n"
+            + "100644 " + object_id + " 2\t" + path_name + "\n"
+        )
+        conflicted = subprocess.run(
+            ["git", "-C", str(root), "update-index", "--index-info"],
+            input=index_info, capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+        if conflicted.returncode != 0:
+            raise AuditFailure("Git index conflict fixture setup failed")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index mode or stage drift":
+                raise
+        else:
+            raise AuditFailure("Git workflow unmerged index-stage negative accepted")
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
         extra = directory / "untracked.yml"
         extra.write_text(original, encoding="utf-8")
         try:
@@ -1140,7 +1162,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 69 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 70 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
