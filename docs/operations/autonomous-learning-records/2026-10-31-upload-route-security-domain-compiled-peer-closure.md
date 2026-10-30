@@ -1,0 +1,17 @@
+# Supplemental OPS learning — compiled session, fence and preview Go peer closure (2026-10-31)
+
+Append-only operational learning only; never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed request, request-bound evidence, typed eight-domain non-resurrection, independent review or human promotion evidence. Canonical learning and mandatory contract are unchanged.
+
+## Material safe success
+
+- **outcome:** CI-bound read-only negative validation now pins the complete reviewed non-test Go peer inventories and exact parsed local import sets for `authstore`, `cryptoids`, `fenced` and `preview` (five Go source files). New compiled files or unreviewed local imports fail closed.
+- **evidence:** [Commit `3c055b88`](https://github.com/m-shogo/memories-project/commit/3c055b884c6d53f7083c9cf24294aff40616ff02) adds 87 in-process guard lines. All five current source package clauses and local import sets were independently read before write. Missing/extra peer, injected local import and comment-spoofed removed import negatives execute in the existing suite. [Exact-source Autonomous Learning Guard #41141966613](https://github.com/m-shogo/memories-project/actions/runs/41141966613) SUCCESS: learning contract PASS, 601 direct negative PASS, nested negative PASS, helper ancestor reachability PASS, read-only source check PASS.
+- **whySafe:** Only the existing CI-bound read-only Python negative validator changed. No Go application source, workflow YAML, credentials, external dependencies, production/recovery evidence, protected registries or human promotion was touched.
+- **reusableMechanism:** The named live test compiles the imported session, ID, fence and preview packages as whole packages; exact peer inventory plus parsed local import equality catches unreviewed compile-input expansion. Deterministic in-process negative cases preserve the existing 120-second nested deadline.
+- **protectedAuthorityCheck:** Compare `3c563c44` to `3c055b88` modifies only `scripts/validate-autonomous-learning-system-negative.py`. All ten protected authority blobs remain unchanged: canonical learning `b809c69d`, contract `87712ea9`, production status `55b3e639`, OPS-P0-007 snapshot `dbaa36b0` and six protected registries. `productionDecision=NO_GO`.
+
+## Limits, known blockers and next safe target
+
+This is scoped source closure, not a complete global Go/Python graph, runtime Go test, independently triggered pre-MinIO coverage, or production evidence. The 221-workflow direct-source audit still finds no independent pre-MinIO Upload Route regression path; supplemental-only learning history still lacks a verified Push/PR append-only gate. Known workflow-write permission and MinIO HTTP 401 blockers have unchanged retry conditions and were not retried. Canonical learning full text remains unavailable despite unchanged blob identity. OPS-P0-007 stays blocked; registered and semantically eligible generations, explicitly human-approved recovery objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review and human promotion remain distinct unmet gates.
+
+**Next safe target:** Pin the `previewspool` 17-file compiled peer inventory, parsed local imports and Linux/unsupported build-tag partition with deterministic negatives and exact-source CI. Preserve `productionDecision=NO_GO`.
