@@ -4485,6 +4485,59 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 not in monitor_safe.stdout.splitlines()):
             raise RuntimeError("read-only Git fsmonitor hook execution guard failed")
         fixture_git("-C", str(root), "config", "--unset", "core.fsmonitor")
+        # Git replace refs can make a staged workflow look identical to
+        # HEAD by silently substituting a different commit tree. Verify the
+        # unsafe control first, then require original-object comparison.
+        workflow.write_text('on: workflow_dispatch\\n', encoding="utf-8")
+        fixture_git("-C", str(root), "add", ".github/workflows/fixture.yml")
+        workflow.write_text(original, encoding="utf-8")
+        head_lookup = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        staged_tree = subprocess.run(
+            ["git", "-C", str(root), "write-tree"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (head_lookup.returncode != 0 or staged_tree.returncode != 0
+                or not re.fullmatch(r"[0-9a-f]{40,64}", head_lookup.stdout.strip())
+                or not re.fullmatch(r"[0-9a-f]{40,64}", staged_tree.stdout.strip())):
+            raise RuntimeError("Git replace-ref fixture source setup failed")
+        replacement = subprocess.run(
+            ["git", "-C", str(root), "-c", "user.name=Fixture",
+             "-c", "user.email=fixture@example.invalid",
+             "commit-tree", staged_tree.stdout.strip(), "-m", "replacement"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (replacement.returncode != 0
+                or not re.fullmatch(r"[0-9a-f]{40,64}", replacement.stdout.strip())):
+            raise RuntimeError("Git replace-ref fixture commit setup failed")
+        fixture_git("-C", str(root), "replace",
+                    head_lookup.stdout.strip(), replacement.stdout.strip())
+        replaced_diff = subprocess.run(
+            ["git", "-C", str(root), "diff", "--cached", "--quiet",
+             "HEAD", "--", ".github/workflows"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if replaced_diff.returncode != 0:
+            raise RuntimeError("Git replace-ref control did not mask staged drift")
+        guarded_replace = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (guarded_replace.returncode != 1 or guarded_replace.stdout
+                or guarded_replace.stderr !=
+                "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index content drift\\n"):
+            raise RuntimeError("Git replace-ref staged-drift CLI negative failed")
+        fixture_git("-C", str(root), "replace", "-d", head_lookup.stdout.strip())
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
+                    ".github/workflows/fixture.yml")
+        replace_restored = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (replace_restored.returncode != 0 or replace_restored.stderr
+                or "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in replace_restored.stdout.splitlines()):
+            raise RuntimeError("Git replace-ref cleanup positive failed")
         (root / ".git").rename(Path(tmp) / "detached-git")
         missing = subprocess.run(
             args, capture_output=True, text=True, check=False, timeout=10,

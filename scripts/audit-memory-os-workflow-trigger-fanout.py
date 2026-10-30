@@ -383,7 +383,7 @@ def require_workflow_git_index_identity(
                 # Git's optional fsmonitor hook is executable even for
                 # read-only ls-files/diff commands. Disable it before probing
                 # source identity so this auditor cannot run checkout hooks.
-                ["git", "-c", "core.fsmonitor=false", "-C", str(repo_root), *args],
+                ["git", "--no-replace-objects", "-c", "core.fsmonitor=false", "-C", str(repo_root), *args],
                 capture_output=True, text=True, check=False, timeout=10,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
