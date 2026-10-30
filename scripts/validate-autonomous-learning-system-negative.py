@@ -4054,6 +4054,9 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
         for package in ("accountdelete", "epochguard", "security"):
             if f'"{module}/internal/{package}"' not in account_source:
                 raise RuntimeError("upload route second-hop Go import edge changed: " + package)
+        # Static source identity only: do not claim independent CI trigger
+        # coverage for second-hop files. Five extra CLI subprocesses exceeded
+        # the entrypoint's existing 120s nested-validator deadline.
         second_hop = (
             ("accountdelete/service.go", "accountdelete"),
             ("accountdelete/worker.go", "accountdelete"),
@@ -4076,11 +4079,6 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             ("transitive httpapi peer", "services/import-api/internal/httpapi/apply_handler.go"),
             ("transitive httpapi peer", "services/import-api/internal/httpapi/fence_error.go"),
             ("transitive httpapi peer", "services/import-api/internal/httpapi/preview_handler.go"),
-            ("transitive second-hop package", "services/import-api/internal/accountdelete/service.go"),
-            ("transitive second-hop package", "services/import-api/internal/accountdelete/worker.go"),
-            ("transitive second-hop package", "services/import-api/internal/epochguard/guard.go"),
-            ("transitive second-hop package", "services/import-api/internal/security/context.go"),
-            ("transitive second-hop package", "services/import-api/internal/security/principal.go"),
             ("metrics validator Go input", "services/import-api/internal/metrics/recorder.go"),
             ("rate-limit validator Go input", "services/import-api/internal/ratelimit/enforce.go"),
             ("observability codes Go input", "services/import-api/internal/obslog/codes.go"),
@@ -4131,7 +4129,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
-    return 21
+    return 16
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
