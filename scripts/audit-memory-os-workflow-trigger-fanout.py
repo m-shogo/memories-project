@@ -305,7 +305,7 @@ def workflow_matches_path(source: str, relative: str) -> bool:
 
 def validate_relative_path(relative: str) -> None:
     if (not relative or relative.startswith("/") or "\\" in relative
-            or any(part in ("", ".", "..") for part in relative.split("/"))
+            or any(part in ("", ".", "..", ".git") for part in relative.split("/"))
             or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
             or any(unicodedata.category(char) in {"Cf", "Cs", "Zl", "Zp"}
                    for char in relative)):
@@ -392,6 +392,9 @@ def self_test(repo_root: Path) -> None:
         ("bidi override", "scripts/a\u202eb.py"),
         ("zero-width joiner", "scripts/a\u200db.py"),
         ("Unicode line separator", "scripts/a\u2028b.py"),
+        ("Git metadata root", ".git/config"),
+        ("nested Git metadata", "scripts/.git/hooks/pre-commit"),
+        ("Git metadata leaf", ".git"),
     ):
         try:
             validate_relative_path(path)
@@ -402,6 +405,7 @@ def self_test(repo_root: Path) -> None:
             raise AuditFailure("prewrite control-character path negative accepted: " + label)
     # Ordinary Japanese filename characters remain valid repository paths.
     validate_relative_path("docs/日本語.md")
+    validate_relative_path(".gitignore")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
