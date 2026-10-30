@@ -3528,6 +3528,28 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             raise RuntimeError("Git workflow symlink index-mode CLI negative failed")
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
                     ".github/workflows/fixture.yml")
+        object_id = blob.stdout.strip()
+        path_name = ".github/workflows/fixture.yml"
+        index_info = (
+            "0 " + "0" * len(object_id) + "\t" + path_name + "\n"
+            + "100644 " + object_id + " 1\t" + path_name + "\n"
+            + "100644 " + object_id + " 2\t" + path_name + "\n"
+        )
+        conflicted = subprocess.run(
+            ["git", "-C", str(root), "update-index", "--index-info"],
+            input=index_info, capture_output=True, text=True,
+            check=False, timeout=10,
+        )
+        if conflicted.returncode != 0:
+            raise RuntimeError("Git index conflict CLI fixture setup failed")
+        stage = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (stage.returncode != 1 or stage.stdout or
+                stage.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite workflow Git index mode or stage drift\n"):
+            raise RuntimeError("unmerged Git workflow index-stage CLI negative failed")
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
+                    ".github/workflows/fixture.yml")
         extra = directory / "untracked.yml"
         extra.write_text(original, encoding="utf-8")
         untracked = subprocess.run(
@@ -3716,7 +3738,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 68 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
+    return len(cases) + 69 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
