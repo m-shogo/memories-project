@@ -479,6 +479,25 @@ def validate(repo_root: Path) -> None:
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
         if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Subscript):
+                # An eager module-dictionary call may terminate execution
+                # without a visible os.abort()/sys.exit() attribute callee.
+                target = node.func.value
+                module_dict = (isinstance(target, ast.Attribute)
+                               and target.attr == "__dict__"
+                               and isinstance(target.value, ast.Name)
+                               and target.value.id in {"os", "sys", "builtins", "__builtins__"})
+                vars_dict = (isinstance(target, ast.Call)
+                             and isinstance(target.func, ast.Name)
+                             and target.func.id == "vars" and len(target.args) == 1
+                             and not target.keywords and isinstance(target.args[0], ast.Name)
+                             and target.args[0].id in {"os", "sys", "builtins", "__builtins__"})
+                builtin_dict = isinstance(target, ast.Name) and target.id == "__builtins__"
+                if (module_dict or vars_dict or builtin_dict) and (
+                    not isinstance(node.func.slice, ast.Constant)
+                    or node.func.slice.value in {"abort", "_exit", "exit", "quit"}
+                ):
+                    return True
             if isinstance(node.func, ast.Name) and node.func.id in {
                 "exit", "quit", "exec", "eval"
             }:
