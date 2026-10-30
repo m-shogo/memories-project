@@ -2447,6 +2447,12 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
         raise RuntimeError(failure)
     for path, names in REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS.items():
         source = sources[path]
+        # A Go block comment can hide an entire test while line-anchored
+        # declaration regexes still see its signature and assertion body.
+        # The two reviewed test sources have no block comments; any new one
+        # needs Go test discovery review rather than lexical trust.
+        if "/*" in source or "*/" in source:
+            raise RuntimeError(failure)
         declarations = re.findall(r"(?m)^func[ \t]+(Test[A-Za-z0-9_]+)[ \t]*\(", source)
         if tuple(name for name in declarations if name in expected) != names:
             raise RuntimeError(failure)
@@ -2494,6 +2500,25 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
            "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tt.Skip(\"disabled\")")
     reject("no route assertion", route,
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
+    # Balanced block comments are legal Go and can conceal the first test
+    # while the old line-anchored regex still finds its name and t.Fatalf.
+    commented = dict(files)
+    commented[route] = files[route].replace(
+        "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {",
+        "/*\nfunc TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {", 1
+    ).replace(
+        "func TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {",
+        "*/\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes(t *testing.T) {", 1
+    )
+    if commented[route].count("/*") != 1 or commented[route].count("*/") != 1:
+        raise RuntimeError("focused Go block-comment fixture anchor drift")
+    try:
+        require_reviewed_upload_route_focused_go_tests(commented)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route focused Go test target":
+            raise
+    else:
+        raise RuntimeError("commented focused Go test negative accepted")
 
 
 def require_reviewed_upload_route_live_skip_boundary(source: str) -> None:
