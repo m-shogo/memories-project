@@ -901,6 +901,22 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("staged-only Git workflow drift negative accepted")
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
+        blob = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD:.github/workflows/w.yml"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if blob.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40,64}", blob.stdout.strip()):
+            raise AuditFailure("Git index mode fixture blob lookup failed")
+        fixture_git("-C", str(root), "update-index", "--cacheinfo",
+                    "120000," + blob.stdout.strip() + ",.github/workflows/w.yml")
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite workflow Git index mode or stage drift":
+                raise
+        else:
+            raise AuditFailure("Git workflow symlink index-mode negative accepted")
+        fixture_git("-C", str(root), "reset", "-q", "HEAD", "--", ".github/workflows/w.yml")
         extra = directory / "untracked.yml"
         extra.write_text(original, encoding="utf-8")
         try:
@@ -1124,7 +1140,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 68 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 69 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
