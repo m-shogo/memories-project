@@ -1110,6 +1110,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                 return (isinstance(value, ast.Call)
                         and eager_direct_termination(ast.Expr(value=value)))
             if isinstance(statement, ast.Match) and statement.cases:
+                # The subject is evaluated before any pattern or guard.
+                if (isinstance(statement.subject, ast.Call)
+                        and eager_direct_termination(
+                            ast.Expr(value=statement.subject))):
+                    return True
                 # Only the first unguarded wildcard or literal-equal arm is
                 # guaranteed to execute. Do not assume guarded/later arms run.
                 first = statement.cases[0]
@@ -1128,9 +1133,16 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                             and statement.subject.value is pattern.value)
                     )
                 )
-                if first.guard is None and certain:
-                    return any(eager_direct_termination(child)
-                               for child in first.body)
+                if certain:
+                    # A guard on a guaranteed first match is evaluated even
+                    # if it eventually selects no body.
+                    if (isinstance(first.guard, ast.Call)
+                            and eager_direct_termination(
+                                ast.Expr(value=first.guard))):
+                        return True
+                    if first.guard is None:
+                        return any(eager_direct_termination(child)
+                                   for child in first.body)
             if isinstance(statement, ast.With):
                 # A module-level with body executes eagerly after a successful
                 # context-manager entry; a direct exit prevents main dispatch.
@@ -1251,6 +1263,7 @@ def prove_prewrite_python_negatives() -> None:
         ("with untaken branch exit", 'from contextlib import nullcontext\nwith nullcontext():\n    if False: sys.exit(0)\n', (3, 0)),
         ("unmatched literal match exit", 'match 1:\n    case 2:\n        sys.exit(0)\n', (3, 0)),
         ("guarded literal match exit", 'match 1:\n    case 1 if False:\n        sys.exit(0)\n', (3, 0)),
+        ("unmatched match guard abort", 'match 1:\n    case 2 if os.abort():\n        pass\n', (3, 0)),
         ("deferred match exit", 'def helper():\n    match 1:\n        case 1:\n            sys.exit(0)\n', (4, 0)),
         ("caught module raise", 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\n', (4, 0)),
         ("untaken finally raise", 'try: pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (4, 0)),
@@ -1613,6 +1626,12 @@ def prove_prewrite_python_negatives() -> None:
         ("module with body raise", baseline.replace(
              'if __name__', 'from contextlib import nullcontext\nwith nullcontext():\n    raise SystemExit(0)\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
+        ("match subject sys.exit", baseline.replace(
+             'if __name__', 'match sys.exit(0):\n    case _:\n        pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("matched guard abort", baseline.replace(
+             'if __name__', 'match 1:\n    case 1 if os.abort():\n        pass\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
         ("first literal match sys.exit", baseline.replace(
              'if __name__', 'match 1:\n    case 1:\n        sys.exit(0)\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
@@ -1620,7 +1639,7 @@ def prove_prewrite_python_negatives() -> None:
              'if __name__', 'match None:\n    case None:\n        raise SystemExit(0)\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("first wildcard match abort", baseline.replace(
-             'if __name__', 'match value:\n    case _:\n        os.abort()\nif __name__'),
+             'if __name__', 'match "bound":\n    case _:\n        os.abort()\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("unconditional finally sys.exit", baseline.replace(
              'if __name__', 'try:\n    pass\nfinally:\n    sys.exit(0)\nif __name__'),
