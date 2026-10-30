@@ -4046,6 +4046,27 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             )
             if not peer.startswith("package httpapi\n"):
                 raise RuntimeError("upload route transitive httpapi package identity changed: " + peer_name)
+        # The imported httpapi account handler reaches these second-hop
+        # packages; all non-test Go files in each package are build inputs.
+        account_source = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
+            encoding="utf-8"
+        )
+        for package in ("accountdelete", "epochguard", "security"):
+            if f'"{module}/internal/{package}"' not in account_source:
+                raise RuntimeError("upload route second-hop Go import edge changed: " + package)
+        second_hop = (
+            ("accountdelete/service.go", "accountdelete"),
+            ("accountdelete/worker.go", "accountdelete"),
+            ("epochguard/guard.go", "epochguard"),
+            ("security/context.go", "security"),
+            ("security/principal.go", "security"),
+        )
+        for relative_name, package in second_hop:
+            source = (source_root / "services/import-api/internal" / relative_name).read_text(
+                encoding="utf-8"
+            )
+            if "\npackage " + package + "\n" not in "\n" + source:
+                raise RuntimeError("upload route second-hop Go package identity changed: " + relative_name)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
@@ -4055,6 +4076,11 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
             ("transitive httpapi peer", "services/import-api/internal/httpapi/apply_handler.go"),
             ("transitive httpapi peer", "services/import-api/internal/httpapi/fence_error.go"),
             ("transitive httpapi peer", "services/import-api/internal/httpapi/preview_handler.go"),
+            ("transitive second-hop package", "services/import-api/internal/accountdelete/service.go"),
+            ("transitive second-hop package", "services/import-api/internal/accountdelete/worker.go"),
+            ("transitive second-hop package", "services/import-api/internal/epochguard/guard.go"),
+            ("transitive second-hop package", "services/import-api/internal/security/context.go"),
+            ("transitive second-hop package", "services/import-api/internal/security/principal.go"),
             ("metrics validator Go input", "services/import-api/internal/metrics/recorder.go"),
             ("rate-limit validator Go input", "services/import-api/internal/ratelimit/enforce.go"),
             ("observability codes Go input", "services/import-api/internal/obslog/codes.go"),
@@ -4105,7 +4131,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
-    return 16
+    return 21
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
