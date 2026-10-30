@@ -4033,16 +4033,28 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                     raise RuntimeError("upload route delegated validator Go input changed: " + dependency)
         # Go compiles every non-test source in the imported httpapi package;
         # the module checksum file also governs dependency resolution.
-        peer = (source_root / "services/import-api/internal/httpapi/account_handler.go").read_text(
-            encoding="utf-8"
+        httpapi_peers = (
+            "account_handler.go",
+            "apple_handler.go",
+            "apply_handler.go",
+            "fence_error.go",
+            "preview_handler.go",
         )
-        if not peer.startswith("package httpapi\n"):
-            raise RuntimeError("upload route transitive httpapi package identity changed")
+        for peer_name in httpapi_peers:
+            peer = (source_root / "services/import-api/internal/httpapi" / peer_name).read_text(
+                encoding="utf-8"
+            )
+            if not peer.startswith("package httpapi\n"):
+                raise RuntimeError("upload route transitive httpapi package identity changed: " + peer_name)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
             ("Go checksums", "services/import-api/go.sum"),
             ("transitive httpapi package", "services/import-api/internal/httpapi/account_handler.go"),
+            ("transitive httpapi peer", "services/import-api/internal/httpapi/apple_handler.go"),
+            ("transitive httpapi peer", "services/import-api/internal/httpapi/apply_handler.go"),
+            ("transitive httpapi peer", "services/import-api/internal/httpapi/fence_error.go"),
+            ("transitive httpapi peer", "services/import-api/internal/httpapi/preview_handler.go"),
             ("metrics validator Go input", "services/import-api/internal/metrics/recorder.go"),
             ("rate-limit validator Go input", "services/import-api/internal/ratelimit/enforce.go"),
             ("observability codes Go input", "services/import-api/internal/obslog/codes.go"),
@@ -4093,7 +4105,7 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                         "reconcile-upload-route-authority-pr.yml",
                     ))):
                 raise RuntimeError("upload route Python dependency classification failed: " + label + "; rc=" + str(result.returncode) + "; stdout=" + repr(result.stdout) + "; stderr=" + repr(result.stderr))
-    return 12
+    return 16
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
