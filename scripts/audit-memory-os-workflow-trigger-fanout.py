@@ -243,6 +243,10 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     target = repo_root / relative
     if any(part.is_symlink() for part in (target, *target.parents)):
         raise AuditFailure("prewrite target path symlinked")
+    # A regular file with multiple directory entries can alias a writer
+    # outside the requested path; do not audit it as an independent target.
+    if target.is_file() and target.stat().st_nlink != 1:
+        raise AuditFailure("prewrite target hardlink alias")
     directory = repo_root / ".github/workflows"
     # A normal workflow leaf beneath a symlinked .github ancestor is still
     # an alias outside the reviewed repository tree.
@@ -523,6 +527,24 @@ def self_test(repo_root: Path) -> None:
                 outside = Path(tmp) / "outside"
                 outside.mkdir()
                 (root / "scripts").symlink_to(outside, target_is_directory=True)
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-target-hardlink-") as tmp:
+        root = Path(tmp) / "repo"
+        workflow_dir = root / ".github/workflows"
+        workflow_dir.mkdir(parents=True)
+        (workflow_dir / "w.yml").write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', encoding="utf-8"
+        )
+        (root / "scripts").mkdir()
+        external = Path(tmp) / "external"
+        external.write_text("fixture", encoding="utf-8")
+        (root / "scripts/a.py").hardlink_to(external)
+        try:
+            matching_workflows(root, "scripts/a.py")
+        except AuditFailure as exc:
+            if str(exc) != "prewrite target hardlink alias":
+                raise
+        else:
+            raise AuditFailure("hardlinked prewrite target negative accepted")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
@@ -556,7 +578,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 17 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 18 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))

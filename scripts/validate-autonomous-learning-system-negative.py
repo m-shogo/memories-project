@@ -3232,6 +3232,25 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 outside = Path(tmp) / "outside"
                 outside.mkdir()
                 (root / "scripts").symlink_to(outside, target_is_directory=True)
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-target-hardlink-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "fixture.yml").write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/a.py"\n', encoding="utf-8"
+        )
+        (root / "scripts").mkdir()
+        external = Path(tmp) / "external"
+        external.write_text("fixture", encoding="utf-8")
+        (root / "scripts/a.py").hardlink_to(external)
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/a.py"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (result.returncode != 1 or result.stdout or
+                result.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite target hardlink alias\n"):
+            raise RuntimeError("prewrite hardlink target CLI negative failed")
     for label, unsafe in (
         ("newline", "scripts/a\nb.py"),
         ("tab", "scripts/a\tb.py"),
@@ -3267,7 +3286,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if (result.returncode != 1 or result.stdout or
                     result.stderr != "PREWRITE TRIGGER AUDIT FAILED: " + diagnostic + "\n"):
                 raise RuntimeError("prewrite fanout CLI source-byte negative failed: " + label)
-    return len(cases) + 13 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases)
+    return len(cases) + 14 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases)
 
 
 def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
