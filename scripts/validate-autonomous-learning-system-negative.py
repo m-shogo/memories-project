@@ -2908,6 +2908,17 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
 def prove_prewrite_git_clean_filter_cli(source_root: Path) -> None:
     """A Git clean filter must not disguise raw workflow bytes as HEAD."""
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    # Source-binding check complements the executable no-second-read
+    # self-test invoked by the CI entry-document validator.
+    guard_source = guard.read_text(encoding="utf-8")
+    for fragment in (
+        "verified_sources[workflow] = raw",
+        "return verified_sources",
+        'verified_sources[workflow].decode("utf-8")',
+        'with mock.patch.object(Path, "read_text", forbid_second_read):',
+    ):
+        if fragment not in guard_source:
+            raise RuntimeError("prewrite verified-byte handoff source drift")
     with tempfile.TemporaryDirectory(prefix="learning-git-clean-filter-") as tmp:
         root = Path(tmp)
         workflow = root / ".github/workflows/fixture.yml"
