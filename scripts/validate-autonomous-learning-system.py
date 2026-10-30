@@ -1091,6 +1091,11 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
             if isinstance(statement, ast.ClassDef):
                 return any(eager_direct_termination(child)
                            for child in statement.body)
+            if isinstance(statement, ast.With):
+                # A module-level with body executes eagerly after a successful
+                # context-manager entry; a direct exit prevents main dispatch.
+                return any(eager_direct_termination(child)
+                           for child in statement.body)
             if isinstance(statement, (ast.Try, ast.TryStar)):
                 # A finally body executes after normal completion or caught
                 # exceptions. A direct exit in an unhandled try body also
@@ -1174,6 +1179,8 @@ def prove_prewrite_python_negatives() -> None:
         ("constant-false raise", 'if False:\n    raise SystemExit(0)\n', (2, 0)),
         ("class constant-false raise", 'class Helper:\n    if False:\n        raise SystemExit(0)\n', (3, 0)),
         ("deferred class method raise", 'class Helper:\n    def method(self):\n        raise SystemExit(0)\n', (3, 0)),
+        ("with deferred function exit", 'from contextlib import nullcontext\nwith nullcontext():\n    def helper(): sys.exit(0)\n', (3, 0)),
+        ("with untaken branch exit", 'from contextlib import nullcontext\nwith nullcontext():\n    if False: sys.exit(0)\n', (3, 0)),
         ("caught module raise", 'try:\n    raise ValueError("handled")\nexcept ValueError:\n    pass\n', (4, 0)),
         ("untaken finally raise", 'try: pass\nfinally:\n    if False:\n        raise SystemExit(0)\n', (4, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
@@ -1495,6 +1502,12 @@ def prove_prewrite_python_negatives() -> None:
           sha, 40, 20, "entry guard unreachable", baseline),
         ("eager class literal-true exit", baseline.replace(
              'if __name__', 'class Helper:\n    if True:\n        os.abort()\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("module with body sys.exit", baseline.replace(
+             'if __name__', 'from contextlib import nullcontext\nwith nullcontext():\n    sys.exit(0)\nif __name__'),
+          sha, 40, 20, "entry guard unreachable", baseline),
+        ("module with body raise", baseline.replace(
+             'if __name__', 'from contextlib import nullcontext\nwith nullcontext():\n    raise SystemExit(0)\nif __name__'),
           sha, 40, 20, "entry guard unreachable", baseline),
         ("unconditional finally sys.exit", baseline.replace(
              'if __name__', 'try:\n    pass\nfinally:\n    sys.exit(0)\nif __name__'),
