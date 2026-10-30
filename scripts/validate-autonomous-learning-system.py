@@ -470,6 +470,12 @@ def validate(repo_root: Path) -> None:
     def can_terminate_before_guard(node: ast.AST) -> bool:
         # Nested function bodies are deferred, but their eager decorators
         # and default argument expressions execute before the guard call.
+        def partial_factory(value: ast.AST) -> bool:
+            return (isinstance(value, ast.Call)
+                    and ((isinstance(value.func, ast.Name)
+                          and value.func.id == "partial")
+                         or (isinstance(value.func, ast.Attribute)
+                             and value.func.attr == "partial")))
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             eager = [*node.args.defaults,
                      *(value for value in node.args.kw_defaults if value is not None)]
@@ -477,19 +483,26 @@ def validate(repo_root: Path) -> None:
                 eager.extend(node.decorator_list)
                 # A lambda decorator is called while the definition is bound;
                 # a bare lambda expression remains deferred.
-                if any(isinstance(dec, ast.Lambda)
-                       and can_terminate_before_guard(dec.body)
-                       for dec in node.decorator_list):
+                if (any(isinstance(dec, ast.Lambda)
+                        and can_terminate_before_guard(dec.body)
+                        for dec in node.decorator_list)
+                        or any(partial_factory(dec) for dec in node.decorator_list)):
                     return True
             return any(can_terminate_before_guard(value) for value in eager)
         if isinstance(node, ast.ClassDef):
-            if any(isinstance(dec, ast.Lambda)
-                   and can_terminate_before_guard(dec.body)
-                   for dec in node.decorator_list):
+            if (any(isinstance(dec, ast.Lambda)
+                    and can_terminate_before_guard(dec.body)
+                    for dec in node.decorator_list)
+                    or any(partial_factory(dec) for dec in node.decorator_list)):
                 return True
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
         if isinstance(node, ast.Call):
+            # An immediately invoked partial is an unreviewed callable
+            # wrapper: its target may terminate even without a direct exit AST.
+            # Mere construction remains deferred unless applied as a decorator.
+            if partial_factory(node.func):
+                return True
             # An immediately called lambda executes its body before the
             # guard, unlike a deferred lambda declaration.
             if (isinstance(node.func, ast.Lambda)

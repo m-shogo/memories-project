@@ -3448,6 +3448,8 @@ def main() -> int:
         ("comprehension-local target", "[0 for main in (0,)]\n"),
         ("deferred lambda body", "(lambda: globals().__setitem__('main', None))\n"),
         ("deferred lambda termination", "(lambda: sys.exit(0))\n"),
+        ("deferred partial termination", "functools.partial(sys.exit, 0)\n"),
+        ("deferred partial function body", "def later():\n    functools.partial(sys.exit, 0)()\n"),
         ("benign immediate lambda", "(lambda: os.getpid())()\n"),
         ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
@@ -3694,6 +3696,10 @@ def main() -> int:
     for label, prefix in (
         ("sys-exit", "sys.exit(0)" + chr(10) + chr(10)),
         ("immediate-lambda-exit", "(lambda: sys.exit(0))()" + chr(10) + chr(10)),
+        ("immediate-partial-exit", "functools.partial(sys.exit, 0)()" + chr(10) + chr(10)),
+        ("direct-partial-abort", "partial(os.abort)()" + chr(10) + chr(10)),
+        ("function-decorator-partial-exit", "@functools.partial(sys.exit, 0)" + chr(10)
+         + "def eager():" + chr(10) + "    pass" + chr(10) + chr(10)),
         ("function-decorator-lambda-exit", "@(lambda fn: sys.exit(0))" + chr(10)
          + "def eager():" + chr(10) + "    pass" + chr(10) + chr(10)),
         ("class-decorator-lambda-exit", "@(lambda cls: sys.exit(0))" + chr(10)
@@ -3729,6 +3735,10 @@ def main() -> int:
         ("if-raise", "    if True:" + newline + "        raise SystemExit(0)" + newline),
         ("sys-exit", "    sys.exit(0)" + newline),
         ("immediate-lambda-exit", "    (lambda: sys.exit(0))()" + newline),
+        ("immediate-partial-exit", "    functools.partial(sys.exit, 0)()" + newline),
+        ("direct-partial-abort", "    partial(os.abort)()" + newline),
+        ("class-decorator-partial-exit", "    @functools.partial(sys.exit, 0)" + newline
+         + "    class Early:" + newline + "        pass" + newline),
         ("function-decorator-lambda-abort", "    @(lambda fn: os.abort())" + newline
          + "    def eager():" + newline + "        pass" + newline),
         ("class-decorator-lambda-exit", "    @(lambda cls: sys.exit(0))" + newline
