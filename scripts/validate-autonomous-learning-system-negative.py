@@ -960,8 +960,15 @@ def require_reviewed_upload_route_go_package(relative: str, source: str) -> None
     parts = Path(relative).parts
     if len(parts) != 5 or parts[:3] != ("services", "import-api", "internal"):
         raise RuntimeError("unreviewed Go package identity")
-    declarations = re.findall(r"(?m)^package[ \t]+([A-Za-z_]\w*)[ \t]*$", source)
-    if declarations != [parts[3]]:
+    # A declaration-looking line in a comment or raw string is not compiled.
+    # Go permits only whitespace/comments before the package clause.
+    declarations = list(re.finditer(r"(?m)^package[ \t]+([A-Za-z_]\w*)[ \t]*$", source))
+    if len(declarations) != 1 or declarations[0].group(1) != parts[3]:
+        raise RuntimeError("unreviewed Go package identity")
+    prefix = source[:declarations[0].start()]
+    prefix = re.sub(r"/\*[\s\S]*?\*/", "", prefix)
+    prefix = re.sub(r"(?m)^[ \t]*//[^\r\n]*$", "", prefix)
+    if prefix.strip():
         raise RuntimeError("unreviewed Go package identity")
 
 
@@ -969,6 +976,8 @@ def prove_upload_route_go_package_negatives() -> None:
     path = "services/import-api/internal/httpserver/server.go"
     require_reviewed_upload_route_go_package(path, "package httpserver\n")
     require_reviewed_upload_route_go_package(path, "//go:build linux\n\npackage httpserver\n")
+    require_reviewed_upload_route_go_package(path, "/* reviewed header */\npackage httpserver\n")
+    require_reviewed_upload_route_go_package(path, "// reviewed header\n\npackage httpserver\n")
     for label, relative, source in (
         ("renamed package", path, "package changed\n"),
         ("external test package", path, "package httpserver_test\n"),
@@ -976,6 +985,10 @@ def prove_upload_route_go_package_negatives() -> None:
         ("duplicate declaration", path, "package httpserver\npackage httpserver\n"),
         ("relocated package", "services/import-api/internal/metrics/server.go", "package httpserver\n"),
         ("nested path", "services/import-api/internal/httpserver/subdir/server.go", "package httpserver\n"),
+        ("comment-only spoof", path, "/*\npackage httpserver\n*/\n"),
+        ("raw-string spoof", path, "var doc = `\npackage httpserver\n`\n"),
+        ("comment and real declaration", path, "/*\npackage httpserver\n*/\npackage httpserver\n"),
+        ("pre-package executable code", path, "var doc = 1\npackage httpserver\n"),
     ):
         try:
             require_reviewed_upload_route_go_package(relative, source)
