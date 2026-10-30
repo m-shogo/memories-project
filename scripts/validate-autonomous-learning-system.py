@@ -852,6 +852,29 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                                                      "reload", "find_spec", "resolve_name", "exec_module"}
                     ):
                         return True
+                # Mutation of an arbitrary module __dict__ may replace main
+                # even without a direct Name(Store) or subscript assignment.
+                if (isinstance(node.func, ast.Attribute)
+                        and node.func.attr in {"update", "pop", "popitem", "clear",
+                                               "setdefault", "__setitem__", "__delitem__"}
+                        and isinstance(node.func.value, ast.Attribute)
+                        and node.func.value.attr == "__dict__"):
+                    method = node.func.attr
+                    if method in {"clear", "popitem"}:
+                        return True
+                    if method == "update":
+                        if any(kw.arg is None or kw.arg == "main"
+                               for kw in node.keywords):
+                            return True
+                        for arg in node.args:
+                            if not isinstance(arg, ast.Dict):
+                                return True
+                            if any(not isinstance(key, ast.Constant)
+                                   or key.value == "main" for key in arg.keys):
+                                return True
+                    elif (not node.args or not isinstance(node.args[0], ast.Constant)
+                          or node.args[0].value == "main"):
+                        return True
                 if isinstance(node.func, ast.Lambda):
                     return True
                 # Eager dynamic imports or runpy can execute unreviewed module
@@ -949,6 +972,8 @@ def prove_prewrite_python_negatives() -> None:
         ("class method deferred reflection", 'class Helper:\n    def method(self):\n        globals()["main"] = 1\n', (3, 0)),
         ("safe explicit import", 'from math import sqrt\n', (1, 0)),
         ("unrelated constant setattr", 'setattr(module, "other", 1)\n', (1, 0)),
+        ("unrelated module dict update", 'module.__dict__.update({"other": 1})\n', (1, 0)),
+        ("unrelated module dict pop", 'module.__dict__.pop("other")\n', (1, 0)),
         ("class local", 'class Helper:\n    main = 1\n', (2, 0)),
         ("class conditional local", 'class Helper:\n    if True:\n        main = 1\n', (3, 0)),
         ("class method named main", 'class Helper:\n    def main(self):\n        pass\n', (3, 0)),
@@ -1251,6 +1276,24 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("dynamic delattr main shadow", baseline.replace(
             'if __name__', 'attribute = "main"\ndelattr(module, attribute)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict update main", baseline.replace(
+            'if __name__', 'module.__dict__.update({"main": None})\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict update computed", baseline.replace(
+            'if __name__', 'module.__dict__.update({attribute: None})\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict pop main", baseline.replace(
+            'if __name__', 'module.__dict__.pop("main")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict clear", baseline.replace(
+            'if __name__', 'module.__dict__.clear()\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict setdefault main", baseline.replace(
+            'if __name__', 'module.__dict__.setdefault("main", None)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("module dict setitem dynamic", baseline.replace(
+            'if __name__', 'module.__dict__.__setitem__(attribute, None)\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("module delattr main shadow", baseline.replace(
             'if __name__', 'delattr(module, "main")\nif __name__'),
