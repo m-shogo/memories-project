@@ -3938,6 +3938,42 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                     or blocked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git tracing environment requires review\n"
                     or trace_file.exists()):
                 raise RuntimeError("Git trace prewrite CLI negative failed: " + name)
+        # A custom Git config source changes read-only query semantics;
+        # a FIFO config source can block a Git query. Reject both before Git.
+        external_config = Path(tmp) / "unreviewed-gitconfig"
+        external_config.write_text("[core]\nignorecase = true\n", encoding="utf-8")
+        control = subprocess.run(
+            ["git", "-C", str(root), "config", "--get", "core.ignorecase"],
+            env={**os.environ, "GIT_CONFIG_GLOBAL": str(external_config)},
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if control.returncode != 0 or control.stdout.strip() != "true":
+            raise RuntimeError("Git config override control failed")
+        for name, value in (
+            ("GIT_CONFIG_GLOBAL", str(external_config)),
+            ("GIT_CONFIG_SYSTEM", str(external_config)),
+            ("GIT_CONFIG_PARAMETERS", "core.ignorecase=true"),
+            ("GIT_CONFIG_COUNT", "1"),
+            ("GIT_CONFIG_KEY_0", "core.ignorecase"),
+            ("GIT_CONFIG_VALUE_0", "true"),
+        ):
+            blocked = subprocess.run(
+                args, env={**os.environ, name: value},
+                capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (blocked.returncode != 1 or blocked.stdout or
+                    blocked.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git configuration environment requires review\n"):
+                raise RuntimeError("Git config environment CLI negative failed: " + name)
+        config_fifo = Path(tmp) / "unreviewed-gitconfig-fifo"
+        os.mkfifo(config_fifo)
+        blocked_fifo = subprocess.run(
+            args, env={**os.environ, "GIT_CONFIG_GLOBAL": str(config_fifo)},
+            capture_output=True, text=True, check=False, timeout=2,
+        )
+        if (blocked_fifo.returncode != 1 or blocked_fifo.stdout or
+                blocked_fifo.stderr != "PREWRITE TRIGGER AUDIT FAILED: prewrite Git configuration environment requires review\n"):
+            raise RuntimeError("Git config FIFO prewrite negative failed")
+        config_fifo.unlink()
         fixture_git("-C", str(root), "reset", "-q", "HEAD", "--",
                     ".github/workflows/fixture.yml")
         # Read-only Git inspection must not execute a checkout-configured
