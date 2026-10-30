@@ -3683,6 +3683,9 @@ def main() -> int:
     module_guard = 'if __name__ == "__main__":' + chr(10) + "    raise SystemExit(main())" + chr(10)
     for label, prefix in (
         ("sys-exit", "sys.exit(0)" + chr(10) + chr(10)),
+        ("os-abort", "os.abort()" + chr(10) + chr(10)),
+        ("builtins-exit", "builtins.exit(0)" + chr(10) + chr(10)),
+        ("builtins-quit", "builtins.quit(0)" + chr(10) + chr(10)),
         ("raise", "raise SystemExit(0)" + chr(10) + chr(10)),
         ("nested-sys-exit", "if True:" + chr(10) + "    sys.exit(0)" + chr(10) + chr(10)),
         ("eager-default", "def eager(value=sys.exit(0)):" + chr(10)
@@ -3703,6 +3706,9 @@ def main() -> int:
         ("if-raise", "    if True:" + newline + "        raise SystemExit(0)" + newline),
         ("sys-exit", "    sys.exit(0)" + newline),
         ("os-exit", "    os._exit(0)" + newline),
+        ("os-abort", "    os.abort()" + newline),
+        ("builtins-exit", "    builtins.exit(0)" + newline),
+        ("builtins-quit", "    builtins.quit(0)" + newline),
         ("exit", "    exit(0)" + newline),
         ("quit", "    quit()" + newline),
         ("dead-return", "    if False:" + newline + "        return 0" + newline),

@@ -486,7 +486,8 @@ def validate(repo_root: Path) -> None:
             if (isinstance(node.func, ast.Attribute)
                     and isinstance(node.func.value, ast.Name)
                     and (node.func.value.id, node.func.attr) in {
-                        ("sys", "exit"), ("os", "_exit")
+                        ("sys", "exit"), ("os", "_exit"), ("os", "abort"),
+                        ("builtins", "exit"), ("builtins", "quit")
                     }):
                 return True
         return any(can_terminate_before_guard(child) for child in ast.iter_child_nodes(node))
