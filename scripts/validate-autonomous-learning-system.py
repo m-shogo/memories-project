@@ -480,6 +480,26 @@ def validate(repo_root: Path) -> None:
             return True
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Call):
+                # Operator callable factories can invoke a terminating method
+                # before the CI guard; factory creation alone is not proof.
+                factory = node.func.func
+                if ((isinstance(factory, ast.Name) and factory.id == "methodcaller")
+                        or (isinstance(factory, ast.Attribute) and factory.attr == "methodcaller")):
+                    args = node.func.args
+                    if not args or not isinstance(args[0], ast.Constant) or (
+                        args[0].value in {"abort", "_exit", "exit", "quit"}
+                    ):
+                        return True
+                if isinstance(factory, ast.Call):
+                    maker = factory.func
+                    if ((isinstance(maker, ast.Name) and maker.id == "attrgetter")
+                            or (isinstance(maker, ast.Attribute) and maker.attr == "attrgetter")):
+                        args = factory.args
+                        if not args or not isinstance(args[0], ast.Constant) or (
+                            args[0].value in {"abort", "_exit", "exit", "quit"}
+                        ):
+                            return True
+            if isinstance(node.func, ast.Call):
                 # Reflective lookup can invoke an abort/exit callable before
                 # the canonical CI guard even without a direct attribute call.
                 lookup = node.func
