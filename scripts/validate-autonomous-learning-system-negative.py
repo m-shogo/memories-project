@@ -332,6 +332,17 @@ def expected_diagnostic(name: str) -> str:
     }
     if name in fixed:
         return fixed[name]
+    if name.startswith("group-writable ") and name.endswith(" authority"):
+        label = name[len("group-writable "):-len(" authority")]
+        targets = {
+            "contract": CONTRACT,
+            "learning history": LEARNING,
+            "positive guard": VALIDATOR,
+            "negative guard": NEGATIVE_VALIDATOR,
+            "CI entrypoint": CI_ENTRYPOINT,
+        }
+        if label in targets:
+            return "group-writable learning authority forbidden: " + targets[label].as_posix()
     if name.startswith("world-writable ") and name.endswith(" authority"):
         label = name[len("world-writable "):-len(" authority")]
         targets = {
@@ -460,6 +471,11 @@ def world_writable_authority(root: Path, relative: Path) -> None:
     (root / relative).chmod(0o666)
 
 
+def group_writable_authority(root: Path, relative: Path) -> None:
+    # Group-write authority is exercised only in an isolated fixture.
+    (root / relative).chmod(0o664)
+
+
 def world_writable_parent_directory(root: Path, relative: Path) -> None:
     # Only a disposable in-repository parent is made writable.
     (root / relative).chmod(0o777)
@@ -511,6 +527,12 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         alias.unlink()
         target.chmod(0o666)
         reject("world-writable", f"canonical authority changed during read: {target}")
+        target.chmod(0o644)
+        target.chmod(0o664)
+        reject("group-writable", f"canonical authority changed during read: {target}")
+        target.chmod(0o640)
+        if read() != b"stable":
+            raise RuntimeError("group-read-only descriptor positive drift")
         target.chmod(0o644)
         original_open = os.open
         def rewrite_before_open(path, flags):
@@ -5988,6 +6010,17 @@ def main() -> int:
         cases.append((
             f"world-writable {label} authority",
             lambda root, path=relative: world_writable_authority(root, path),
+        ))
+    for label, relative in (
+        ("contract", CONTRACT),
+        ("learning history", LEARNING),
+        ("positive guard", VALIDATOR),
+        ("negative guard", NEGATIVE_VALIDATOR),
+        ("CI entrypoint", CI_ENTRYPOINT),
+    ):
+        cases.append((
+            f"group-writable {label} authority",
+            lambda root, path=relative: group_writable_authority(root, path),
         ))
     for label, relative in (
         ("checkout root", Path(".")),

@@ -64,7 +64,7 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         with os.fdopen(fd, "rb") as stream:
             before = os.fstat(stream.fileno())
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
-                    or before.st_mode & 0o002
+                    or before.st_mode & 0o022
                     or (preflight.st_dev, preflight.st_ino) !=
                     (before.st_dev, before.st_ino)
                     # Same-inode mutation between lstat and open is also
@@ -92,7 +92,7 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             if (not stat.S_ISREG(live.st_mode)
                     or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
                     or after.st_nlink != 1 or live.st_nlink != 1
-                    or after.st_mode & 0o002 or live.st_mode & 0o002
+                    or after.st_mode & 0o022 or live.st_mode & 0o022
                     or (after.st_size, after.st_mtime_ns, after.st_ctime_ns) !=
                     (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
                     or live.st_ctime_ns != before.st_ctime_ns):
@@ -200,6 +200,8 @@ def validate(repo_root: Path) -> None:
             # local principal even when it is a unique regular inode.
             if path.is_file() and path.stat().st_mode & 0o002:
                 raise ValidationFailure(f"world-writable learning authority forbidden: {relative}")
+            if path.is_file() and path.stat().st_mode & 0o020:
+                raise ValidationFailure(f"group-writable learning authority forbidden: {relative}")
         except OSError:
             raise ValidationFailure(f"unreadable learning authority: {relative}") from None
         try:
