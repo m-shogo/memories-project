@@ -1479,7 +1479,12 @@ def main() -> int:
             )
             print(f"Prewrite Python AST and diff-budget validation PASS: +{added} -{removed}")
             return 0
-        validate(args.repo_root.resolve())
+        # Resolving an explicit checkout alias before validation discards the
+        # original path identity. Reject root and ancestor symlink aliases.
+        root = args.repo_root.absolute()
+        if root != args.repo_root.resolve():
+            raise ValidationFailure("learning repository root alias forbidden")
+        validate(root)
     except ValidationFailure as exc:
         print(f"AUTONOMOUS LEARNING VALIDATION FAILED: {exc}", file=sys.stderr)
         return 1
