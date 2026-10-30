@@ -2675,11 +2675,55 @@ def require_reviewed_upload_route_role_lock(source: str) -> None:
         raise RuntimeError(failure)
 
 
+def require_reviewed_upload_route_principal_identity(source: str) -> None:
+    """Pin the non-superuser/non-BYPASSRLS live test principal proof."""
+    failure = "unreviewed Upload Route deployment principal RLS identity proof"
+    signature = ("func appLoginPool(t *testing.T, ctx context.Context, "
+                 "admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {")
+    if source.count(signature) != 1:
+        raise RuntimeError(failure)
+    start = source.index(signature)
+    end = source.find("\nfunc ", start + len(signature))
+    if end < 0:
+        raise RuntimeError(failure)
+    helper = source[start:end]
+    connection_chain = (
+        "\tparsed.User = neturl.UserPassword(\"memory_app_login\", password)\n"
+        "\tpool, err := pgxpool.New(ctx, parsed.String())\n"
+        "\tif err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\tt.Cleanup(pool.Close)\n"
+        "\tif err := pool.Ping(ctx); err != nil {\n"
+        "\t\tt.Fatalf(\"deployment principal could not connect: %v\", err)\n"
+        "\t}\n"
+    )
+    identity_chain = (
+        "\tvar currentUser string\n"
+        "\tvar isSuperuser, bypassesRLS bool\n"
+        "\tif err := pool.QueryRow(ctx,\n"
+        "\t\t`SELECT current_user, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user`,\n"
+        "\t).Scan(&currentUser, &isSuperuser, &bypassesRLS); err != nil {\n"
+        "\t\tt.Fatal(err)\n"
+        "\t}\n"
+        "\tif currentUser != \"memory_app_login\" || isSuperuser || bypassesRLS {\n"
+        "\t\tt.Fatalf(\"connected as %q (superuser=%v bypassrls=%v); the RLS proof would be vacuous\",\n"
+        "\t\t\tcurrentUser, isSuperuser, bypassesRLS)\n"
+        "\t}\n"
+        "\treturn pool\n"
+    )
+    if (helper.count(connection_chain) != 1 or
+            helper.count(identity_chain) != 1 or
+            helper.index(connection_chain) >= helper.index(identity_chain)):
+        raise RuntimeError(failure)
+
+
 def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
     path = source_root / "services/import-api/internal/httpserver/server_live_test.go"
     source = path.read_text(encoding="utf-8")
     require_reviewed_upload_route_password_skip_boundary(source)
     require_reviewed_upload_route_role_lock(source)
+    require_reviewed_upload_route_principal_identity(source)
     for label, old, new in (
         ("unconditional skip", 'if password == "" {', 'if true {'),
         ("skip removed", '\t\tt.Skip("test database URL', '\t\tt.Log("test database URL'),
@@ -2731,6 +2775,45 @@ def prove_upload_route_password_skip_negatives(source_root: Path) -> None:
                 raise
         else:
             raise RuntimeError("Upload Route role lock negative accepted: " + label)
+
+
+    signature = ("func appLoginPool(t *testing.T, ctx context.Context, "
+                 "admin *pgxpool.Pool, adminURL string) *pgxpool.Pool {")
+    helper_start = source.index(signature)
+    helper_end = source.find("\nfunc ", helper_start + len(signature))
+    if helper_end < 0:
+        raise RuntimeError("principal identity fixture helper boundary drift")
+    helper = source[helper_start:helper_end]
+    for label, old, new in (
+        ("wrong deployment principal", 'neturl.UserPassword("memory_app_login", password)',
+         'neturl.UserPassword("postgres", password)'),
+        ("skip connection ping", 'if err := pool.Ping(ctx); err != nil {',
+         'if false {'),
+        ("remove pool cleanup", "t.Cleanup(pool.Close)", 't.Log("cleanup disabled")'),
+        ("wrong RLS catalog column", "rolbypassrls FROM pg_roles",
+         "rolcanlogin FROM pg_roles"),
+        ("query as administrator", "pool.QueryRow(ctx,", "admin.QueryRow(ctx,"),
+        ("ignore superuser", 'if currentUser != "memory_app_login" || isSuperuser || bypassesRLS {',
+         'if currentUser != "memory_app_login" || bypassesRLS {'),
+        ("ignore bypassrls", 'if currentUser != "memory_app_login" || isSuperuser || bypassesRLS {',
+         'if currentUser != "memory_app_login" || isSuperuser {'),
+        ("ignore principal identity", 'if currentUser != "memory_app_login" || isSuperuser || bypassesRLS {',
+         'if isSuperuser || bypassesRLS {'),
+        ("suppress vacuous proof fatal", 't.Fatalf("connected as %q',
+         't.Logf("connected as %q'),
+        ("return admin pool", "\treturn pool\n", "\treturn admin\n"),
+    ):
+        if helper.count(old) != 1:
+            raise RuntimeError("principal identity fixture anchor drift: " + label)
+        changed = (source[:helper_start] + helper.replace(old, new, 1)
+                   + source[helper_end:])
+        try:
+            require_reviewed_upload_route_principal_identity(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route deployment principal RLS identity proof":
+                raise
+        else:
+            raise RuntimeError("Upload Route principal identity negative accepted: " + label)
 
 
 def require_reviewed_upload_route_focused_skip_inventory(sources: dict[str, str]) -> None:
