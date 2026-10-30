@@ -4610,6 +4610,69 @@ def prove_import_api_minio_first_classification(source_root: Path) -> int:
                 else:
                     raise RuntimeError("comment-spoofed fourth-hop Go edge accepted: "
                                        + relative_name + "/" + package)
+        # Imported appleauth is compiled as a whole package. Pin every
+        # reviewed non-test peer and its exact local Go import set so an
+        # unreviewed new peer or local dependency cannot evade this audit.
+        appleauth_expected = {
+            "client_secret.go": (),
+            "jwks_client.go": (),
+            "login.go": ("security",),
+            "metered.go": ("metrics", "security"),
+            "pgstores.go": (),
+            "token_client.go": (),
+            "verifier.go": (),
+        }
+        appleauth_root = source_root / "services/import-api/internal/appleauth"
+
+        def require_appleauth_inventory(names: set[str]) -> None:
+            if names != set(appleauth_expected):
+                raise RuntimeError("upload route appleauth source inventory drift")
+
+        observed_appleauth = {
+            path.name for path in appleauth_root.glob("*.go")
+            if not path.name.endswith("_test.go")
+        }
+        require_appleauth_inventory(observed_appleauth)
+        for changed in (
+            observed_appleauth - {"verifier.go"},
+            observed_appleauth | {"unreviewed.go"},
+        ):
+            try:
+                require_appleauth_inventory(changed)
+            except RuntimeError as exc:
+                if str(exc) != "upload route appleauth source inventory drift":
+                    raise
+            else:
+                raise RuntimeError("appleauth source inventory negative accepted")
+
+        def require_appleauth_local_edges(name: str, source: str) -> None:
+            prefix = module + "/internal/"
+            imported = {
+                path[len(prefix):]
+                for path in upload_route_local_go_imports(source, include_external=True)
+                if path.startswith(prefix)
+            }
+            if imported != set(appleauth_expected[name]):
+                raise RuntimeError("upload route appleauth local import closure drift: " + name)
+
+        for name in appleauth_expected:
+            relative = "services/import-api/internal/appleauth/" + name
+            source = (source_root / relative).read_text(encoding="utf-8")
+            require_reviewed_upload_route_go_package(relative, source)
+            require_appleauth_local_edges(name, source)
+            if source.count("package appleauth\n") != 1:
+                raise RuntimeError("upload route appleauth package fixture anchor drift")
+            added_edge = source.replace(
+                "package appleauth\n",
+                'package appleauth\nimport "' + module + '/internal/reqid"\n', 1
+            )
+            try:
+                require_appleauth_local_edges(name, added_edge)
+            except RuntimeError as exc:
+                if str(exc) != "upload route appleauth local import closure drift: " + name:
+                    raise
+            else:
+                raise RuntimeError("unreviewed appleauth local import accepted: " + name)
         for label, relative in (
             ("transitive upload service", "services/import-api/internal/upload/service.go"),
             ("Go module", "services/import-api/go.mod"),
