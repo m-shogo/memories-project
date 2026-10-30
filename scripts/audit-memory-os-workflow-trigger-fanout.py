@@ -13,6 +13,7 @@ import fnmatch
 import hashlib
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -349,6 +350,50 @@ def validate_relative_path(relative: str) -> None:
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
+def read_workflow_bytes_bounded(workflow: Path, *, strict: bool = False) -> bytes:
+    """Read one stable regular workflow inode with a hard byte ceiling.
+
+    O_NONBLOCK avoids a FIFO swap hanging the audit; O_NOFOLLOW rejects
+    symlink swaps on platforms that provide it. This is a source snapshot,
+    not a proof of transitive CI reachability or write permission.
+    """
+    alias = ("prewrite workflow Git index raw blob drift" if strict
+             else "workflow path missing or symlinked")
+    hardlink = alias if strict else "workflow source hardlink alias"
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(workflow, flags)
+    except OSError:
+        raise AuditFailure(alias) from None
+    try:
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise AuditFailure(alias)
+            if before.st_nlink != 1:
+                raise AuditFailure(hardlink)
+            if before.st_size > MAX_WORKFLOW_SOURCE_BYTES:
+                raise AuditFailure("workflow source exceeds reviewed byte limit")
+            raw = stream.read(MAX_WORKFLOW_SOURCE_BYTES + 1)
+            if len(raw) > MAX_WORKFLOW_SOURCE_BYTES:
+                raise AuditFailure("workflow source exceeds reviewed byte limit")
+            after = os.fstat(stream.fileno())
+            try:
+                live = workflow.lstat()
+            except OSError:
+                raise AuditFailure(alias) from None
+            if (not stat.S_ISREG(live.st_mode)
+                    or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
+                    or after.st_nlink != 1):
+                raise AuditFailure(alias)
+            if (after.st_size, after.st_mtime_ns) != (
+                    before.st_size, before.st_mtime_ns):
+                raise AuditFailure("workflow source changed during read")
+            return raw
+    except OSError:
+        raise AuditFailure(alias) from None
+
+
 def require_workflow_git_index_identity(
         repo_root: Path, workflow_sources: list[Path]) -> dict[Path, bytes]:
     """Optional read-only proof of checkout root and clean tracked workflow tree.
@@ -444,14 +489,7 @@ def require_workflow_git_index_identity(
     verified_sources: dict[Path, bytes] = {}
     for workflow in workflow_sources:
         relative = workflow.relative_to(repo_root).as_posix()
-        if (workflow.is_symlink() or not workflow.is_file()
-                or workflow.stat().st_nlink != 1):
-            raise AuditFailure("prewrite workflow Git index raw blob drift")
-        if workflow.stat().st_size > MAX_WORKFLOW_SOURCE_BYTES:
-            raise AuditFailure("workflow source exceeds reviewed byte limit")
-        raw = workflow.read_bytes()
-        if len(raw) > MAX_WORKFLOW_SOURCE_BYTES:
-            raise AuditFailure("workflow source exceeds reviewed byte limit")
+        raw = read_workflow_bytes_bounded(workflow, strict=True)
         expected = index_blobs[relative]
         digest = hashlib.sha1 if len(expected) == 40 else hashlib.sha256
         payload = f"blob {len(raw)}\0".encode("ascii") + raw
@@ -550,7 +588,7 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
         try:
             source = (verified_sources[workflow].decode("utf-8")
                       if verified_sources is not None
-                      else workflow.read_text(encoding="utf-8"))
+                      else read_workflow_bytes_bounded(workflow).decode("utf-8"))
         except UnicodeError as exc:
             raise AuditFailure("workflow source invalid UTF-8") from exc
         if workflow_matches_path(source, relative):
@@ -1306,6 +1344,61 @@ def self_test(repo_root: Path) -> None:
                     raise
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
+    # Direct descriptor controls cover nonregular/symlink swaps that can
+    # occur after an earlier Path.is_file/stat preflight.
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-fd-reader-") as tmp:
+        source = Path(tmp) / "source.yml"
+        source.write_text("on: push\n", encoding="utf-8")
+        if read_workflow_bytes_bounded(source) != b"on: push\n":
+            raise AuditFailure("bounded workflow descriptor positive failed")
+        source.write_bytes(b"x" * (MAX_WORKFLOW_SOURCE_BYTES + 1))
+        for strict in (False, True):
+            try:
+                read_workflow_bytes_bounded(source, strict=strict)
+            except AuditFailure as exc:
+                if str(exc) != "workflow source exceeds reviewed byte limit":
+                    raise
+            else:
+                raise AuditFailure("bounded workflow descriptor oversized negative accepted")
+        source.unlink()
+        os.mkfifo(source)
+        for strict in (False, True):
+            try:
+                read_workflow_bytes_bounded(source, strict=strict)
+            except AuditFailure as exc:
+                expected = ("prewrite workflow Git index raw blob drift" if strict
+                            else "workflow path missing or symlinked")
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AuditFailure("bounded workflow descriptor FIFO negative accepted")
+        source.unlink()
+        target = Path(tmp) / "target"
+        target.write_text("on: push\n", encoding="utf-8")
+        source.symlink_to(target)
+        for strict in (False, True):
+            try:
+                read_workflow_bytes_bounded(source, strict=strict)
+            except AuditFailure as exc:
+                expected = ("prewrite workflow Git index raw blob drift" if strict
+                            else "workflow path missing or symlinked")
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AuditFailure("bounded workflow descriptor symlink negative accepted")
+        source.unlink()
+        source.hardlink_to(target)
+        for strict in (False, True):
+            try:
+                read_workflow_bytes_bounded(source, strict=strict)
+            except AuditFailure as exc:
+                expected = ("prewrite workflow Git index raw blob drift" if strict
+                            else "workflow source hardlink alias")
+                if str(exc) != expected:
+                    raise
+            else:
+                raise AuditFailure("bounded workflow descriptor hardlink negative accepted")
+
     print(
         "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(extglob_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="

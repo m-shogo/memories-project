@@ -4219,6 +4219,22 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         if (result.returncode != 1 or result.stdout or
                 result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow source hardlink alias\n"):
             raise RuntimeError("prewrite workflow source hardlink CLI negative failed")
+    # A nonregular workflow source must fail promptly, never block on FIFO
+    # open or be misclassified as a normal direct-trigger match.
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-workflow-fifo-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        os.mkfifo(directory / "fixture.yml")
+        result = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/a.py"],
+            capture_output=True, text=True, check=False, timeout=3,
+        )
+        if (result.returncode != 1 or result.stdout
+                or result.stderr !=
+                "PREWRITE TRIGGER AUDIT FAILED: workflow path missing or symlinked\n"):
+            raise RuntimeError("prewrite nonregular workflow CLI negative failed")
     with tempfile.TemporaryDirectory(prefix="learning-fanout-workflow-name-alias-") as tmp:
         root = Path(tmp)
         directory = root / ".github/workflows"
