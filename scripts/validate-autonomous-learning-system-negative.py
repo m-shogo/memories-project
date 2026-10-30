@@ -475,8 +475,10 @@ def require_expected_rejection(name: str, result: subprocess.CompletedProcess[st
         )
 
 
-def require_failure(source_root: Path, name: str, mutate) -> None:
-    with tempfile.TemporaryDirectory(prefix="learning-negative-") as tmp:
+def require_failure(source_root: Path, name: str, mutate,
+                    fixture_parent: Path | None = None) -> None:
+    with tempfile.TemporaryDirectory(prefix="learning-negative-",
+                                     dir=fixture_parent) as tmp:
         root = Path(tmp)
         seed(source_root, root)
         before = fixture_state(root)
@@ -7207,18 +7209,30 @@ def main() -> int:
             f"symlinked {label} parent directory",
             lambda root, path=relative: symlink_parent_directory(root, path),
         ))
-    # Every canonical mutation owns a separate TemporaryDirectory and child
-    # validator process. Bound independent cases to two workers to preserve
-    # the nested 120-second entrypoint deadline without dropping negatives.
-    # executor.map yields in source order, keeping failure reporting stable.
-    def execute_case(item):
-        name, mutate = item
-        require_failure(source_root, name, mutate)
-        return name
+    # The canonical descriptor guard snapshots ancestor ctime. Creating
+    # sibling TemporaryDirectories directly under /tmp from two workers
+    # changes that shared ancestor while the other worker is reading.
+    # Precreate disjoint worker parents before running any concurrent case.
+    # Each worker mutates only its own parent, sequentially.
+    def execute_partition(worker_index: int, worker_parent: Path):
+        results = []
+        for index in range(worker_index, len(cases), 2):
+            name, mutate = cases[index]
+            require_failure(source_root, name, mutate, worker_parent)
+            results.append((index, name))
+        return results
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        completed = list(executor.map(execute_case, cases))
-    if completed != [name for name, _ in cases]:
+    with tempfile.TemporaryDirectory(prefix="learning-negative-workers-") as tmp:
+        worker_parents = [Path(tmp) / f"worker-{index}" for index in range(2)]
+        for parent in worker_parents:
+            parent.mkdir()
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            partitions = list(executor.map(
+                lambda index: execute_partition(index, worker_parents[index]),
+                range(2),
+            ))
+    completed_pairs = sorted(pair for partition in partitions for pair in partition)
+    if completed_pairs != list(enumerate(name for name, _ in cases)):
         raise RuntimeError("canonical negative worker result/order drift")
 
     prove_parent_case_coverage_negatives()
