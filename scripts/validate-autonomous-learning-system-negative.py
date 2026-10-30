@@ -3287,6 +3287,32 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             if label == "submodule inventory":
                 gitmodules.unlink()
                 (root / "scripts/.git").write_text("gitdir: ../external\n", encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-workflow-git-boundary-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "fixture.yml").write_text('on: push\n', encoding="utf-8")
+        (root / ".git").mkdir()
+        args = [sys.executable, str(guard), "--repo-root", str(root),
+                "--path", "scripts/a.py"]
+        positive = subprocess.run(
+            args, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (positive.returncode != 0 or positive.stderr or
+                "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1"
+                not in positive.stdout.splitlines()):
+            raise RuntimeError("workflow root Git metadata CLI positive failed")
+        for label, component in (("github parent", directory.parent),
+                                 ("workflow directory", directory)):
+            marker = component / ".git"
+            marker.write_text("gitdir: ../external\n", encoding="utf-8")
+            result = subprocess.run(
+                args, capture_output=True, text=True, check=False, timeout=10,
+            )
+            if (result.returncode != 1 or result.stdout or
+                    result.stderr != "PREWRITE TRIGGER AUDIT FAILED: workflow directory nested Git checkout\n"):
+                raise RuntimeError("prewrite workflow nested Git CLI negative failed: " + label)
+            marker.unlink()
     with tempfile.TemporaryDirectory(prefix="learning-fanout-target-hardlink-") as tmp:
         root = Path(tmp) / "repo"
         directory = root / ".github/workflows"

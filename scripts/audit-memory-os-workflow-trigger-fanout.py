@@ -273,6 +273,12 @@ def matching_workflows(repo_root: Path, relative: str) -> list[str]:
     # an alias outside the reviewed repository tree.
     if any(part.is_symlink() for part in (directory, *directory.parents)) or not directory.is_dir():
         raise AuditFailure("workflow directory missing or symlinked")
+    # A nested Git checkout under .github can substitute a workflow tree
+    # without using a symlink or hardlink. The repository root .git is normal.
+    for component in (directory, directory.parent):
+        marker = component / ".git"
+        if marker.exists() or marker.is_symlink():
+            raise AuditFailure("workflow directory nested Git checkout")
     matches: list[str] = []
     for workflow in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml"))):
         if workflow.is_symlink() or not workflow.is_file():
@@ -619,6 +625,26 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("nested Git checkout prewrite negative accepted")
+    with tempfile.TemporaryDirectory(prefix="ops-fanout-workflow-git-boundary-") as tmp:
+        root = Path(tmp) / "repo"
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "w.yml").write_text('on: push\n', encoding="utf-8")
+        (root / ".git").mkdir()
+        if matching_workflows(root, "scripts/a.py") != [".github/workflows/w.yml"]:
+            raise AuditFailure("workflow root Git metadata positive failed")
+        for label, component in (("github parent", directory.parent),
+                                 ("workflow directory", directory)):
+            marker = component / ".git"
+            marker.write_text("gitdir: ../external\n", encoding="utf-8")
+            try:
+                matching_workflows(root, "scripts/a.py")
+            except AuditFailure as exc:
+                if str(exc) != "workflow directory nested Git checkout":
+                    raise
+            else:
+                raise AuditFailure("nested workflow Git checkout negative accepted: " + label)
+            marker.unlink()
     with tempfile.TemporaryDirectory(prefix="ops-fanout-parent-alias-") as tmp:
         root = Path(tmp) / "repo"
         root.mkdir()
