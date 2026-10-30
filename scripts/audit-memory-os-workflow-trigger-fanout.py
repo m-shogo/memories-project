@@ -417,12 +417,12 @@ def require_workflow_git_index_identity(
     observed = {path.relative_to(repo_root).as_posix() for path in workflow_sources}
     if tracked != observed:
         raise AuditFailure("prewrite workflow Git index inventory drift")
-    for args in (
-        ("diff", "--quiet", "HEAD", "--", ".github/workflows"),
-        ("diff", "--cached", "--quiet", "HEAD", "--", ".github/workflows"),
-    ):
-        if git(*args).returncode != 0:
-            raise AuditFailure("prewrite workflow Git index content drift")
+    # The worktree form of git diff can execute checkout-configured clean
+    # filters. The raw-byte comparison below replaces that unsafe probe.
+    # Cached diff compares Git objects and does not clean worktree content.
+    if git("diff", "--cached", "--quiet", "HEAD", "--",
+           ".github/workflows").returncode != 0:
+        raise AuditFailure("prewrite workflow Git index content drift")
     # Git clean filters and checkout conversions can make git diff --quiet
     # report equality while raw workflow bytes differ from the indexed blob.
     for workflow in workflow_sources:
@@ -954,15 +954,17 @@ def self_test(repo_root: Path) -> None:
         attributes = root / ".gitattributes"
         attributes.write_text(".github/workflows/*.yml filter=opaque\n", encoding="utf-8")
         fixture_git("-C", str(root), "config", "filter.opaque.clean",
-                    "printf 'on: push\\n'")
+                    "sh -c 'echo executed > .filter-marker; printf \"on: push\\n\"'")
         workflow.write_text("on: workflow_dispatch\n", encoding="utf-8")
         filtered = subprocess.run(
             ["git", "-C", str(root), "diff", "--quiet", "HEAD",
              "--", ".github/workflows"],
             capture_output=True, text=True, check=False, timeout=10,
         )
-        if filtered.returncode != 0:
-            raise AuditFailure("Git clean-filter fixture did not mask diff")
+        marker = root / ".filter-marker"
+        if filtered.returncode != 0 or not marker.is_file():
+            raise AuditFailure("Git clean-filter executable control failed")
+        marker.unlink()
         try:
             matching_workflows(root, "scripts/a.py", require_git_index=True)
         except AuditFailure as exc:
@@ -970,6 +972,8 @@ def self_test(repo_root: Path) -> None:
                 raise
         else:
             raise AuditFailure("Git clean-filter raw-byte drift negative accepted")
+        if marker.exists():
+            raise AuditFailure("prewrite Git index audit executed clean filter")
         workflow.write_text(original, encoding="utf-8")
         attributes.unlink()
         fixture_git("-C", str(root), "config", "--unset", "filter.opaque.clean")
