@@ -359,7 +359,9 @@ def expected_diagnostic(name: str) -> str:
         targets = {
             "checkout root": Path("."),
             "scripts": Path("scripts"),
+            "contracts": Path("contracts"),
             "contracts operations": Path("contracts/operations"),
+            "docs": Path("docs"),
             "docs operations": Path("docs/operations"),
         }
         if label in targets:
@@ -369,7 +371,9 @@ def expected_diagnostic(name: str) -> str:
         targets = {
             "checkout root": Path("."),
             "scripts": Path("scripts"),
+            "contracts": Path("contracts"),
             "contracts operations": Path("contracts/operations"),
+            "docs": Path("docs"),
             "docs operations": Path("docs/operations"),
         }
         if label in targets:
@@ -6040,7 +6044,9 @@ def main() -> int:
     for label, relative in (
         ("checkout root", Path(".")),
         ("scripts", Path("scripts")),
+        ("contracts", Path("contracts")),
         ("contracts operations", Path("contracts/operations")),
+        ("docs", Path("docs")),
         ("docs operations", Path("docs/operations")),
     ):
         cases.append((
@@ -6050,7 +6056,9 @@ def main() -> int:
     for label, relative in (
         ("checkout root", Path(".")),
         ("scripts", Path("scripts")),
+        ("contracts", Path("contracts")),
         ("contracts operations", Path("contracts/operations")),
+        ("docs", Path("docs")),
         ("docs operations", Path("docs/operations")),
     ):
         cases.append((
