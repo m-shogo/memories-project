@@ -1,0 +1,22 @@
+# Supplemental OPS learning — prewrite Git metadata target path guard (2026-10-30)
+
+Append-only supplemental learning. Canonical authority remains `docs/operations/AUTONOMOUS-OPS-LEARNING.md`; mandatory contract remains `contracts/operations/autonomous-learning-system.json`. This is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, recovery objective, typed eight-domain non-resurrection, independent review, or promotion evidence.
+
+## Material failure / static audit gap
+
+- **symptom:** A repository-relative prewrite target inside a Git metadata directory (`.git/config`, `scripts/.git/hooks/pre-commit`, or the `.git` leaf itself) was accepted by the lexical path validator and could be classified using unrelated workflow path filters.
+- **evidence:** Prior `validate_relative_path` rejected empty, dot, dot-dot, backslash, control and invisible Unicode components but did not reject `.git` components. This was a verified source-level safety gap, **not** an observed production incident or executed metadata write.
+- **rootCauseOrUnknown:** Verified: path normalization checks did not distinguish repository content from Git control metadata. A valid-looking relative path was not sufficient to establish a tracked source identity.
+- **failedApproach:** Treating `.git` paths as ordinary repository-relative prospective file changes and relying on the workflow source tree to determine their risk.
+- **correction:** [`f924afdb`](https://github.com/m-shogo/memories-project/commit/f924afdbdd2f5c5170b2474e1d90a671acc88cd0) rejects exact `.git` path components before any workflow matching.
+- **recurrenceGuard:** Three self-test negatives and three real-CLI negatives assert exact failure diagnostic, nonzero exit and no stdout; a `.gitignore` positive ensures ordinary dot-prefixed source files remain permitted. The CI-bound negative suite count increased from 447 to **450**.
+- **retryCondition:** Only reconsider an exception after an independently reviewed, source-identity-aware Git metadata policy with exact CLI positive/negative controls; case-insensitive filesystem aliases remain a separate follow-up audit. Do not retry unchanged external MinIO HTTP 401, workflow write permission, canonical learning transport, or human approval blockers.
+
+## Material success / protected authority
+
+- **outcome:** Exact-source [Autonomous Learning Guard #41007978146](https://github.com/m-shogo/memories-project/actions/runs/41007978146) completed **SUCCESS** for code commit `f924afdbdd2f5c5170b2474e1d90a671acc88cd0`.
+- **evidence:** Job log confirms append-only PASS, learning contract PASS, **450** fail-closed negatives, **140** prewrite fanout synthetic cases, **1,186** helper ancestor negative mutations, entry-document PASS and read-only completion. Direct shared-entrypoint fanout remains nine workflows and `BLOCKED_KNOWN_WRITER_CAS`; this is not transitive reachability.
+- **whySafe:** Only the read-only prewrite auditor and its CI-reachable negative validator changed; no workflow YAML, production service, traffic, credentials, recovery evidence, readiness or promotion authority changed.
+- **reusableMechanism:** Reject Git control-directory components at the prewrite path-identity boundary before evaluating workflow fanout, with CLI-level diagnostics and an ordinary dotfile positive.
+- **protectedAuthorityCheck:** Git tree comparison of `9e0cd431` to `f924afdb` changed exactly two read-only Python files. All ten protected authority blobs remained unchanged: canonical learning `b809c69dda5d788245abd2a79b34c6e8c1d6c628`, learning contract `87712ea9c0e1d25dea1565f34b1c21a2b2d276db`, production status `55b3e639763601a66b5cfeb1a6ac409005a093e3`, OPS-P0-007 snapshot `dbaa36b082366737dca2461d15748103b9740ef6`, and six generation/objective/drill/evidence/non-resurrection/promotion registries. `productionDecision=NO_GO`, OPS-P0-007 `PREREQUISITES_BLOCKED`, registered/eligible generations 0/0; no human-approved current objective, executable reviewed request, request-bound recovery evidence, typed eight-domain record, final candidate or human promotion.
+- **limitations / nextSafeTarget:** Case-folding aliases such as `.GIT` and symlinked checkout-root `.git` metadata require independent fail-closed review. Upload Route Go-only CI remains MinIO-dependent and full Go/Python transitive closure remains unproven; workflow writes remain blocked by unchanged permission constraints.
