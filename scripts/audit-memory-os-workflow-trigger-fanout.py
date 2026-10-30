@@ -18,6 +18,7 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
+from unittest import mock
 
 MAX_REVIEWED_DIRECT_FANOUT = 12
 MAX_WORKFLOW_SOURCE_BYTES = 256 * 1024
@@ -346,7 +347,7 @@ def validate_relative_path(relative: str) -> None:
 
 
 def require_workflow_git_index_identity(
-        repo_root: Path, workflow_sources: list[Path]) -> None:
+        repo_root: Path, workflow_sources: list[Path]) -> dict[Path, bytes]:
     """Optional read-only proof of checkout root and clean tracked workflow tree.
 
     Does not establish transitive CI reachability or permission to write.
@@ -425,6 +426,7 @@ def require_workflow_git_index_identity(
         raise AuditFailure("prewrite workflow Git index content drift")
     # Git clean filters and checkout conversions can make git diff --quiet
     # report equality while raw workflow bytes differ from the indexed blob.
+    verified_sources: dict[Path, bytes] = {}
     for workflow in workflow_sources:
         relative = workflow.relative_to(repo_root).as_posix()
         if (workflow.is_symlink() or not workflow.is_file()
@@ -440,6 +442,10 @@ def require_workflow_git_index_identity(
         payload = f"blob {len(raw)}\0".encode("ascii") + raw
         if digest(payload).hexdigest() != expected:
             raise AuditFailure("prewrite workflow Git index raw blob drift")
+        verified_sources[workflow] = raw
+    # Consume these same verified bytes in the matcher: a second filesystem
+    # read could observe different YAML after the Git identity check.
+    return verified_sources
 
 
 def matching_workflows(repo_root: Path, relative: str, *, require_git_index: bool = False) -> list[str]:
@@ -514,8 +520,10 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
             raise AuditFailure("workflow source casefold alias")
         seen_workflow_names.add(folded)
         workflow_sources.append(entry)
-    if require_git_index:
+    verified_sources = (
         require_workflow_git_index_identity(repo_root, workflow_sources)
+        if require_git_index else None
+    )
     matches: list[str] = []
     for workflow in workflow_sources:
         if workflow.is_symlink() or not workflow.is_file():
@@ -525,7 +533,9 @@ def matching_workflows(repo_root: Path, relative: str, *, require_git_index: boo
         if workflow.stat().st_size > MAX_WORKFLOW_SOURCE_BYTES:
             raise AuditFailure("workflow source exceeds reviewed byte limit")
         try:
-            source = workflow.read_text(encoding="utf-8")
+            source = (verified_sources[workflow].decode("utf-8")
+                      if verified_sources is not None
+                      else workflow.read_text(encoding="utf-8"))
         except UnicodeError as exc:
             raise AuditFailure("workflow source invalid UTF-8") from exc
         if workflow_matches_path(source, relative):
@@ -928,6 +938,19 @@ def self_test(repo_root: Path) -> None:
         if matching_workflows(root, "scripts/a.py", require_git_index=True) != [
                 ".github/workflows/w.yml"]:
             raise AuditFailure("tracked clean Git workflow positive failed")
+        # In strict index mode, parsing must not re-read workflow YAML
+        # after the verified raw-blob snapshot was captured.
+        real_reader = Path.read_text
+
+        def forbid_second_read(path: Path, *args: object, **kwargs: object) -> str:
+            if path == workflow:
+                raise AuditFailure("workflow parsed through unverified second read")
+            return real_reader(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", forbid_second_read):
+            if matching_workflows(root, "scripts/a.py", require_git_index=True) != [
+                    ".github/workflows/w.yml"]:
+                raise AuditFailure("Git index verified-byte consumption positive failed")
         workflow.write_text('on: workflow_dispatch\n', encoding="utf-8")
         try:
             matching_workflows(root, "scripts/a.py", require_git_index=True)
