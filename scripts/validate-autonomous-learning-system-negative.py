@@ -3941,8 +3941,29 @@ def prove_prewrite_git_sha256_cli(source_root: Path) -> None:
             raise RuntimeError("prewrite SHA-256 restored source positive failed")
 
 
-def prove_import_api_minio_first_classification(source_root: Path) -> None:
-    """Go-only source paths must not be marked independent of MinIO startup."""
+def prove_import_api_minio_first_classification(source_root: Path) -> int:
+    """Prove MinIO-first Go CI also gates a transitive Upload Route source."""
+    module_line = next(
+        (line for line in (source_root / "services/import-api/go.mod").read_text(
+            encoding="utf-8"
+        ).splitlines() if line.startswith("module ")), None,
+    )
+    if module_line is None or len(module_line.split()) != 2:
+        raise RuntimeError("upload route Go module identity unavailable")
+    module = module_line.split()[1]
+    server = (source_root / "services/import-api/internal/httpserver/server.go").read_text(
+        encoding="utf-8"
+    )
+    handler = (source_root / "services/import-api/internal/httpapi/upload_handler.go").read_text(
+        encoding="utf-8"
+    )
+    live_test = (source_root / "services/import-api/internal/httpserver/server_live_test.go").read_text(
+        encoding="utf-8"
+    )
+    if (f'"{module}/internal/httpapi"' not in server
+            or f'"{module}/internal/upload"' not in handler
+            or f'"{module}/internal/upload"' not in live_test):
+        raise RuntimeError("upload route Go transitive import edge changed; review required")
     guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
     source = (source_root / ".github/workflows/import-api-security-slice.yml").read_text(
         encoding="utf-8"
@@ -3969,6 +3990,48 @@ def prove_import_api_minio_first_classification(source_root: Path) -> None:
                 or "- .github/workflows/import-api-security-slice.yml"
                    not in result.stdout.splitlines()):
             raise RuntimeError("import API MinIO-first direct CI classification failed")
+        # The focused reconciler compiles the httpserver package, whose
+        # upload handler imports internal/upload, but its path filters do
+        # not trigger on that transitive package or go.mod. Only the broad
+        # MinIO-first security slice currently reaches those changes.
+        for workflow_name in (
+            "reconcile-upload-route-authority.yml",
+            "reconcile-upload-route-authority-pr.yml",
+        ):
+            focused_source = (source_root / ".github/workflows" / workflow_name).read_text(
+                encoding="utf-8"
+            )
+            if ("services/import-api/internal/httpserver/**" not in focused_source
+                    or "services/import-api/internal/httpapi/upload_handler.go"
+                       not in focused_source
+                    or "services/import-api/internal/upload/**" in focused_source
+                    or '"services/import-api/go.mod"' in focused_source):
+                raise RuntimeError("upload route focused CI trigger gap changed; review required")
+            (workflow.parent / workflow_name).write_text(
+                focused_source, encoding="utf-8"
+            )
+        for label, relative in (
+            ("transitive upload service", "services/import-api/internal/upload/service.go"),
+            ("Go module", "services/import-api/go.mod"),
+        ):
+            if not (source_root / relative).is_file():
+                raise RuntimeError("upload route transitive source missing: " + label)
+            result = subprocess.run(
+                [sys.executable, str(guard), "--repo-root", str(root),
+                 "--path", relative, "--require-direct-push-pr-match"],
+                capture_output=True, text=True, check=False, timeout=30,
+            )
+            if (result.returncode != 2 or result.stderr
+                    or "risk: BLOCKED_KNOWN_EXTERNAL_DEPENDENCY; matched workflow count: 1"
+                       not in result.stdout.splitlines()
+                    or "- .github/workflows/import-api-security-slice.yml"
+                       not in result.stdout.splitlines()
+                    or any(name in result.stdout for name in (
+                        "reconcile-upload-route-authority.yml",
+                        "reconcile-upload-route-authority-pr.yml",
+                    ))):
+                raise RuntimeError("upload route transitive MinIO-first CI classification failed: " + label)
+    return 2
 
 
 def prove_prewrite_fanout_cli(source_root: Path) -> int:
@@ -6673,7 +6736,7 @@ def main() -> int:
     prove_upload_route_go_direct_inputs(source_root)
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
-    prove_import_api_minio_first_classification(source_root)
+    minio_transitive_cases = prove_import_api_minio_first_classification(source_root)
     head_ref_cases = prove_prewrite_git_head_ref_stability(source_root)
     git_snapshot_cases = prove_prewrite_git_metadata_stable_through_audit(source_root)
     split_index_cases = prove_prewrite_git_split_index_boundary(source_root)
@@ -6687,7 +6750,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
     return 0
 
 
