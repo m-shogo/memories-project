@@ -3450,6 +3450,7 @@ def main() -> int:
         ("deferred lambda termination", "(lambda: sys.exit(0))\n"),
         ("deferred partial termination", "functools.partial(sys.exit, 0)\n"),
         ("deferred partial function body", "def later():\n    functools.partial(sys.exit, 0)()\n"),
+        ("deferred operator call", "def later():\n    operator.call(sys.exit, 0)\n"),
         ("benign immediate lambda", "(lambda: os.getpid())()\n"),
         ("benign decorator lambda", "@(lambda fn: fn)\ndef eager():\n    pass\n"),
         ("deferred function attribute", "def later():\n    sys.modules[__name__].main = None\n"),
@@ -3697,6 +3698,8 @@ def main() -> int:
         ("sys-exit", "sys.exit(0)" + chr(10) + chr(10)),
         ("immediate-lambda-exit", "(lambda: sys.exit(0))()" + chr(10) + chr(10)),
         ("immediate-partial-exit", "functools.partial(sys.exit, 0)()" + chr(10) + chr(10)),
+        ("operator-call-exit", "operator.call(sys.exit, 0)" + chr(10) + chr(10)),
+        ("direct-call-abort", "call(os.abort)" + chr(10) + chr(10)),
         ("direct-partial-abort", "partial(os.abort)()" + chr(10) + chr(10)),
         ("function-decorator-partial-exit", "@functools.partial(sys.exit, 0)" + chr(10)
          + "def eager():" + chr(10) + "    pass" + chr(10) + chr(10)),
@@ -3736,6 +3739,8 @@ def main() -> int:
         ("sys-exit", "    sys.exit(0)" + newline),
         ("immediate-lambda-exit", "    (lambda: sys.exit(0))()" + newline),
         ("immediate-partial-exit", "    functools.partial(sys.exit, 0)()" + newline),
+        ("operator-call-exit", "    operator.call(sys.exit, 0)" + newline),
+        ("direct-call-abort", "    call(os.abort)" + newline),
         ("direct-partial-abort", "    partial(os.abort)()" + newline),
         ("class-decorator-partial-exit", "    @functools.partial(sys.exit, 0)" + newline
          + "    class Early:" + newline + "        pass" + newline),

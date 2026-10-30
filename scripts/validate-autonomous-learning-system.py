@@ -498,6 +498,14 @@ def validate(repo_root: Path) -> None:
         if isinstance(node, (ast.Return, ast.Raise)):
             return True
         if isinstance(node, ast.Call):
+            # operator.call invokes its first argument now; an exit target
+            # need not appear as the direct AST callee of this expression.
+            if ((isinstance(node.func, ast.Name) and node.func.id == "call")
+                    or (isinstance(node.func, ast.Attribute)
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id == "operator"
+                        and node.func.attr == "call")):
+                return True
             # An immediately invoked partial is an unreviewed callable
             # wrapper: its target may terminate even without a direct exit AST.
             # Mere construction remains deferred unless applied as a decorator.
@@ -770,6 +778,14 @@ def validate_prewrite_python(baseline: str, candidate: str, *,
                     isinstance(node.slice, ast.Constant) and node.slice.value == "main"):
                 return True
             if isinstance(node, ast.Call):
+                # operator.call dispatches a callable immediately; the
+                # target may be exec/import or a reflective main rebinder.
+                if ((isinstance(node.func, ast.Name) and node.func.id == "call")
+                        or (isinstance(node.func, ast.Attribute)
+                            and isinstance(node.func.value, ast.Name)
+                            and node.func.value.id == "operator"
+                            and node.func.attr == "call")):
+                    return True
                 # Builtin/module dictionary lookup can hide eager code execution.
                 # Conservative lexical rejection; this is not alias closure.
                 if isinstance(node.func, ast.Subscript):
@@ -914,6 +930,7 @@ def prove_prewrite_python_negatives() -> None:
         ("deferred qualified reflective import", 'def helper():\n    builtins.getattr(importlib, "import_module")("math")\n', (2, 0)),
         ("deferred attrgetter execution", 'def helper():\n    operator.attrgetter("import_module")(importlib)("math")\n', (2, 0)),
         ("deferred methodcaller execution", 'def helper():\n    operator.methodcaller("import_module", "math")(importlib)\n', (2, 0)),
+        ("deferred operator call", 'def helper():\n    operator.call(exec, "main = None")\n', (2, 0)),
         ("decorator lambda local main", '@(lambda fn: (main := fn))\ndef helper():\n    pass\n', (3, 0)),
     )
     for label, insertion, expected in local_controls:
@@ -1066,6 +1083,12 @@ def prove_prewrite_python_negatives() -> None:
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager operator methodcaller execution", baseline.replace(
             'if __name__', 'operator.methodcaller("import_module", "math")(importlib)\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager operator call exec", baseline.replace(
+            'if __name__', 'operator.call(exec, "main = None")\nif __name__'),
+         sha, 40, 20, "main binding shadowed", baseline),
+        ("eager direct call exec", baseline.replace(
+            'if __name__', 'call(exec, "main = None")\nif __name__'),
          sha, 40, 20, "main binding shadowed", baseline),
         ("eager direct methodcaller execution", baseline.replace(
             'if __name__', 'methodcaller("import_module", "math")(importlib)\nif __name__'),
