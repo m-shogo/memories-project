@@ -949,6 +949,17 @@ def self_test(repo_root: Path) -> None:
         else:
             raise AuditFailure("untracked Git workflow negative accepted")
         extra.unlink()
+        outside_root = Path(tmp) / "outside-worktree"
+        outside_root.mkdir()
+        fixture_git("-C", str(root), "config", "core.worktree", str(outside_root))
+        try:
+            matching_workflows(root, "scripts/a.py", require_git_index=True)
+        except AuditFailure as exc:
+            if str(exc) != "prewrite Git index checkout root mismatch":
+                raise
+        else:
+            raise AuditFailure("Git worktree root substitution negative accepted")
+        fixture_git("-C", str(root), "config", "--unset", "core.worktree")
         (root / ".git").rename(Path(tmp) / "detached-git")
         try:
             matching_workflows(root, "scripts/a.py", require_git_index=True)
@@ -1162,7 +1173,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 70 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 71 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
