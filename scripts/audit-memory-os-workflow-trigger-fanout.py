@@ -327,7 +327,10 @@ def validate_relative_path(relative: str) -> None:
                    for part in relative.split("/"))
             or any(ord(char) < 32 or 127 <= ord(char) < 160 for char in relative)
             or any(unicodedata.category(char) in {"Cf", "Cs", "Zl", "Zp"}
-                   for char in relative)):
+                   for char in relative)
+            # Canonically equivalent Unicode spellings can name the same
+            # checkout entry on normalization-aware filesystems.
+            or unicodedata.normalize("NFC", relative) != relative):
         raise AuditFailure("prewrite path must be a safe repository-relative path")
 
 
@@ -437,6 +440,8 @@ def self_test(repo_root: Path) -> None:
         ("Windows reserved CONOUT$", "docs/conout$"),
         ("Windows trailing dot", "docs/notes."),
         ("Windows trailing space", "docs/notes /readme.md"),
+        ("decomposed Latin NFC alias", "docs/cafe\u0301.md"),
+        ("decomposed Japanese NFC alias", "docs/ハ\u309aス.md"),
     ):
         try:
             validate_relative_path(path)
@@ -450,6 +455,8 @@ def self_test(repo_root: Path) -> None:
     validate_relative_path(".gitignore")
     validate_relative_path("docs/conifer.md")
     validate_relative_path("docs/company.txt")
+    validate_relative_path("docs/café.md")
+    validate_relative_path("docs/パス.md")
     cases = (
         ("BOM filtered match", '\ufeffon:\n  push:\n    paths:\n      - "scripts/a.py"\n', "scripts/a.py", True),
         ("BOM unrelated", '\ufeffon:\n  push:\n    paths:\n      - "docs/**"\n', "scripts/a.py", False),
@@ -915,7 +922,7 @@ def self_test(repo_root: Path) -> None:
             else:
                 raise AuditFailure("workflow source byte negative accepted: " + label)
     print(
-        "prewrite fanout audit PASS: " + str(len(cases) + 37 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
+        "prewrite fanout audit PASS: " + str(len(cases) + 39 + len(complex_event_cases) + len(root_event_cases) + len(bracket_cases) + len(unicode_source_cases) + len(multiline_flow_cases) + len(block_scalar_cases) + len(flow_lexical_cases))
         + " synthetic cases; operability direct matches="
         + str(len(high)) + "; rate-limit direct matches=" + str(len(rate))
         + "; entry-docs direct matches=" + str(len(entry_docs))
