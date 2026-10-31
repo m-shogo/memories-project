@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import errno
 import importlib.util
+import os
 import stat
 import tempfile
 from pathlib import Path
@@ -90,6 +91,7 @@ def prove_execution_authority(module) -> None:
         ("OLD_LABEL", module.NEW_LABEL, "old label semantic authority drift"),
         ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
         ("read", lambda _path: "", "reader execution authority drift"),
+        ("read_regular_bytes", lambda _path: None, "pinned regular reader execution authority drift"),
         ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
         ("atomic_write_text", lambda *_args: None, "atomic text writer execution authority drift"),
         ("write_if_changed", lambda *_args: False, "conditional writer execution authority drift"),
@@ -503,6 +505,77 @@ def prove_atomic_short_write_rejection(module) -> None:
             require(after == before,
                     f"{label} stream left temporary residue")
 
+
+def prove_nonblocking_special_file_reads(module) -> None:
+    """FIFO and leaf-alias inputs cannot stall snapshot, write or rollback."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fifo-") as temp_dir:
+        root = Path(temp_dir)
+        fifo = root / "authority.fifo"
+        os.mkfifo(fifo)
+        regular = root / "regular.txt"
+        regular.write_bytes(b"regular")
+        canary = root / "canary.txt"
+        canary.write_bytes(b"canary")
+        alias = root / "alias.txt"
+        alias.symlink_to(canary)
+        require(module.read_regular_bytes(regular) == b"regular",
+                "pinned regular reader rejected an ordinary file")
+        require(module.read_regular_bytes(root / "missing.txt") is None,
+                "pinned regular reader rejected an absent file")
+        for unsafe in (fifo, root, alias):
+            try:
+                module.read_regular_bytes(unsafe)
+            except module.ReconcileFailure as exc:
+                require(("nonregular rollback/write path" in str(exc)
+                         or "symlink rollback/write path" in str(exc)),
+                        f"pinned regular reader rejected {unsafe.name} for unrelated reason: {exc}")
+            else:
+                raise Fail(f"pinned regular reader accepted special path: {unsafe.name}")
+
+        module.ROLLBACK_SNAPSHOT = {fifo: b"snapshot"}
+        module.ROLLBACK_WRITTEN.clear()
+        try:
+            module.atomic_write_bytes(fifo, b"partial")
+        except module.ReconcileFailure as exc:
+            require("nonregular rollback/write path" in str(exc),
+                    f"atomic FIFO write rejected for unrelated reason: {exc}")
+        else:
+            raise Fail("atomic writer blocked or accepted a FIFO snapshot target")
+        module.ROLLBACK_WRITTEN[fifo] = b"owned"
+        try:
+            module.rollback_authority_files()
+        except module.ReconcileFailure as exc:
+            require("nonregular rollback/write path" in str(exc),
+                    f"rollback FIFO read rejected for unrelated reason: {exc}")
+        else:
+            raise Fail("rollback blocked or accepted a FIFO owned target")
+
+        previous_scan = module.current_authority_files
+        previous_fixed = {
+            name: getattr(module, name)
+            for name in ("OBSERVABILITY", "SERVER", "LIVE_TEST", "ROUTE_TEST")
+        }
+        module.current_authority_files = lambda: [fifo]
+        for name in previous_fixed:
+            setattr(module, name, regular)
+        try:
+            try:
+                module.snapshot_authority_files()
+            except module.ReconcileFailure as exc:
+                require("nonregular rollback/write path" in str(exc),
+                        f"snapshot FIFO read rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("snapshot blocked or accepted a FIFO target")
+        finally:
+            module.current_authority_files = previous_scan
+            for name, value in previous_fixed.items():
+                setattr(module, name, value)
+            module.ROLLBACK_SNAPSHOT = None
+            module.ROLLBACK_WRITTEN.clear()
+        require(canary.read_bytes() == b"canary",
+                "special-file read modified an external canary")
+        require(fifo.is_fifo(), "special-file negative changed FIFO identity")
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -578,6 +651,7 @@ def main() -> int:
     prove_atomic_fdopen_failure_cleanup(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)
+    prove_nonblocking_special_file_reads(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

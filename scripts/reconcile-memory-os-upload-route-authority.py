@@ -155,6 +155,43 @@ def read(path: Path) -> str:
         raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
 
 
+def read_regular_bytes(path: Path) -> bytes | None:
+    """Read only a pinned regular file; never block on a FIFO or follow a leaf link."""
+    for ancestor in (path, *path.parents):
+        require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
+    try:
+        before = path.lstat()
+    except FileNotFoundError:
+        return None
+    require(stat.S_ISREG(before.st_mode), f"nonregular rollback/write path: {path}")
+    for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
+        value = getattr(os, flag, None)
+        require(type(value) is int and value > 0,
+                f"unsupported safe authority read flag: {flag}")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        pinned = os.fstat(descriptor)
+        require(
+            stat.S_ISREG(pinned.st_mode)
+            and (pinned.st_dev, pinned.st_ino) == (before.st_dev, before.st_ino),
+            f"concurrent authority drift during read: {path}",
+        )
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        require(
+            (pinned.st_size, pinned.st_mtime_ns) == (after.st_size, after.st_mtime_ns),
+            f"concurrent authority drift during read: {path}",
+        )
+        return b"".join(chunks)
+    finally:
+        os.close(descriptor)
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     # Reject path aliases before staging bytes; parent symlinks can redirect
     # temporary-file creation outside the reviewed authority scope.
@@ -163,7 +200,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     if ROLLBACK_SNAPSHOT is not None:
         require(path in ROLLBACK_SNAPSHOT, f"untracked rollback/write path: {path}")
         expected = ROLLBACK_WRITTEN.get(path, ROLLBACK_SNAPSHOT[path])
-        current = path.read_bytes() if path.exists() else None
+        current = read_regular_bytes(path)
         require(current == expected, f"concurrent authority drift before write: {path}")
     # mkstemp defaults to 0600; retain the reviewed mode of existing files.
     # Bind publication to the exact target observed before staging. Atomic
@@ -175,7 +212,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     if initial_stat is not None:
         require(stat.S_ISREG(initial_stat.st_mode),
                 f"nonregular rollback/write path: {path}")
-    initial_bytes = path.read_bytes() if initial_stat is not None else None
+    initial_bytes = read_regular_bytes(path)
     original_mode = stat.S_IMODE(initial_stat.st_mode) if initial_stat is not None else None
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -219,7 +256,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 and stat.S_ISREG(current_stat.st_mode)
                 and (current_stat.st_dev, current_stat.st_ino, current_stat.st_mode)
                 == (initial_stat.st_dev, initial_stat.st_ino, initial_stat.st_mode)
-                and path.read_bytes() == initial_bytes,
+                and read_regular_bytes(path) == initial_bytes,
                 f"concurrent authority drift before publication: {path}",
             )
         os.replace(temporary, path)
@@ -285,7 +322,7 @@ def current_authority_files() -> list[Path]:
 def snapshot_authority_files() -> None:
     global ROLLBACK_SNAPSHOT
     paths = set(current_authority_files()) | {OBSERVABILITY, SERVER, LIVE_TEST, ROUTE_TEST}
-    ROLLBACK_SNAPSHOT = {path: path.read_bytes() if path.exists() else None for path in paths}
+    ROLLBACK_SNAPSHOT = {path: read_regular_bytes(path) for path in paths}
 
 
 def rollback_authority_files() -> None:
@@ -300,7 +337,7 @@ def rollback_authority_files() -> None:
     # Unchanged snapshot entries belong to their current owners, not rollback.
     for path, expected in ROLLBACK_WRITTEN.items():
         require(path in ROLLBACK_SNAPSHOT, f"untracked rollback path: {path}")
-        current = path.read_bytes() if path.exists() else None
+        current = read_regular_bytes(path)
         require(current == expected, f"concurrent authority drift before rollback: {path}")
     for path, original in ROLLBACK_SNAPSHOT.items():
         if path not in ROLLBACK_WRITTEN:
@@ -339,6 +376,7 @@ _CANONICAL_KNOWN_SHAPE_FUNCTION = KNOWN_SHAPE_FUNCTION
 _CANONICAL_ROUTE_TEST_CONTENT = ROUTE_TEST_CONTENT
 _CANONICAL_REQUIRE = require
 _CANONICAL_READ = read
+_CANONICAL_READ_REGULAR_BYTES = read_regular_bytes
 _CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 _CANONICAL_ATOMIC_WRITE_TEXT = atomic_write_text
 _CANONICAL_WRITE_IF_CHANGED = write_if_changed
@@ -386,6 +424,7 @@ def enforce_execution_authorities() -> None:
     helpers = (
         (require, _CANONICAL_REQUIRE, "require"),
         (read, _CANONICAL_READ, "reader"),
+        (read_regular_bytes, _CANONICAL_READ_REGULAR_BYTES, "pinned regular reader"),
         (atomic_write_bytes, _CANONICAL_ATOMIC_WRITE_BYTES, "atomic byte writer"),
         (atomic_write_text, _CANONICAL_ATOMIC_WRITE_TEXT, "atomic text writer"),
         (write_if_changed, _CANONICAL_WRITE_IF_CHANGED, "conditional writer"),
