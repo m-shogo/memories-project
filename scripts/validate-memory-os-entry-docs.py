@@ -2917,6 +2917,17 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        # The ctime-only mutation negatives must stay live. Inode, size,
+        # mode and mtime alone cannot detect a same-size rewrite with restored
+        # mtime during a pinned read or staged publication.
+        if name in ("prove_nonblocking_special_file_reads",
+                    "prove_atomic_poststage_drift_rejection"):
+            ctime_checks = [
+                node for node in ast.walk(proof)
+                if isinstance(node, ast.Attribute) and node.attr == "st_ctime_ns"
+            ]
+            if len(ctime_checks) < 2:
+                return False
     return True
 
 
@@ -2928,10 +2939,23 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         failures.append("upload-route learning scan guard missing or symlinked")
         return
     try:
-        if not has_upload_route_symlink_negative_binding(
-                guard.read_text(encoding="utf-8")):
+        negative_source = guard.read_text(encoding="utf-8")
+        if not has_upload_route_symlink_negative_binding(negative_source):
             failures.append("upload-route symlink rollback negative is not CI-bound")
             return
+        for original, replacement in (
+            ("observed.st_ctime_ns != previous.st_ctime_ns",
+             "observed.st_mtime_ns != previous.st_mtime_ns"),
+            ("observed.st_ctime_ns != baseline.st_ctime_ns",
+             "observed.st_mtime_ns != baseline.st_mtime_ns"),
+        ):
+            if negative_source.count(original) != 1:
+                failures.append("upload-route ctime-only negative fixture drift")
+                return
+            if has_upload_route_symlink_negative_binding(
+                    negative_source.replace(original, replacement, 1)):
+                failures.append("upload-route ctime-only negative mutation accepted")
+                return
     except OSError:
         failures.append("upload-route symlink rollback negative unavailable")
         return
