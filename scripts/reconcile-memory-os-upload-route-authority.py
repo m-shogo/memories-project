@@ -275,6 +275,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     )
     temporary = Path(temporary_name)
     parent_fd: int | None = None
+    published = False
     try:
         # fdopen owns the descriptor only after it returns successfully.
         # Close an untransferred descriptor if stream construction fails.
@@ -297,7 +298,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             staged_stat = os.fstat(handle.fileno())
         # A bounded final compare rejects edits, inode swaps, mode changes,
         # symlink swaps and new-file races during temporary-file staging.
-        # This is not a dir_fd transaction or protection against a later swap.
+        # This is not a complete directory transaction or atomic leaf CAS.
         for ancestor in (path, *path.parents):
             require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
         try:
@@ -358,6 +359,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
         os.replace(temporary.name, path.name,
                    src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        published = True
         try:
             live_parent = path.parent.lstat()
         except OSError:
@@ -379,7 +381,10 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 temporary.unlink(missing_ok=True)
         else:
             try:
-                os.unlink(temporary.name, dir_fd=parent_fd)
+                # Successful rename consumed the staged name. Never unlink a
+                # new independent file that reuses it after publication.
+                if not published:
+                    os.unlink(temporary.name, dir_fd=parent_fd)
             except FileNotFoundError:
                 pass
             finally:

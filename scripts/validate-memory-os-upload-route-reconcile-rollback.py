@@ -437,6 +437,35 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
 
 
 
+def prove_postpublication_temp_reuse_preserved(module) -> None:
+    """A completed rename must not delete an independent reused temp name."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-temp-reuse-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original")
+        original_replace = module.os.replace
+        reused = []
+
+        def replace_then_reuse(source, destination, *args, **kwargs):
+            result = original_replace(source, destination, *args, **kwargs)
+            if Path(destination) == target or destination == target.name:
+                independent = root / Path(source).name
+                independent.write_bytes(b"independent-temp-canary")
+                reused.append(independent)
+            return result
+
+        module.os.replace = replace_then_reuse
+        try:
+            module.atomic_write_bytes(target, b"published")
+        finally:
+            module.os.replace = original_replace
+        require(target.read_bytes() == b"published",
+                "published authority bytes were not committed")
+        require(len(reused) == 1, "postpublication temp reuse was not injected")
+        require(reused[0].read_bytes() == b"independent-temp-canary",
+                "successful publication cleanup removed an independent file")
+
+
 def prove_atomic_parent_publication_capability(module) -> None:
     """A parent swap at replace must not overwrite an external authority."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-publication-") as temp_dir:
@@ -1122,6 +1151,7 @@ def main() -> int:
     prove_atomic_mode_preservation(module)
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
+    prove_postpublication_temp_reuse_preserved(module)
     prove_atomic_parent_publication_capability(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)

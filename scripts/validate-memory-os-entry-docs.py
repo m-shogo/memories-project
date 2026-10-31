@@ -2880,6 +2880,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_rollback_write_ownership", "prove_atomic_mode_preservation",
              "prove_atomic_mode_failure_cleanup",
              "prove_atomic_fdopen_failure_cleanup",
+             "prove_postpublication_temp_reuse_preserved",
              "prove_atomic_parent_publication_capability",
              "prove_atomic_poststage_drift_rejection",
              "prove_atomic_short_write_rejection",
@@ -2919,6 +2920,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
+                        "prove_postpublication_temp_reuse_preserved",
                         "prove_atomic_parent_publication_capability",
                         "prove_atomic_poststage_drift_rejection",
                         "prove_atomic_short_write_rejection",
@@ -2929,6 +2931,15 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_postpublication_temp_reuse_preserved":
+            proof_source = ast.unparse(proof)
+            if not all(fragment in proof_source for fragment in (
+                "module.os.replace = replace_then_reuse",
+                "module.os.replace = original_replace",
+                "independent.write_bytes(b'independent-temp-canary')",
+                "reused[0].read_bytes() == b'independent-temp-canary'",
+            )):
+                return False
         if name == "prove_atomic_parent_publication_capability":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3187,6 +3198,8 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
         "os.unlink(temporary.name, dir_fd=parent_fd)",
+        "published = True",
+        "if not published:",
         "pinned_parent.st_dev", "pinned_parent.st_ino",
         "live_parent.st_dev", "live_parent.st_ino",
         "concurrent publication parent drift",
@@ -3243,6 +3256,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '("root-symlink", "ancestor-symlink")'),
             ('"docs/operations/learning-alias.txt"',
              '"docs/operations/learning-alias.md"'),
+            ("module.os.replace = replace_then_reuse",
+             "module.os.replace = original_replace"),
             ("module.os.replace = swap_parent_at_replace",
              "module.os.replace = original_replace"),
             ("module.os.unlink = swap_parent_at_unlink",
@@ -3333,6 +3348,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "os.replace(temporary, path)"),
             ("os.unlink(temporary.name, dir_fd=parent_fd)",
              "temporary.unlink()"),
+            ("if not published:", "if True:"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
