@@ -3023,6 +3023,33 @@ def has_upload_route_bounded_read_binding(source: str) -> bool:
     return preflight and streaming
 
 
+def has_upload_route_single_link_binding(source: str) -> bool:
+    """Require single-link identity at preflight, pinned FD and final live leaf."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    functions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "read_regular_bytes"
+    ]
+    if len(functions) != 1:
+        return False
+    checked: set[str] = set()
+    for node in ast.walk(functions[0]):
+        if (isinstance(node, ast.Compare) and len(node.ops) == 1
+                and isinstance(node.ops[0], ast.Eq)
+                and len(node.comparators) == 1
+                and isinstance(node.comparators[0], ast.Constant)
+                and type(node.comparators[0].value) is int
+                and node.comparators[0].value == 1
+                and isinstance(node.left, ast.Attribute)
+                and node.left.attr == "st_nlink"
+                and isinstance(node.left.value, ast.Name)):
+            checked.add(node.left.value.id)
+    return checked == {"before", "pinned", "live"}
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
@@ -3069,6 +3096,19 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         if not has_upload_route_bounded_read_binding(reader_source):
             failures.append("upload-route pinned reader bound missing")
             return
+        if not has_upload_route_single_link_binding(reader_source):
+            failures.append("upload-route pinned reader single-link identity missing")
+            return
+        for original, replacement in (
+            ("before.st_nlink == 1", "before.st_nlink == 2"),
+            ("pinned.st_nlink == 1", "pinned.st_nlink == 2"),
+            ("live.st_nlink == 1", "live.st_nlink == 2"),
+        ):
+            if (reader_source.count(original) != 1
+                    or has_upload_route_single_link_binding(
+                        reader_source.replace(original, replacement, 1))):
+                failures.append("upload-route single-link mutation accepted: " + original)
+                return
         for original, replacement in (
             ("before.st_size <= MAX_AUTHORITY_READ_BYTES", "before.st_size < 0"),
             ("total <= MAX_AUTHORITY_READ_BYTES", "total < 0"),

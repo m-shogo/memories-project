@@ -641,6 +641,33 @@ def prove_nonblocking_special_file_reads(module) -> None:
                 and observed.st_mtime_ns == baseline.st_mtime_ns
                 and observed.st_ctime_ns != baseline.st_ctime_ns,
                 "pinned reader ctime-only fixture did not isolate ctime drift")
+        hardlink = root / "hardlink.txt"
+        os.link(regular, hardlink)
+        try:
+            for candidate in (regular, hardlink):
+                for reader in (module.read_regular_bytes, module.read):
+                    try:
+                        reader(candidate)
+                    except module.ReconcileFailure as exc:
+                        require("hardlinked rollback/write path" in str(exc),
+                                f"hardlinked reader rejected for unrelated reason: {exc}")
+                    else:
+                        raise Fail("pinned reader accepted a hardlinked authority")
+            module.ROLLBACK_SNAPSHOT = {regular: b"changed"}
+            module.ROLLBACK_WRITTEN.clear()
+            try:
+                module.atomic_write_bytes(regular, b"unreviewed")
+            except module.ReconcileFailure as exc:
+                require("hardlinked rollback/write path" in str(exc),
+                        f"hardlinked writer rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic writer accepted a hardlinked authority")
+        finally:
+            module.ROLLBACK_SNAPSHOT = None
+            module.ROLLBACK_WRITTEN.clear()
+            hardlink.unlink()
+        require(module.read_regular_bytes(regular) == b"changed",
+                "hardlink removal did not restore a single-name authority")
         require(module.read_regular_bytes(root / "missing.txt") is None,
                 "pinned regular reader rejected an absent file")
         for unsafe in (fifo, root, alias):

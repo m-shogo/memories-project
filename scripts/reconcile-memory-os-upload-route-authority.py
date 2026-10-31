@@ -173,6 +173,7 @@ def read_regular_bytes(path: Path) -> bytes | None:
     except FileNotFoundError:
         return None
     require(stat.S_ISREG(before.st_mode), f"nonregular rollback/write path: {path}")
+    require(before.st_nlink == 1, f"hardlinked rollback/write path: {path}")
     require(before.st_size <= MAX_AUTHORITY_READ_BYTES,
             f"oversized rollback/write path: {path}")
     for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
@@ -184,6 +185,7 @@ def read_regular_bytes(path: Path) -> bytes | None:
         pinned = os.fstat(descriptor)
         require(
             stat.S_ISREG(pinned.st_mode)
+            and pinned.st_nlink == 1
             and (pinned.st_dev, pinned.st_ino) == (before.st_dev, before.st_ino),
             f"concurrent authority drift during read: {path}",
         )
@@ -213,6 +215,7 @@ def read_regular_bytes(path: Path) -> bytes | None:
             raise ReconcileFailure(f"concurrent authority drift during read: {path}") from exc
         require(
             stat.S_ISREG(live.st_mode)
+            and live.st_nlink == 1
             and (live.st_dev, live.st_ino, live.st_mode, live.st_size,
                  live.st_mtime_ns, live.st_ctime_ns)
             == (after.st_dev, after.st_ino, after.st_mode, after.st_size,
