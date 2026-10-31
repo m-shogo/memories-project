@@ -3231,6 +3231,9 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     "poststage parent permission drift was overwritten")):
             return False
         if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()", "unverified-owned", "unverified-reused", "scenario.startswith(\'unverified-\')", "staged.read_bytes() == b\'\'", "staged.stat().st_mode")): return False
+        if name == "prove_atomic_initial_fstat_failure_cleanup":
+            scenario_loops = [node for node in ast.walk(proof) if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "scenario" and isinstance(node.iter, ast.Tuple)]
+            if len(scenario_loops) != 1 or tuple(item.value for item in scenario_loops[0].iter.elts if isinstance(item, ast.Constant)) != ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused"): return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
