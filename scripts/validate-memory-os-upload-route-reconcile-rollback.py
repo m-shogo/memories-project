@@ -1468,7 +1468,10 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 module.os.close = original_close
 
             require(len(opened) >= 2, "pinned identity fault missed parent traversal")
-            for earlier in opened[:-1]:
+            # Numeric FDs can be reused during successful ancestor handoffs.
+            # Only distinct numbers other than the currently owned final FD
+            # are eligible for an EBADF assertion.
+            for earlier in set(opened[:-1]) - {opened[-1]}:
                 try:
                     original_fstat(earlier)
                 except OSError as exc:
