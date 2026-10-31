@@ -507,7 +507,7 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
 
 def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
     """Recover only a descriptor-owned stage; never delete a reused name."""
-    for scenario in ("recover", "reused-unlinked", "reused-linked"):
+    for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-initial-fstat-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -524,9 +524,9 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 return fd, name
 
             def fail_initial_stage_fstat(fd):
-                if captured and fd == captured[0][0] and not tripped:
+                if captured and fd == captured[0][0] and (not tripped or scenario.startswith("unverified-")):
                     tripped.append(True)
-                    if scenario != "recover":
+                    if scenario in ("reused-unlinked", "reused-linked", "unverified-reused"):
                         independent = root / captured[0][1]
                         if scenario == "reused-linked":
                             os.link(independent, root / "retained-stage-alias.txt")
@@ -548,7 +548,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             finally:
                 module.create_pinned_stage = original_stage
                 module.os.fstat = original_fstat
-            require(len(captured) == 1 and tripped == [True],
+            require(len(captured) == 1 and tripped == ([True, True] if scenario.startswith("unverified-") else [True]),
                     "initial staged fstat injection did not reach owned descriptor")
             try:
                 original_fstat(captured[0][0])
@@ -563,12 +563,17 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             require(stat.S_IMODE(target.stat().st_mode) == 0o755,
                     "initial staged fstat failure changed original authority mode")
             staged = root / captured[0][1]
-            if scenario != "recover":
+            if scenario in ("reused-unlinked", "reused-linked", "unverified-reused"):
                 require(staged.read_bytes() == b"independent-initial-fstat-canary",
                         "initial staged fstat cleanup deleted independent name owner")
                 if scenario == "reused-linked":
                     require((root / "retained-stage-alias.txt").read_bytes() == b"",
                             "initial staged fstat cleanup changed retained original inode")
+            elif scenario == "unverified-owned":
+                require(staged.read_bytes() == b"",
+                        "persistent fstat failure removed unverified owned stage")
+                require(stat.S_IMODE(staged.stat().st_mode) == 0o600,
+                        "persistent fstat failure changed unverified stage mode")
             else:
                 require(not staged.exists(),
                         "initial staged fstat cleanup left recoverable owned stage")

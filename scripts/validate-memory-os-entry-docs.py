@@ -3230,7 +3230,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
                     "poststage parent permission drift was overwritten")):
             return False
-        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()")): return False
+        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()", "unverified-owned", "unverified-reused", "scenario.startswith(\'unverified-\')", "staged.read_bytes() == b\'\'", "staged.stat().st_mode")): return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3669,6 +3669,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "module.os.dup = original_dup"),
             ("module.os.dup = reject_dup",
              "module.os.dup = original_dup"),
+            ('for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused")', 'for scenario in ("recover", "reused-unlinked", "reused-linked")'),
             ('"contracts/operations/production-operability-status.json"',
              '"contracts/operations/production-operability-status.txt"'),
             ("module.os.open = redirect_leaf_before_open",
