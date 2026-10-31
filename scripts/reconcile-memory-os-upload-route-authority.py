@@ -184,7 +184,8 @@ def read_regular_bytes(path: Path) -> bytes | None:
             chunks.append(chunk)
         after = os.fstat(descriptor)
         require(
-            (pinned.st_size, pinned.st_mtime_ns) == (after.st_size, after.st_mtime_ns),
+            (pinned.st_size, pinned.st_mtime_ns, pinned.st_ctime_ns)
+            == (after.st_size, after.st_mtime_ns, after.st_ctime_ns),
             f"concurrent authority drift during read: {path}",
         )
         return b"".join(chunks)
@@ -254,8 +255,10 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             require(
                 current_stat is not None
                 and stat.S_ISREG(current_stat.st_mode)
-                and (current_stat.st_dev, current_stat.st_ino, current_stat.st_mode)
-                == (initial_stat.st_dev, initial_stat.st_ino, initial_stat.st_mode)
+                and (current_stat.st_dev, current_stat.st_ino, current_stat.st_mode,
+                     current_stat.st_ctime_ns)
+                == (initial_stat.st_dev, initial_stat.st_ino, initial_stat.st_mode,
+                    initial_stat.st_ctime_ns)
                 and read_regular_bytes(path) == initial_bytes,
                 f"concurrent authority drift before publication: {path}",
             )
