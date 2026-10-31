@@ -655,7 +655,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
 
     # An unlink syscall can fail before or after removing its own name.
     # Preserve the primary publication error without claiming cleanup succeeded.
-    for scenario in ("before-unlink", "after-unlink"):
+    for unlink_scenario in ("before-unlink", "after-unlink"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-unlink-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -681,7 +681,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_cleanup_unlink(candidate, *args, **kwargs):
                 if (replace_failed[0] and staged_names and candidate == staged_names[0]
                         and kwargs.get("dir_fd") is not None):
-                    if scenario == "after-unlink":
+                    if unlink_scenario == "after-unlink":
                         original_unlink(candidate, *args, **kwargs)
                     raise PermissionError("synthetic private cleanup unlink failure")
                 return original_unlink(candidate, *args, **kwargs)
@@ -711,7 +711,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     and canary.read_bytes() == b"independent",
                     "cleanup unlink failure changed original or external authority")
             staged = root / staged_names[0]
-            if scenario == "before-unlink":
+            if unlink_scenario == "before-unlink":
                 require(staged.read_bytes() == b"unpublished",
                         "pre-unlink fault removed the retained stage")
             else:

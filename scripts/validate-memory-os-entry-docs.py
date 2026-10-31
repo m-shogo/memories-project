@@ -3233,7 +3233,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()", "unverified-owned", "unverified-reused", "scenario.startswith(\'unverified-\')", "staged.read_bytes() == b\'\'", "staged.stat().st_mode", "module.open_pinned_parent = capture_parent", "original_fstat(pinned_parents[0])", "initial staged fstat failure leaked parent descriptor", "module.os.stat = fail_cleanup_stat", "cleanup stat failure removed an unverified private stage", "unverified stage retention lacked primary-error diagnostic", "module.os.unlink = fail_cleanup_unlink", "cleanup unlink failure lacked bounded uncertainty diagnostic", "post-unlink fault left a stage despite actual removal")): return False
         if name == "prove_atomic_initial_fstat_failure_cleanup":
             scenario_loops = [node for node in ast.walk(proof) if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "scenario" and isinstance(node.iter, ast.Tuple)]
-            if len(scenario_loops) != 1 or tuple(item.value for item in scenario_loops[0].iter.elts if isinstance(item, ast.Constant)) != ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused"): return False
+            unlink_loops = [node for node in ast.walk(proof) if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "unlink_scenario" and isinstance(node.iter, ast.Tuple)]
+            if len(scenario_loops) != 1 or tuple(item.value for item in scenario_loops[0].iter.elts if isinstance(item, ast.Constant)) != ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused") or len(unlink_loops) != 1 or tuple(item.value for item in unlink_loops[0].iter.elts if isinstance(item, ast.Constant)) != ("before-unlink", "after-unlink"): return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3670,9 +3671,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "module.os.replace = original_replace"),
             ("module.os.dup = capture_stage_pin",
              "module.os.dup = original_dup"),
-            ("module.os.dup = reject_dup",
-             "module.os.dup = original_dup"), ("original_fstat(pinned_parents[0])", "original_fstat(-1)"), ("module.os.stat = fail_cleanup_stat", "module.os.stat = original_stat"), ("module.os.unlink = fail_cleanup_unlink", "module.os.unlink = original_unlink"),
-            ('for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused")', 'for scenario in ("recover", "reused-unlinked", "reused-linked")'),
+            ("module.os.dup = reject_dup", "module.os.dup = original_dup"), ("original_fstat(pinned_parents[0])", "original_fstat(-1)"), ("module.os.stat = fail_cleanup_stat", "module.os.stat = original_stat"), ("module.os.unlink = fail_cleanup_unlink", "module.os.unlink = original_unlink"),
+            ('for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused")', 'for scenario in ("recover", "reused-unlinked", "reused-linked")'), ('for unlink_scenario in ("before-unlink", "after-unlink")', 'for unlink_scenario in ("before-unlink",)'),
             ('"contracts/operations/production-operability-status.json"',
              '"contracts/operations/production-operability-status.txt"'),
             ("module.os.open = redirect_leaf_before_open",
