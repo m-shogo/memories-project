@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (34 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (35 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -44,9 +44,34 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
     return result
 
 
+def reject_local_grafts(root: Path) -> None:
+    """A legacy info/grafts file can rewrite ancestry despite no-replace mode."""
+    raw = git(root, "rev-parse", "--git-path", "info/grafts").stdout
+    try:
+        location = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise GuardFailure("unreviewed Git graft path") from None
+    if (not location.endswith("\n") or location.count("\n") != 1
+            or "\0" in location or not location[:-1]):
+        raise GuardFailure("unreviewed Git graft path")
+    path = Path(location[:-1])
+    if not path.is_absolute():
+        path = root / path
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError:
+        raise GuardFailure("unreadable Git graft path") from None
+    raise GuardFailure("unreviewed Git grafts forbidden")
+
+
+
+
 def check_history(root: Path, baseline: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", baseline):
         raise GuardFailure("invalid immutable history baseline")
+    reject_local_grafts(root)
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise GuardFailure("invalid checked-out commit")
@@ -354,6 +379,43 @@ def self_test() -> None:
         expect_guard_failure(
             lambda: check_history(root, baseline),
             "supplemental history is not append-only", "git-replace-graft",
+        )
+    finally:
+        temp.cleanup()
+
+
+    # A deprecated local graft file is not disabled by GIT_NO_REPLACE_OBJECTS.
+    # A forged HEAD -> baseline parent can hide a modified-then-restored record.
+    root, baseline, temp = fixture("modify", SCOPES[0])
+    try:
+        old = root / SCOPES[0] / "original.md"
+        old.write_text("immutable\n", encoding="utf-8")
+        git(root, "commit", "-qam", "restore original record")
+        head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        git(root, "config", "advice.graftFileDeprecated", "false")
+        location = git(root, "rev-parse", "--git-path", "info/grafts").stdout.decode(
+            "utf-8").strip()
+        grafts = Path(location)
+        if not grafts.is_absolute():
+            grafts = root / grafts
+        grafts.write_text(head + " " + baseline + "\n", encoding="utf-8")
+        # Prove the mutation is actually hidden from naive ancestry traversal.
+        untrusted_env = {key: value for key, value in os.environ.items()
+                         if not key.startswith("GIT_")}
+        untrusted_env.update(GIT_NO_REPLACE_OBJECTS="1",
+                             GIT_CONFIG_NOSYSTEM="1",
+                             GIT_CONFIG_GLOBAL=os.devnull)
+        masked = subprocess.run(
+            ["git", "-C", str(root), "rev-list", "--reverse",
+             baseline + ".." + head],
+            env=untrusted_env, capture_output=True, timeout=20, check=False,
+        )
+        if (masked.returncode != 0 or masked.stderr
+                or masked.stdout != head.encode("ascii") + b"\n"):
+            raise GuardFailure("Git graft negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "unreviewed Git grafts forbidden", "git-graft-hidden-restore",
         )
     finally:
         temp.cleanup()
