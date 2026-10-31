@@ -103,6 +103,18 @@ def check_history(root: Path, baseline: str) -> None:
     if ancestry.returncode != 0 or ancestry.stderr:
         raise GuardFailure("immutable learning ancestry inspection unavailable")
     commits = git(root, "rev-list", "--reverse", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
+    # A syntactically valid rev-list stream can still omit, duplicate or
+    # substitute commits. Independently count the same immutable range and
+    # require its terminal commit to be the captured HEAD.
+    count_raw = git(root, "rev-list", "--count", f"{baseline}..{head}").stdout
+    if (type(count_raw) is not bytes or
+            re.fullmatch(rb"(?:0|[1-9][0-9]{0,18})\n", count_raw) is None):
+        raise GuardFailure("malformed supplemental history count")
+    expected_count = int(count_raw[:-1])
+    if (expected_count != len(commits) or len(set(commits)) != len(commits)
+            or (head != baseline and (not commits or commits[-1] != head))
+            or (head == baseline and commits)):
+        raise GuardFailure("supplemental history enumeration incomplete")
     seen: dict[bytes, bytes] = {}
     for commit in commits:
         parents = git(root, "rev-list", "--parents", "-n", "1", commit).stdout.decode("ascii").split()
@@ -396,6 +408,47 @@ def self_test() -> None:
         if not moved or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != bad_head:
             raise GuardFailure("supplemental moving-HEAD negative control ineffective")
         git(root, "update-ref", "HEAD", safe_head)
+        check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+    # A well-formed but incomplete Git enumeration must not be accepted.
+    # All mutations are confined to a disposable repository and mocked stdout.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        original_git = git
+        actual_head = original_git(root, "rev-parse", "HEAD").stdout.strip()
+        for label, command, payload, expected in (
+            ("omitted-commit", ("rev-list", "--reverse"), b"",
+             "supplemental history enumeration incomplete"),
+            ("duplicated-commit", ("rev-list", "--reverse"),
+             actual_head + b"\n" + actual_head + b"\n",
+             "supplemental history enumeration incomplete"),
+            ("substituted-commit", ("rev-list", "--reverse"),
+             baseline.encode("ascii") + b"\n",
+             "supplemental history enumeration incomplete"),
+            ("false-count", ("rev-list", "--count"), b"0\n",
+             "supplemental history enumeration incomplete"),
+            ("space-count", ("rev-list", "--count"), b"1 \n",
+             "malformed supplemental history count"),
+            ("leading-zero-count", ("rev-list", "--count"), b"01\n",
+             "malformed supplemental history count"),
+            ("crlf-count", ("rev-list", "--count"), b"1\r\n",
+             "malformed supplemental history count"),
+            ("nonbytes-count", ("rev-list", "--count"), "1\n",
+             "malformed supplemental history count"),
+        ):
+            def tampered_enumeration(path: Path, *args: str, **kwargs):
+                result = original_git(path, *args, **kwargs)
+                if path == root and args[:2] == command:
+                    return subprocess.CompletedProcess(result.args, 0, payload, b"")
+                return result
+
+            with patch(__name__ + ".git", side_effect=tampered_enumeration):
+                expect_guard_failure(
+                    lambda: check_history(root, baseline), expected, label,
+                )
         check_history(root, baseline)
     finally:
         temp.cleanup()

@@ -2924,6 +2924,34 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
             and len(type_checks) == 3)
 
 
+def supplemental_history_enumeration_bound(source: str) -> bool:
+    """Independently bind complete-range count and terminal HEAD proof."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    checks = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name == "check_history"]
+    if len(checks) != 1:
+        return False
+    reviewed = r'''count_raw = git(root, "rev-list", "--count", f"{baseline}..{head}").stdout
+if (type(count_raw) is not bytes or
+        re.fullmatch(rb"(?:0|[1-9][0-9]{0,18})\n", count_raw) is None):
+    raise GuardFailure("malformed supplemental history count")
+expected_count = int(count_raw[:-1])
+if (expected_count != len(commits) or len(set(commits)) != len(commits)
+        or (head != baseline and (not commits or commits[-1] != head))
+        or (head == baseline and commits)):
+    raise GuardFailure("supplemental history enumeration incomplete")
+'''
+    expected = [ast.dump(node, include_attributes=False)
+                for node in ast.parse(reviewed).body]
+    actual = [ast.dump(node, include_attributes=False)
+              for node in checks[0].body]
+    return sum(actual[i:i + len(expected)] == expected
+               for i in range(len(actual) - len(expected) + 1)) == 1
+
+
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -2944,6 +2972,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         return
     if not supplemental_history_git_transport_bound(guard_source):
         failures.append("supplemental history Git oid transport proof drift")
+    if not supplemental_history_enumeration_bound(guard_source):
+        failures.append("supplemental history complete enumeration proof drift")
         return
     for needle in (
         r'rb"[0-9a-f]{40}\n"',
@@ -2968,6 +2998,18 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         weakened = guard_source.replace(original, altered, 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
             failures.append("supplemental history Git OID call-site mutation accepted")
+            return
+    for original, altered in (
+        ('"rev-list", "--count"', '"rev-list", "--reverse"'),
+        ('expected_count != len(commits)', 'expected_count == len(commits)'),
+        ('len(set(commits)) != len(commits)', 'len(set(commits)) == len(commits)'),
+        ('commits[-1] != head', 'commits[-1] == head'),
+        (r'rb"(?:0|[1-9][0-9]{0,18})\n"',
+         r'rb"[0-9]+\n"'),
+    ):
+        weakened = guard_source.replace(original, altered, 1)
+        if weakened == guard_source or supplemental_history_enumeration_bound(weakened):
+            failures.append("supplemental history enumeration mutation accepted")
             return
     # A reversed comparison must not be mistaken for the fail-closed guard.
     weakened = guard_source.replace("if final_head != head:", "if final_head == head:", 1)
