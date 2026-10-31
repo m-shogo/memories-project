@@ -3325,7 +3325,7 @@ def has_upload_route_scan_root_binding(source: str) -> bool:
         "require(stat.S_ISDIR(root.lstat().st_mode),",
         'for path in root.rglob("*"):',
         "relative = path.relative_to(ROOT)",
-        "if relative in protected_authorities",
+        "or relative in protected_authorities",
         "if path.is_symlink():",
         "if path.suffix not in allowed_suffixes:",
     )
@@ -3436,7 +3436,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("require(not ancestor.is_symlink(),", "require(True,"),
             ("require(stat.S_ISDIR(root.lstat().st_mode),", "require(True,"),
             ("if path.is_symlink():", "if False:"),
-            ("if relative in protected_authorities:", "if False:"),
+            ("or relative in protected_authorities", "or False"),
             ('Path("contracts/operations/production-operability-status.json")',
              'Path("contracts/operations/production-operability-status.txt")'),
         ):
