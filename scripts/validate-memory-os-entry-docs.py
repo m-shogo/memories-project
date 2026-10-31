@@ -2861,6 +2861,51 @@ def supplemental_history_head_stability_bound(source: str) -> bool:
     )
 
 
+def supplemental_history_git_transport_bound(source: str) -> bool:
+    """Independently bind exact successful-Git OID transport checks."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name == "git"]
+    if len(functions) != 1 or len(functions[0].body) < 2:
+        return False
+    guarded, returned = functions[0].body[-2:]
+    if (not isinstance(guarded, ast.If)
+            or ast.unparse(guarded.test) != "result.returncode == 0"
+            or not guarded.body
+            or ast.unparse(guarded.body[0]) != "raw = result.stdout"
+            or ast.unparse(returned) != "return result"):
+        return False
+    patterns = [
+        node.args[0].value for node in ast.walk(guarded)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re" and node.func.attr == "fullmatch"
+        and len(node.args) == 2 and isinstance(node.args[0], ast.Constant)
+    ]
+    reasons = [
+        node.exc.args[0].value for node in ast.walk(guarded)
+        if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)
+        and isinstance(node.exc.func, ast.Name)
+        and node.exc.func.id == "GuardFailure" and len(node.exc.args) == 1
+        and isinstance(node.exc.args[0], ast.Constant)
+    ]
+    type_checks = [
+        node for node in ast.walk(guarded) if isinstance(node, ast.If)
+        and "type(raw) is not bytes" in ast.unparse(node.test)
+    ]
+    return (len(patterns) == 3 and set(patterns) == {
+                rb"[0-9a-f]{40}\n", rb"(?:[0-9a-f]{40}\n)*",
+                rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"}
+            and len(reasons) == 3 and set(reasons) == {
+                "malformed supplemental HEAD oid",
+                "malformed supplemental commit enumeration",
+                "malformed supplemental parent enumeration"}
+            and len(type_checks) == 3)
+
+
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -2879,6 +2924,21 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     if not supplemental_history_head_stability_bound(guard_source):
         failures.append("supplemental history HEAD stability proof drift")
         return
+    if not supplemental_history_git_transport_bound(guard_source):
+        failures.append("supplemental history Git oid transport proof drift")
+        return
+    for needle in (
+        'rb"[0-9a-f]{40}\n"',
+        'rb"(?:[0-9a-f]{40}\n)*"',
+        'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
+        "malformed supplemental HEAD oid",
+        "malformed supplemental commit enumeration",
+        "malformed supplemental parent enumeration",
+    ):
+        weakened = guard_source.replace(needle, "unreviewed", 1)
+        if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
+            failures.append("supplemental history Git oid transport mutation accepted")
+            return
     # A reversed comparison must not be mistaken for the fail-closed guard.
     weakened = guard_source.replace("if final_head != head:", "if final_head == head:", 1)
     if weakened == guard_source or supplemental_history_head_stability_bound(weakened):
