@@ -2920,11 +2920,20 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         if len(direct) != 1 or not required.issubset(transports):
             return False
         if name == "prove_pinned_pathname_swap_rejection":
+            scenario_loops = [
+                node for node in ast.walk(proof)
+                if isinstance(node, ast.For)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "scenario"
+                and isinstance(node.iter, ast.Tuple)
+            ]
+            if len(scenario_loops) != 1:
+                return False
             scenarios = {
-                node.value for node in ast.walk(proof)
-                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                item.value for item in scenario_loops[0].iter.elts
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
             }
-            if not {"same-content-leaf-swap", "parent-symlink-swap"}.issubset(scenarios):
+            if scenarios != {"same-content-leaf-swap", "parent-symlink-swap"}:
                 return False
         # The ctime-only mutation negatives must stay live. Inode, size,
         # mode and mtime alone cannot detect a same-size rewrite with restored
@@ -2953,7 +2962,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             failures.append("upload-route symlink rollback negative is not CI-bound")
             return
         for original, replacement in (
-            ('"parent-symlink-swap"', '"parent-alias-removed"'),
+            ('"same-content-leaf-swap", "parent-symlink-swap"',
+             '"same-content-leaf-swap", "parent-alias-removed"'),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
             ("observed.st_ctime_ns != baseline.st_ctime_ns",
