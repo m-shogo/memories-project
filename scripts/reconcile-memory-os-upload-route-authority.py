@@ -361,18 +361,18 @@ def current_authority_files() -> list[Path]:
         require(stat.S_ISDIR(root.lstat().st_mode),
                 f"non-directory authority scan root: {root}")
         for path in root.rglob("*"):
-            if path.suffix not in allowed_suffixes:
-                continue
             relative = path.relative_to(ROOT)
             if relative.parts[:2] in (("docs", "fixtures"), ("docs", "evidence")):
                 continue
             # Operational learning is append-only, never a route-label rewrite target.
             if relative == protected_learning or relative.parts[:3] in protected_learning_scopes:
                 continue
-            # A candidate symlink could redirect an otherwise scoped replacement
-            # into protected learning or another authority outside the scan.
+            # Even a disallowed-suffix symlink can conceal an unreviewed
+            # directory or external authority; reject aliases before filtering.
             if path.is_symlink():
                 raise ReconcileFailure(f"symlink authority candidate: {relative}")
+            if path.suffix not in allowed_suffixes:
+                continue
             if not path.is_file() or path == Path(__file__).resolve():
                 continue
             files.append(path)

@@ -227,6 +227,17 @@ def prove_learning_scan_boundary(module) -> None:
                         f"route-label scan rejected alias for unrelated reason: {exc}")
             else:
                 raise Fail("route-label scan followed a symlink to append-only learning")
+            alias.unlink()
+            hidden_alias = root / "docs/operations/learning-alias.txt"
+            hidden_alias.symlink_to(root / protected[0])
+            try:
+                module.current_authority_files()
+            except module.ReconcileFailure as exc:
+                require("symlink authority candidate" in str(exc),
+                        f"nonmatching-suffix alias rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("route-label scan ignored a disallowed-suffix symlink")
+            hidden_alias.unlink()
         finally:
             module.ROOT = previous_root
 

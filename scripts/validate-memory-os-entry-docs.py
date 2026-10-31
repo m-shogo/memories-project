@@ -2885,7 +2885,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_pinned_pathname_swap_rejection",
              "prove_nonblocking_special_file_reads",
              "prove_bounded_authority_reads",
-             "prove_scan_root_alias_rejection")
+             "prove_scan_root_alias_rejection",
+             "prove_learning_scan_boundary")
     definitions = {
         name: [node for node in tree.body
                if isinstance(node, ast.FunctionDef) and node.name == name]
@@ -2921,10 +2922,17 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                         "prove_atomic_short_write_rejection",
                         "prove_nonblocking_special_file_reads")
                     else {"current_authority_files"}
-                    if name == "prove_scan_root_alias_rejection"
+                    if name in ("prove_scan_root_alias_rejection",
+                                "prove_learning_scan_boundary")
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_learning_scan_boundary":
+            proof_source = ast.unparse(proof)
+            if ("learning-alias.txt" not in proof_source
+                    or "hidden_alias.symlink_to" not in proof_source
+                    or "hidden_alias.unlink" not in proof_source):
+                return False
         if name == "prove_scan_root_alias_rejection":
             loops = [
                 node for node in ast.walk(proof)
@@ -3167,6 +3175,9 @@ def has_upload_route_scan_root_binding(source: str) -> bool:
         "if not root.exists():",
         "require(stat.S_ISDIR(root.lstat().st_mode),",
         'for path in root.rglob("*"):',
+        "relative = path.relative_to(ROOT)",
+        "if path.is_symlink():",
+        "if path.suffix not in allowed_suffixes:",
     )
     positions = [body.find(marker) for marker in markers]
     return all(pos >= 0 for pos in positions) and positions == sorted(positions)
@@ -3191,6 +3202,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '"same-content-leaf-swap", "parent-alias-removed"'),
             ('("root-symlink", "ancestor-symlink", "non-directory-root")',
              '("root-symlink", "ancestor-symlink")'),
+            ('"learning-alias.txt"', '"learning-alias.md"'),
             ("module.os.unlink = swap_parent_at_unlink",
              "module.os.unlink = original_unlink"),
             ("module.os.open = redirect_before_parent_open",
@@ -3227,6 +3239,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         for original, replacement in (
             ("require(not ancestor.is_symlink(),", "require(True,"),
             ("require(stat.S_ISDIR(root.lstat().st_mode),", "require(True,"),
+            ("if path.is_symlink():", "if False:"),
         ):
             if scan_source.count(original) != 1:
                 failures.append("upload-route scan-root guard source drift")
