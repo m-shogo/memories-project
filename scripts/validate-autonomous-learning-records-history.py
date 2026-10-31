@@ -124,6 +124,11 @@ def check_history(root: Path, baseline: str) -> None:
         final = git(root, "ls-tree", "-z", head, "--", os.fsdecode(path)).stdout
         if final != b"100644 blob " + blob + b"\t" + path + b"\0":
             raise GuardFailure("supplemental history lost an added record")
+    # The traversal is bound to a captured commit, not an automatically
+    # stable branch ref. A concurrent HEAD move must invalidate the proof.
+    final_head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
+    if final_head != head:
+        raise GuardFailure("supplemental history HEAD moved during audit")
 
 
 
@@ -312,6 +317,41 @@ def self_test() -> None:
             lambda: check_history(root, baseline),
             "supplemental history is not append-only", "scope-root-symlink",
         )
+    finally:
+        temp.cleanup()
+
+
+    # A moving branch ref can make a successful audit certify an old HEAD.
+    # Inject the move after the initial snapshot, then require an exact
+    # failure and a clean positive after restoring the safe ref.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        safe_head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        old = root / SCOPES[0] / "original.md"
+        old.write_text("mutated\\n", encoding="utf-8")
+        git(root, "commit", "-qam", "concurrent mutation")
+        bad_head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        git(root, "update-ref", "HEAD", safe_head)
+        original_git = git
+        moved = False
+
+        def move_head_after_snapshot(path: Path, *args: str, **kwargs):
+            nonlocal moved
+            result = original_git(path, *args, **kwargs)
+            if path == root and args[:2] == ("rev-list", "--reverse") and not moved:
+                original_git(root, "update-ref", "HEAD", bad_head)
+                moved = True
+            return result
+
+        with patch(__name__ + ".git", side_effect=move_head_after_snapshot):
+            expect_guard_failure(
+                lambda: check_history(root, baseline),
+                "supplemental history HEAD moved during audit", "moving-head-ref",
+            )
+        if not moved or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != bad_head:
+            raise GuardFailure("supplemental moving-HEAD negative control ineffective")
+        git(root, "update-ref", "HEAD", safe_head)
+        check_history(root, baseline)
     finally:
         temp.cleanup()
 
