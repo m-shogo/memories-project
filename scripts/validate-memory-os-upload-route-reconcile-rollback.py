@@ -1854,6 +1854,57 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 and not list(root.glob(".authority.txt.*.tmp")),
                 "stage open failure changed authority or left temporary residue")
 
+    # A failing entropy source must not stage a predictable name or leak
+    # the pinned directory capability. Preserve the original fault and canary.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-entropy-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original-owned")
+        canary = root / "independent-entropy-canary.txt"
+        canary.write_bytes(b"independent-entropy-canary")
+        original_parent = module.open_pinned_parent
+        original_urandom = module.os.urandom
+        opened: list[int] = []
+        entropy_calls: list[int] = []
+
+        def capture_entropy_parent(path, expected):
+            fd = original_parent(path, expected)
+            opened.append(fd)
+            return fd
+
+        def fail_stage_entropy(count):
+            require(count == 16, "entropy failure injected for unexpected request")
+            entropy_calls.append(count)
+            raise OSError("synthetic pinned stage entropy failure")
+
+        module.open_pinned_parent = capture_entropy_parent
+        module.os.urandom = fail_stage_entropy
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except OSError as exc:
+                require(str(exc) == "synthetic pinned stage entropy failure",
+                        f"entropy failure rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("entropy failure unexpectedly published")
+        finally:
+            module.os.urandom = original_urandom
+            module.open_pinned_parent = original_parent
+        require(entropy_calls == [16] and len(opened) == 1,
+                "stage entropy failure did not reach the pinned parent")
+        try:
+            os.fstat(opened[0])
+        except OSError as exc:
+            require(exc.errno == errno.EBADF,
+                    f"entropy parent fd close failed for unrelated reason: {exc}")
+        else:
+            os.close(opened[0])
+            raise Fail("stage entropy failure leaked pinned parent descriptor")
+        require(target.read_bytes() == b"original-owned"
+                and canary.read_bytes() == b"independent-entropy-canary"
+                and not list(root.glob(".authority.txt.*.tmp")),
+                "stage entropy failure changed authority, canary or left residue")
+
     # Stage creation failure must retain its primary error even if closing
     # the pinned parent fails before or after consuming that descriptor.
     for prestage_close_scenario in ("before-prestage-close", "after-prestage-close"):
