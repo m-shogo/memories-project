@@ -388,7 +388,7 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
         canary.write_bytes(b"canary")
         original_fsync = module.os.fsync
         for scenario in ("modified", "inode-replaced", "mode-changed",
-                         "symlink-swapped", "deleted", "created"):
+                         "ctime-only", "symlink-swapped", "deleted", "created"):
             if target.is_symlink():
                 target.unlink()
             target.write_bytes(b"original")
@@ -408,6 +408,16 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                     replacement.replace(target)
                 elif scenario == "mode-changed":
                     target.chmod(0o600)
+                elif scenario == "ctime-only":
+                    previous = target.stat()
+                    target.write_bytes(b"original")
+                    os.utime(target, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+                    observed = target.stat()
+                    require(observed.st_size == previous.st_size
+                            and observed.st_mtime_ns == previous.st_mtime_ns
+                            and observed.st_ino == previous.st_ino
+                            and observed.st_ctime_ns != previous.st_ctime_ns,
+                            "ctime-only publication fixture did not isolate ctime drift")
                 elif scenario == "symlink-swapped":
                     target.unlink()
                     target.symlink_to(canary)
@@ -441,6 +451,9 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
             elif scenario == "mode-changed":
                 require(stat.S_IMODE(target.stat().st_mode) == 0o600,
                         "poststage mode drift was overwritten")
+            elif scenario == "ctime-only":
+                require(target.read_bytes() == b"original",
+                        "poststage ctime-only rewrite was overwritten")
             elif scenario == "symlink-swapped":
                 require(target.is_symlink() and target.resolve() == canary,
                         "poststage symlink was overwritten")
@@ -520,6 +533,37 @@ def prove_nonblocking_special_file_reads(module) -> None:
         alias.symlink_to(canary)
         require(module.read_regular_bytes(regular) == b"regular",
                 "pinned regular reader rejected an ordinary file")
+        # A same-length in-place rewrite can restore mtime and retain inode.
+        # The pinned descriptor must still detect the changed ctime.
+        original_read = module.os.read
+        baseline = regular.stat()
+        injected = [False]
+
+        def concurrent_same_mtime_rewrite(fd, count):
+            chunk = original_read(fd, count)
+            if chunk and not injected[0]:
+                regular.write_bytes(b"changed")
+                os.utime(regular, ns=(baseline.st_atime_ns, baseline.st_mtime_ns))
+                injected[0] = True
+            return chunk
+
+        module.os.read = concurrent_same_mtime_rewrite
+        try:
+            try:
+                module.read_regular_bytes(regular)
+            except module.ReconcileFailure as exc:
+                require("concurrent authority drift during read" in str(exc),
+                        f"pinned reader rejected ctime drift for unrelated reason: {exc}")
+            else:
+                raise Fail("pinned reader accepted same-size same-mtime in-place rewrite")
+        finally:
+            module.os.read = original_read
+        observed = regular.stat()
+        require(injected[0] and observed.st_size == baseline.st_size
+                and observed.st_ino == baseline.st_ino
+                and observed.st_mtime_ns == baseline.st_mtime_ns
+                and observed.st_ctime_ns != baseline.st_ctime_ns,
+                "pinned reader ctime-only fixture did not isolate ctime drift")
         require(module.read_regular_bytes(root / "missing.txt") is None,
                 "pinned regular reader rejected an absent file")
         for unsafe in (fifo, root, alias):
