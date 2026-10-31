@@ -2869,6 +2869,34 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         print("supplemental learning all-parent history and 39 scoped/merge/octopus/shallow/literal/Git-environment/ancestry/diagnostic/wrong-reason negatives verified")
 
 
+
+def validate_upload_route_learning_scan(failures: list[str]) -> None:
+    """Exercise the real route reconciler's append-only exclusion before MinIO."""
+    relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
+    guard = REPO_ROOT / relative
+    if guard.is_symlink() or not guard.is_file():
+        failures.append("upload-route learning scan guard missing or symlinked")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, "-B", str(guard)],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+            timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        failures.append("upload-route learning scan guard unavailable")
+        return
+    expected = (
+        "PASS: upload-route reconcile atomic publication, rollback, execution "
+        "authority and canonical validator delegation are fail-closed" + chr(10)
+    )
+    if (type(result.returncode) is not int or result.returncode != 0
+            or result.stdout != expected or type(result.stderr) is not str
+            or result.stderr):
+        failures.append("upload-route learning scan guard missing verified PASS")
+    else:
+        print("upload-route append-only scan and symlink negatives verified")
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -2892,6 +2920,7 @@ def main() -> int:
 
     validate_learning_guards(failures)
     validate_supplemental_learning_history(failures)
+    validate_upload_route_learning_scan(failures)
     validate_learning_workflow_reachability(failures)
     validate_source_negative_ci_reachability(failures)
     validate_upload_route_rate_limit_trigger_scope(failures)
