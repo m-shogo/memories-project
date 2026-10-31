@@ -788,6 +788,75 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     and canary.read_bytes() == b"independent",
                     "parent close failure changed original or external authority")
 
+    # A guard FD close can fail before or after consuming the descriptor.
+    # Never replace the primary publication failure or retry the ambiguous close.
+    for guard_close_scenario in ("before-guard-close", "after-guard-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-guard-close-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            target.chmod(0o755)
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent")
+            original_dup = module.os.dup
+            original_close = module.os.close
+            original_replace = module.os.replace
+            guard_fds: list[int] = []
+            close_tripped = [False]
+
+            def capture_guard_dup(fd):
+                guard_fd = original_dup(fd)
+                guard_fds.append(guard_fd)
+                return guard_fd
+
+            def fail_primary_replace(*args, **kwargs):
+                raise OSError("synthetic primary publication failure")
+
+            def fail_guard_close(fd):
+                if guard_fds and fd == guard_fds[0] and not close_tripped[0]:
+                    close_tripped[0] = True
+                    if guard_close_scenario == "after-guard-close":
+                        original_close(fd)
+                    raise OSError("synthetic staged guard close failure")
+                return original_close(fd)
+
+            module.os.dup = capture_guard_dup
+            module.os.close = fail_guard_close
+            module.os.replace = fail_primary_replace
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary publication failure",
+                            f"staged guard close masked primary publication error: {exc}")
+                    require(any("staged guard descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "staged guard close lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("staged guard close failure unexpectedly published")
+            finally:
+                module.os.dup = original_dup
+                module.os.close = original_close
+                module.os.replace = original_replace
+            require(close_tripped[0] and len(guard_fds) == 1,
+                    "guard close fault did not reach owned duplicate descriptor")
+            if guard_close_scenario == "before-guard-close":
+                os.fstat(guard_fds[0])
+                os.close(guard_fds[0])
+            else:
+                try:
+                    os.fstat(guard_fds[0])
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "post-guard-close fault left duplicate descriptor open")
+                else:
+                    os.close(guard_fds[0])
+                    raise Fail("post-guard-close fault leaked duplicate descriptor")
+            require(target.read_bytes() == b"original"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o755
+                    and canary.read_bytes() == b"independent",
+                    "guard close failure changed original or external authority")
+
 
 def prove_postpublication_temp_reuse_preserved(module) -> None:
     """A completed rename must not delete an independent reused temp name."""
