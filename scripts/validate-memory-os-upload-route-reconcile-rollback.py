@@ -718,6 +718,76 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 require(not staged.exists(),
                         "post-unlink fault left a stage despite actual removal")
 
+    # An ambiguous parent close cannot replace the primary publication error.
+    # The disposable harness explicitly reclaims an FD when the fault fires
+    # before close, and verifies EBADF when it fires after actual close.
+    for close_scenario in ("before-close", "after-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-parent-close-final-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            target.chmod(0o755)
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent")
+            original_parent = module.open_pinned_parent
+            original_close = module.os.close
+            original_replace = module.os.replace
+            captured_parents: list[int] = []
+            close_tripped = [False]
+
+            def capture_final_parent(path, expected):
+                fd = original_parent(path, expected)
+                captured_parents.append(fd)
+                return fd
+
+            def fail_primary_replace(*args, **kwargs):
+                raise OSError("synthetic primary publication failure")
+
+            def fail_parent_close(fd):
+                if captured_parents and fd == captured_parents[0] and not close_tripped[0]:
+                    close_tripped[0] = True
+                    if close_scenario == "after-close":
+                        original_close(fd)
+                    raise OSError("synthetic pinned parent close failure")
+                return original_close(fd)
+
+            module.open_pinned_parent = capture_final_parent
+            module.os.close = fail_parent_close
+            module.os.replace = fail_primary_replace
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary publication failure",
+                            f"parent close masked primary publication error: {exc}")
+                    require(any("pinned parent descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "parent close failure lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("parent close failure unexpectedly published")
+            finally:
+                module.open_pinned_parent = original_parent
+                module.os.close = original_close
+                module.os.replace = original_replace
+            require(close_tripped[0] and len(captured_parents) == 1,
+                    "final parent close fault did not reach pinned descriptor")
+            if close_scenario == "before-close":
+                os.fstat(captured_parents[0])
+                os.close(captured_parents[0])
+            else:
+                try:
+                    os.fstat(captured_parents[0])
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "post-close fault left the parent descriptor open")
+                else:
+                    os.close(captured_parents[0])
+                    raise Fail("post-close fault leaked parent descriptor")
+            require(target.read_bytes() == b"original"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o755
+                    and canary.read_bytes() == b"independent",
+                    "parent close failure changed original or external authority")
+
 
 def prove_postpublication_temp_reuse_preserved(module) -> None:
     """A completed rename must not delete an independent reused temp name."""

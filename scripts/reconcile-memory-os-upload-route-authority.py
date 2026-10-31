@@ -496,7 +496,15 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                                     f"private staged unlink status unknown in pinned parent: "
                                     f"{temporary.name} ({type(unlink_exc).__name__})")
             finally:
-                os.close(parent_fd)
+                try:
+                    os.close(parent_fd)
+                except OSError as parent_close_exc:
+                    # A failed close may already have consumed this capability.
+                    if original_failure is None:
+                        raise
+                    original_failure.add_note(
+                        f"pinned parent descriptor close status unknown "
+                        f"({type(parent_close_exc).__name__})")
         finally:
             try:
                 if staging_guard_fd is not None:
