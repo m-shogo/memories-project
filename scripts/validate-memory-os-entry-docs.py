@@ -2702,6 +2702,77 @@ def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None
 
 
 
+SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE = "1a2eeab517d8744df42de984fca921aebd747ff8"
+
+
+def supplemental_history_baseline_bound(source: str) -> bool:
+    """Independently pin the history epoch and live main-call binding."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    assignments = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+            targets = [node.target]
+        else:
+            continue
+        if any(isinstance(name, ast.Name) and name.id == "BASELINE"
+               for target in targets for name in ast.walk(target)):
+            assignments.append(node)
+    if (len(assignments) != 1 or assignments[0] not in tree.body
+            or not isinstance(assignments[0], ast.Assign)
+            or len(assignments[0].targets) != 1
+            or not isinstance(assignments[0].targets[0], ast.Name)
+            or not isinstance(assignments[0].value, ast.Constant)
+            or type(assignments[0].value.value) is not str
+            or assignments[0].value.value != SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE):
+        return False
+    mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+             and node.name == "main"]
+    if len(mains) != 1:
+        return False
+    tries = [node for node in mains[0].body if isinstance(node, ast.Try)]
+    if len(tries) != 1:
+        return False
+    calls = [node.value for node in tries[0].body
+             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+             and isinstance(node.value.func, ast.Name)
+             and node.value.func.id == "check_history"]
+    if len(calls) != 1 or len(calls[0].args) != 2 or calls[0].keywords:
+        return False
+    first, second = calls[0].args
+    return (isinstance(first, ast.Attribute) and first.attr == "repo_root"
+            and isinstance(first.value, ast.Name) and first.value.id == "args"
+            and isinstance(second, ast.Name) and second.id == "BASELINE")
+
+
+def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
+    """Reject baseline reset, shadow and a dead or redirected history call."""
+    good = ('BASELINE = "' + SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE + '"\n'
+            'def main():\n'
+            '    try:\n'
+            '        check_history(args.repo_root, BASELINE)\n'
+            '    except RuntimeError:\n'
+            '        return 1\n')
+    if not supplemental_history_baseline_bound(good):
+        failures.append("supplemental history immutable baseline positive rejected")
+    bad = (
+        ("reset", good.replace(SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE, "0" * 40)),
+        ("removed", good.replace('BASELINE = "' + SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE + '"\n', "")),
+        ("shadowed", good + 'BASELINE = "0" * 40\n'),
+        ("redirected", good.replace("check_history(args.repo_root, BASELINE)",
+                                    'check_history(args.repo_root, "0" * 40)')),
+        ("unreachable", good.replace("        check_history(args.repo_root, BASELINE)",
+                                     "        if False:\n            check_history(args.repo_root, BASELINE)")),
+    )
+    for label, candidate in bad:
+        if supplemental_history_baseline_bound(candidate):
+            failures.append("supplemental history baseline negative accepted: " + label)
+
+
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -2709,6 +2780,15 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     if guard.is_symlink() or not guard.is_file():
         failures.append("supplemental learning history guard missing or symlinked")
         return
+    try:
+        guard_source = guard.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        failures.append("supplemental history immutable baseline source unavailable")
+        return
+    if not supplemental_history_baseline_bound(guard_source):
+        failures.append("supplemental history immutable baseline or live call drift")
+        return
+    prove_supplemental_history_baseline_negatives(failures)
     try:
         result = subprocess.run(
             [sys.executable, "-B", str(guard), "--self-test",
