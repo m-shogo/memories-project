@@ -3213,7 +3213,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "cleanup_stat.st_dev, cleanup_stat.st_ino)",
         "== staged_identity",
         "published = True",
-        "if not published:",
+        "if not published and staged_identity is not None:",
         "pinned_parent.st_dev", "pinned_parent.st_ino",
         "live_parent.st_dev", "live_parent.st_ino",
         "concurrent publication parent drift",
@@ -3364,8 +3364,9 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "os.replace(temporary, path)"),
             ("os.unlink(temporary.name, dir_fd=parent_fd)",
              "temporary.unlink()"),
-            ("if not published:", "if True:"),
-            ("== staged_identity):", "!= staged_identity):"),
+            ("if not published and staged_identity is not None:", "if True:"),
+            ("and (cleanup_stat.st_dev, cleanup_stat.st_ino)",
+             "and (cleanup_stat.st_dev, -1)"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
