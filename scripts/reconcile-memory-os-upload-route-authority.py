@@ -519,7 +519,15 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                             f"({type(guard_close_exc).__name__})")
             finally:
                 if untransferred_stage_fd is not None:
-                    os.close(untransferred_stage_fd)
+                    try:
+                        os.close(untransferred_stage_fd)
+                    except OSError as stage_close_exc:
+                        # Do not retry an ambiguously completed descriptor close.
+                        if original_failure is None:
+                            raise
+                        original_failure.add_note(
+                            f"untransferred stage descriptor close status unknown "
+                            f"({type(stage_close_exc).__name__})")
 
 def atomic_write_text(path: Path, value: str) -> None:
     atomic_write_bytes(path, value.encode("utf-8"))

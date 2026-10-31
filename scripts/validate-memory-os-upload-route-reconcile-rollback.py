@@ -858,6 +858,79 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     "guard close failure changed original or external authority")
 
 
+    # The original staged FD remains owned if the first fstat fails.
+    # Fault its final close before/after the syscall, preserving the primary error.
+    for stage_close_scenario in ("before-stage-close", "after-stage-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-close-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            target.chmod(0o755)
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent")
+            original_stage = module.create_pinned_stage
+            original_fstat = module.os.fstat
+            original_close = module.os.close
+            stage_fds: list[int] = []
+            fstat_tripped = [False]
+            close_tripped = [False]
+
+            def capture_untransferred_stage(parent_fd, leaf):
+                fd, name = original_stage(parent_fd, leaf)
+                stage_fds.append(fd)
+                return fd, name
+
+            def fail_initial_stage_fstat(fd):
+                if stage_fds and fd == stage_fds[0] and not fstat_tripped[0]:
+                    fstat_tripped[0] = True
+                    raise OSError("synthetic primary staged fstat failure")
+                return original_fstat(fd)
+
+            def fail_stage_close(fd):
+                if stage_fds and fd == stage_fds[0] and not close_tripped[0]:
+                    close_tripped[0] = True
+                    if stage_close_scenario == "after-stage-close":
+                        original_close(fd)
+                    raise OSError("synthetic untransferred stage close failure")
+                return original_close(fd)
+
+            module.create_pinned_stage = capture_untransferred_stage
+            module.os.fstat = fail_initial_stage_fstat
+            module.os.close = fail_stage_close
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary staged fstat failure",
+                            f"untransferred stage close masked primary error: {exc}")
+                    require(any("untransferred stage descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "untransferred stage close lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("untransferred stage close unexpectedly published")
+            finally:
+                module.create_pinned_stage = original_stage
+                module.os.fstat = original_fstat
+                module.os.close = original_close
+            require(fstat_tripped[0] and close_tripped[0] and len(stage_fds) == 1,
+                    "untransferred stage close fault did not reach owned descriptor")
+            if stage_close_scenario == "before-stage-close":
+                original_fstat(stage_fds[0])
+                original_close(stage_fds[0])
+            else:
+                try:
+                    original_fstat(stage_fds[0])
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "post-stage-close fault leaked untransferred descriptor")
+                else:
+                    original_close(stage_fds[0])
+                    raise Fail("post-stage-close fault leaked untransferred descriptor")
+            require(target.read_bytes() == b"original"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o755
+                    and canary.read_bytes() == b"independent",
+                    "untransferred stage close changed original or external authority")
+
 def prove_postpublication_temp_reuse_preserved(module) -> None:
     """A completed rename must not delete an independent reused temp name."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-temp-reuse-") as temp_dir:
