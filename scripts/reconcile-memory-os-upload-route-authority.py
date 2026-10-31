@@ -141,6 +141,8 @@ class ReconcileFailure(RuntimeError):
 
 ROLLBACK_SNAPSHOT: dict[Path, bytes | None] | None = None
 ROLLBACK_WRITTEN: dict[Path, bytes] = {}
+# A byte-identical independent inode replacement is not an owned write.
+ROLLBACK_PUBLISHED_IDENTITIES: dict[Path, tuple[int, int, int, int]] = {}
 MAX_AUTHORITY_READ_BYTES = 8 * 1024 * 1024
 
 
@@ -227,6 +229,17 @@ def read_regular_bytes(path: Path) -> bytes | None:
         os.close(descriptor)
 
 
+def published_identity(path: Path) -> tuple[int, int, int, int]:
+    try:
+        observed = path.lstat()
+    except FileNotFoundError as exc:
+        raise ReconcileFailure(f"missing published authority: {path}") from exc
+    require(stat.S_ISREG(observed.st_mode) and observed.st_nlink == 1,
+            f"invalid published authority identity: {path}")
+    return (observed.st_dev, observed.st_ino, observed.st_mode,
+            observed.st_ctime_ns)
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     # Reject path aliases before staging bytes; parent symlinks can redirect
     # temporary-file creation outside the reviewed authority scope.
@@ -237,6 +250,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         expected = ROLLBACK_WRITTEN.get(path, ROLLBACK_SNAPSHOT[path])
         current = read_regular_bytes(path)
         require(current == expected, f"concurrent authority drift before write: {path}")
+        if path in ROLLBACK_WRITTEN:
+            require(published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path),
+                    f"concurrent authority identity drift before write: {path}")
     # mkstemp defaults to 0600; retain the reviewed mode of existing files.
     # Bind publication to the exact target observed before staging. Atomic
     # rename alone does not prevent a concurrent local writer's lost update.
@@ -299,6 +315,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         os.replace(temporary, path)
         if ROLLBACK_SNAPSHOT is not None:
             ROLLBACK_WRITTEN[path] = payload
+            ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -376,6 +393,8 @@ def rollback_authority_files() -> None:
         require(path in ROLLBACK_SNAPSHOT, f"untracked rollback path: {path}")
         current = read_regular_bytes(path)
         require(current == expected, f"concurrent authority drift before rollback: {path}")
+        require(published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path),
+                f"concurrent authority identity drift before rollback: {path}")
     for path, original in ROLLBACK_SNAPSHOT.items():
         if path not in ROLLBACK_WRITTEN:
             continue
@@ -383,9 +402,11 @@ def rollback_authority_files() -> None:
             if path.exists():
                 path.unlink()
             ROLLBACK_WRITTEN.pop(path, None)
+            ROLLBACK_PUBLISHED_IDENTITIES.pop(path, None)
             continue
         atomic_write_bytes(path, original)
         ROLLBACK_WRITTEN.pop(path, None)
+        ROLLBACK_PUBLISHED_IDENTITIES.pop(path, None)
 
 
 def validate_canonical_authorities() -> None:
@@ -414,6 +435,7 @@ _CANONICAL_ROUTE_TEST_CONTENT = ROUTE_TEST_CONTENT
 _CANONICAL_REQUIRE = require
 _CANONICAL_READ = read
 _CANONICAL_READ_REGULAR_BYTES = read_regular_bytes
+_CANONICAL_PUBLISHED_IDENTITY = published_identity
 _CANONICAL_ATOMIC_WRITE_BYTES = atomic_write_bytes
 _CANONICAL_ATOMIC_WRITE_TEXT = atomic_write_text
 _CANONICAL_WRITE_IF_CHANGED = write_if_changed
@@ -462,6 +484,7 @@ def enforce_execution_authorities() -> None:
         (require, _CANONICAL_REQUIRE, "require"),
         (read, _CANONICAL_READ, "reader"),
         (read_regular_bytes, _CANONICAL_READ_REGULAR_BYTES, "pinned regular reader"),
+        (published_identity, _CANONICAL_PUBLISHED_IDENTITY, "published identity guard"),
         (atomic_write_bytes, _CANONICAL_ATOMIC_WRITE_BYTES, "atomic byte writer"),
         (atomic_write_text, _CANONICAL_ATOMIC_WRITE_TEXT, "atomic text writer"),
         (write_if_changed, _CANONICAL_WRITE_IF_CHANGED, "conditional writer"),
@@ -487,6 +510,7 @@ def main() -> int:
         raise ReconcileFailure("upload route execution guard authority drift")
     enforce_execution_authorities()
     ROLLBACK_WRITTEN.clear()
+    ROLLBACK_PUBLISHED_IDENTITIES.clear()
     snapshot_authority_files()
     changed: list[str] = []
 

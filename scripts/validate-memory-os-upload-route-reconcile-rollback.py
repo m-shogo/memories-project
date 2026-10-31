@@ -92,6 +92,7 @@ def prove_execution_authority(module) -> None:
         ("require", lambda *_args, **_kwargs: None, "require execution authority drift"),
         ("read", lambda _path: "", "reader execution authority drift"),
         ("read_regular_bytes", lambda _path: None, "pinned regular reader execution authority drift"),
+        ("published_identity", lambda _path: (), "published identity guard execution authority drift"),
         ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
         ("atomic_write_text", lambda *_args: None, "atomic text writer execution authority drift"),
         ("write_if_changed", lambda *_args: False, "conditional writer execution authority drift"),
@@ -829,6 +830,42 @@ def prove_rollback_write_ownership(module) -> None:
         require(independent.read_bytes() == b"our-second-change",
                 "rollback partially restored before detecting concurrent drift")
 
+        # An independent writer can replace an owned inode with identical bytes,
+        # or change only its mode. Neither may be rolled back as our own write.
+        for scenario in ("identical-inode-swap", "identical-mode-change"):
+            owned.write_bytes(b"baseline")
+            owned.chmod(0o644)
+            module.ROLLBACK_SNAPSHOT = {owned: b"baseline"}
+            module.ROLLBACK_WRITTEN.clear()
+            module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
+            module.atomic_write_bytes(owned, b"our-change")
+            if scenario == "identical-inode-swap":
+                alternate = root / "alternate.txt"
+                alternate.write_bytes(b"our-change")
+                os.replace(alternate, owned)
+            else:
+                owned.chmod(0o600)
+            before_inode = owned.stat().st_ino
+            try:
+                module.rollback_authority_files()
+            except module.ReconcileFailure as exc:
+                require("concurrent authority identity drift before rollback" in str(exc),
+                        f"{scenario} rollback rejected for unrelated reason: {exc}")
+            else:
+                raise Fail(f"rollback accepted {scenario}")
+            require(owned.read_bytes() == b"our-change"
+                    and owned.stat().st_ino == before_inode,
+                    f"rollback overwrote {scenario}")
+            try:
+                module.atomic_write_bytes(owned, b"another-write")
+            except module.ReconcileFailure as exc:
+                require("concurrent authority identity drift before write" in str(exc),
+                        f"{scenario} prewrite rejected for unrelated reason: {exc}")
+            else:
+                raise Fail(f"atomic write accepted {scenario}")
+            require(owned.read_bytes() == b"our-change",
+                    f"atomic writer overwrote {scenario}")
+
         module.ROLLBACK_SNAPSHOT = {owned: b"concurrent-change"}
         module.ROLLBACK_WRITTEN.clear()
         owned.write_bytes(b"newer-external-change")
@@ -851,6 +888,7 @@ def prove_rollback_write_ownership(module) -> None:
         require(not created.exists(), "untracked atomic write created a file")
         module.ROLLBACK_SNAPSHOT = None
         module.ROLLBACK_WRITTEN.clear()
+        module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
 
 
 def main() -> int:
