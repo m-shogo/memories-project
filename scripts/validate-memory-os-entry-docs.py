@@ -2870,12 +2870,52 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
 
 
 
+def has_upload_route_symlink_negative_binding(source: str) -> bool:
+    """Require a live direct call and both rollback/write negative transports."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    definitions = {
+        name: [node for node in tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == name]
+        for name in ("main", "prove_rollback_symlink_boundaries")
+    }
+    if any(len(nodes) != 1 for nodes in definitions.values()):
+        return False
+    main = definitions["main"][0]
+    proof = definitions["prove_rollback_symlink_boundaries"][0]
+    direct = [
+        node for node in main.body
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "prove_rollback_symlink_boundaries"
+    ]
+    transports = {
+        node.func.attr for node in ast.walk(proof)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "module"
+    }
+    return len(direct) == 1 and {
+        "rollback_authority_files", "atomic_write_bytes"
+    }.issubset(transports)
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
     guard = REPO_ROOT / relative
     if guard.is_symlink() or not guard.is_file():
         failures.append("upload-route learning scan guard missing or symlinked")
+        return
+    try:
+        if not has_upload_route_symlink_negative_binding(
+                guard.read_text(encoding="utf-8")):
+            failures.append("upload-route symlink rollback negative is not CI-bound")
+            return
+    except OSError:
+        failures.append("upload-route symlink rollback negative unavailable")
         return
     try:
         result = subprocess.run(
