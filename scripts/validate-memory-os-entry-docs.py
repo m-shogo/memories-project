@@ -3277,7 +3277,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                 "module.os.open = original_open",
                 "raced.symlink_to(outside)",
                 "outside.read_bytes() == b'external-canary'",
-                "exc.__suppress_context__",
+                "exc.__suppress_context__", "module.os.close = fail_reader_close", "reader close lacked bounded uncertainty diagnostic", "post-read-close fault leaked pinned reader descriptor", "for read_close_scenario in ('before-read-close', 'after-read-close')",
             )):
                 return False
         if name == "prove_atomic_parent_publication_capability":
@@ -3486,7 +3486,7 @@ def has_upload_route_bounded_read_binding(source: str) -> bool:
         isinstance(node.left, ast.Name) and node.left.id == "total"
         for node in checks
     )
-    return preflight and streaming
+    return preflight and streaming and all(fragment in ast.unparse(definitions[0]) for fragment in ("original_failure = sys.exception()", "except OSError as read_close_exc:", "pinned reader descriptor close status unknown"))
 
 
 def has_upload_route_single_link_binding(source: str) -> bool:
@@ -3676,7 +3676,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ('"contracts/operations/production-operability-status.json"',
              '"contracts/operations/production-operability-status.txt"'),
             ("module.os.open = redirect_leaf_before_open",
-             "module.os.open = original_open"),
+             "module.os.open = original_open"), ("module.os.close = fail_reader_close", "module.os.close = original_close"), ('for read_close_scenario in ("before-read-close", "after-read-close")', 'for read_close_scenario in ("before-read-close",)'),
             ("module.os.replace = swap_parent_at_replace",
              "module.os.replace = original_replace"),
             ("module.os.unlink = swap_parent_at_unlink",
@@ -3772,7 +3772,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             if has_upload_route_reader_open_failure_binding(weakened):
                 failures.append("upload-route reader open mutation accepted")
                 return
-        if not has_upload_route_bounded_read_binding(reader_source):
+        if (not has_upload_route_bounded_read_binding(reader_source) or reader_span.count("except OSError as read_close_exc:") != 1 or has_upload_route_bounded_read_binding(reader_source[:reader_start] + reader_span.replace("except OSError as read_close_exc:", "except ValueError as read_close_exc:", 1) + reader_source[reader_end:])):
             failures.append("upload-route pinned reader bound missing")
             return
         if not has_upload_route_single_link_binding(reader_source):

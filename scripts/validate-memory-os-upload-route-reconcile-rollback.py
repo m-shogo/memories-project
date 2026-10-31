@@ -1852,6 +1852,76 @@ def prove_nonblocking_special_file_reads(module) -> None:
         require(canary.read_bytes() == b"canary",
                 "special-file read modified an external canary")
         require(fifo.is_fifo(), "special-file negative changed FIFO identity")
+        # A pinned read error must not be masked by an ambiguous reader close.
+        for read_close_scenario in ("before-read-close", "after-read-close"):
+            with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-read-close-") as read_dir:
+                read_root = Path(read_dir)
+                read_target = read_root / "read-authority.txt"
+                read_target.write_bytes(b"original-reader")
+                read_canary = read_root / "external-canary.txt"
+                read_canary.write_bytes(b"independent")
+                original_open = module.os.open
+                original_read = module.os.read
+                original_close = module.os.close
+                read_fds: list[int] = []
+                close_tripped = [False]
+                read_tripped = [False]
+
+                def capture_reader_open(candidate, flags, *args, **kwargs):
+                    fd = original_open(candidate, flags, *args, **kwargs)
+                    if Path(candidate) == read_target:
+                        read_fds.append(fd)
+                    return fd
+
+                def fail_primary_read(fd, count):
+                    if read_fds and fd == read_fds[0]:
+                        read_tripped[0] = True
+                        raise OSError("synthetic primary pinned read failure")
+                    return original_read(fd, count)
+
+                def fail_reader_close(fd):
+                    if read_fds and fd == read_fds[0] and not close_tripped[0]:
+                        close_tripped[0] = True
+                        if read_close_scenario == "after-read-close":
+                            original_close(fd)
+                        raise OSError("synthetic pinned reader close failure")
+                    return original_close(fd)
+
+                module.os.open = capture_reader_open
+                module.os.read = fail_primary_read
+                module.os.close = fail_reader_close
+                try:
+                    try:
+                        module.read_regular_bytes(read_target)
+                    except OSError as exc:
+                        require(str(exc) == "synthetic primary pinned read failure",
+                                f"reader close masked primary error: {exc}")
+                        require(any("pinned reader descriptor close status unknown" in note
+                                    for note in getattr(exc, "__notes__", [])),
+                                "reader close lacked bounded uncertainty diagnostic")
+                    else:
+                        raise Fail("reader close unexpectedly returned bytes")
+                finally:
+                    module.os.open = original_open
+                    module.os.read = original_read
+                    module.os.close = original_close
+                require(read_tripped[0] and close_tripped[0] and len(read_fds) == 1,
+                        "reader close fault did not reach pinned descriptor")
+                if read_close_scenario == "before-read-close":
+                    os.fstat(read_fds[0])
+                    original_close(read_fds[0])
+                else:
+                    try:
+                        os.fstat(read_fds[0])
+                    except OSError as exc:
+                        require(exc.errno == errno.EBADF,
+                                "post-read-close fault leaked pinned reader descriptor")
+                    else:
+                        original_close(read_fds[0])
+                        raise Fail("post-read-close fault leaked pinned reader descriptor")
+                require(read_target.read_bytes() == b"original-reader"
+                        and read_canary.read_bytes() == b"independent",
+                        "reader close changed original or external authority")
 
 def prove_bounded_authority_reads(module) -> None:
     """Reject oversized sparse inputs and reads growing beyond the initial size."""
