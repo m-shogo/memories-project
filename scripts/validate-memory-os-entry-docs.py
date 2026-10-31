@@ -2928,9 +2928,9 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental history Git oid transport proof drift")
         return
     for needle in (
-        'rb"[0-9a-f]{40}\n"',
-        'rb"(?:[0-9a-f]{40}\n)*"',
-        'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
+        r'rb"[0-9a-f]{40}\n"',
+        r'rb"(?:[0-9a-f]{40}\n)*"',
+        r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
         "malformed supplemental parent enumeration",
