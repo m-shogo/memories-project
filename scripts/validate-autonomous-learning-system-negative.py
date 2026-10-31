@@ -2963,12 +2963,21 @@ def upload_route_snapshot_inventory(source_root: Path) -> set[str]:
         if not directory.is_dir() or directory.is_symlink():
             raise RuntimeError("Upload Route snapshot root missing/aliased: " + relative_root)
         for path in directory.rglob("*"):
+            relative = path.relative_to(source_root)
+            # Mirror the reconciler's append-only learning exclusion, rather
+            # than counting protected history as a mutable route-label input.
+            if (relative.as_posix() == "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
+                    or relative.parts[:3] in {
+                        ("docs", "operations", "autonomous-learning-records"),
+                        ("docs", "operations", "autonomous-learning-addenda"),
+                        ("docs", "operations", "learning"),
+                    }):
+                continue
             if path.is_symlink():
                 raise RuntimeError("unreviewed Upload Route snapshot symlink: " +
-                                   path.relative_to(source_root).as_posix())
+                                   relative.as_posix())
             if not path.is_file() or path.suffix not in suffixes:
                 continue
-            relative = path.relative_to(source_root)
             if relative.parts[:2] in {("docs", "fixtures"), ("docs", "evidence")}:
                 continue
             if relative.as_posix() == "scripts/reconcile-memory-os-upload-route-authority.py":
@@ -2994,6 +3003,10 @@ def prove_upload_route_snapshot_inventory_negatives() -> None:
         )
         excluded = (
             "docs/fixtures/ignored.md", "docs/evidence/ignored.md",
+            "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+            "docs/operations/autonomous-learning-records/old.md",
+            "docs/operations/autonomous-learning-addenda/old.md",
+            "docs/operations/learning/old.md",
             "scripts/reconcile-memory-os-upload-route-authority.py",
         )
         for relative in included + excluded:
@@ -3928,7 +3941,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     require_reviewed_upload_route_snapshot_functions(
         reconciler.read_text(encoding="utf-8"),
         {
-            "current_authority_files": "5f61d86e5e8b3e97a61a84682e7790725897ce161f26888d7c6604801669882c",
+            "current_authority_files": "13fbe397d4aea26fa8d5bfe7baabe088124abe17b25a34eba7b62bd5b666d7f1",
             "snapshot_authority_files": "6a11c9e680ca9f9499cd145b10ee81d90f9f59ffb2385ef068c36a8e81c7515d",
         },
     )
@@ -4158,7 +4171,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         if sql_gaps != sql_runtime_inputs:
             raise RuntimeError("Upload Route SQL migration trigger gap changed; review required")
     snapshot_paths = upload_route_snapshot_inventory(source_root)
-    require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1687, 1620)
+    require_upload_route_snapshot_gap(snapshot_paths, reviewed_paths[0], matches, 1400, 1300)
     guard_path = source_root / ".github/workflows/autonomous-learning-guard.yml"
     require_unaliased_go_path(source_root, guard_path)
     guard_source = guard_path.read_text(encoding="utf-8")
