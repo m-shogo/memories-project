@@ -2883,7 +2883,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_atomic_poststage_drift_rejection",
              "prove_atomic_short_write_rejection",
              "prove_pinned_pathname_swap_rejection",
-             "prove_nonblocking_special_file_reads")
+             "prove_nonblocking_special_file_reads",
+             "prove_bounded_authority_reads")
     definitions = {
         name: [node for node in tree.body
                if isinstance(node, ast.FunctionDef) and node.name == name]
@@ -2909,7 +2910,9 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         required = ({"read", "read_regular_bytes", "atomic_write_bytes",
                      "rollback_authority_files", "snapshot_authority_files"}
                     if name == "prove_nonblocking_special_file_reads" else
-                    {"read_regular_bytes"} if name == "prove_pinned_pathname_swap_rejection" else
+                    {"read_regular_bytes"} if name in (
+                        "prove_pinned_pathname_swap_rejection",
+                        "prove_bounded_authority_reads") else
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
@@ -2979,6 +2982,47 @@ def has_upload_route_pinned_text_read_binding(source: str) -> bool:
     return len(pinned) == 1 and not unsafe
 
 
+def has_upload_route_bounded_read_binding(source: str) -> bool:
+    """Require both preflight and streaming bounds in the live pinned reader."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    assignments = [
+        node for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name)
+                and target.id == "MAX_AUTHORITY_READ_BYTES"
+                for target in node.targets)
+    ]
+    if len(assignments) != 1 or ast.unparse(assignments[0].value) != "8 * 1024 * 1024":
+        return False
+    definitions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "read_regular_bytes"
+    ]
+    if len(definitions) != 1:
+        return False
+    checks = [
+        node for node in ast.walk(definitions[0])
+        if isinstance(node, ast.Compare) and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.LtE)
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Name)
+        and node.comparators[0].id == "MAX_AUTHORITY_READ_BYTES"
+    ]
+    preflight = any(
+        isinstance(node.left, ast.Attribute) and node.left.attr == "st_size"
+        and isinstance(node.left.value, ast.Name) and node.left.value.id == "before"
+        for node in checks
+    )
+    streaming = any(
+        isinstance(node.left, ast.Name) and node.left.id == "total"
+        for node in checks
+    )
+    return preflight and streaming
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
@@ -3022,6 +3066,20 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
                     reader_source.replace(marker, "payload = path.read_bytes()", 1))):
             failures.append("upload-route pinned text reader binding drift")
             return
+        if not has_upload_route_bounded_read_binding(reader_source):
+            failures.append("upload-route pinned reader bound missing")
+            return
+        for original, replacement in (
+            ("before.st_size <= MAX_AUTHORITY_READ_BYTES", "before.st_size < 0"),
+            ("total <= MAX_AUTHORITY_READ_BYTES", "total < 0"),
+            ("MAX_AUTHORITY_READ_BYTES = 8 * 1024 * 1024",
+             "MAX_AUTHORITY_READ_BYTES = 1 << 50"),
+        ):
+            if (reader_source.count(original) != 1
+                    or has_upload_route_bounded_read_binding(
+                        reader_source.replace(original, replacement, 1))):
+                failures.append("upload-route bounded read mutation accepted: " + original)
+                return
     except OSError:
         failures.append("upload-route pinned text reader source unavailable")
         return

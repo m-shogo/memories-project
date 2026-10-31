@@ -715,6 +715,50 @@ def prove_nonblocking_special_file_reads(module) -> None:
                 "special-file read modified an external canary")
         require(fifo.is_fifo(), "special-file negative changed FIFO identity")
 
+def prove_bounded_authority_reads(module) -> None:
+    """Reject oversized sparse inputs and reads growing beyond the initial size."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-read-bound-") as temp_dir:
+        root = Path(temp_dir)
+        small = root / "small.txt"
+        small.write_bytes(b"ok")
+        require(module.read_regular_bytes(small) == b"ok",
+                "bounded reader rejected a small regular file")
+        oversized = root / "oversized.txt"
+        with oversized.open("wb") as handle:
+            handle.truncate(module.MAX_AUTHORITY_READ_BYTES + 1)
+        try:
+            module.read_regular_bytes(oversized)
+        except module.ReconcileFailure as exc:
+            require("oversized rollback/write path" in str(exc),
+                    f"oversized sparse file rejected for unrelated reason: {exc}")
+        else:
+            raise Fail("pinned reader accepted an oversized sparse authority")
+        original_read = module.os.read
+        chunk = b"x" * (1024 * 1024)
+        calls = [0]
+
+        def growing_read(fd, count):
+            calls[0] += 1
+            return chunk if calls[0] <= 9 else b""
+
+        module.os.read = growing_read
+        try:
+            try:
+                module.read_regular_bytes(small)
+            except module.ReconcileFailure as exc:
+                require("oversized rollback/write path" in str(exc),
+                        f"growing read rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("pinned reader accepted more than the bounded read limit")
+        finally:
+            module.os.read = original_read
+        require(calls[0] == 9, "growing-read negative did not reach the limit")
+        require(small.read_bytes() == b"ok",
+                "growing-read negative changed the original authority")
+        require(module.read_regular_bytes(small) == b"ok",
+                "bounded reader did not recover after a rejected read")
+
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -792,6 +836,7 @@ def main() -> int:
     prove_atomic_short_write_rejection(module)
     prove_pinned_pathname_swap_rejection(module)
     prove_nonblocking_special_file_reads(module)
+    prove_bounded_authority_reads(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

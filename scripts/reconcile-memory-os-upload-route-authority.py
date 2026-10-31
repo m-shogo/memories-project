@@ -141,6 +141,7 @@ class ReconcileFailure(RuntimeError):
 
 ROLLBACK_SNAPSHOT: dict[Path, bytes | None] | None = None
 ROLLBACK_WRITTEN: dict[Path, bytes] = {}
+MAX_AUTHORITY_READ_BYTES = 8 * 1024 * 1024
 
 
 def require(condition: bool, message: str) -> None:
@@ -172,6 +173,8 @@ def read_regular_bytes(path: Path) -> bytes | None:
     except FileNotFoundError:
         return None
     require(stat.S_ISREG(before.st_mode), f"nonregular rollback/write path: {path}")
+    require(before.st_size <= MAX_AUTHORITY_READ_BYTES,
+            f"oversized rollback/write path: {path}")
     for flag in ("O_NOFOLLOW", "O_NONBLOCK"):
         value = getattr(os, flag, None)
         require(type(value) is int and value > 0,
@@ -185,10 +188,14 @@ def read_regular_bytes(path: Path) -> bytes | None:
             f"concurrent authority drift during read: {path}",
         )
         chunks: list[bytes] = []
+        total = 0
         while True:
             chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
                 break
+            total += len(chunk)
+            require(total <= MAX_AUTHORITY_READ_BYTES,
+                    f"oversized rollback/write path: {path}")
             chunks.append(chunk)
         after = os.fstat(descriptor)
         require(
