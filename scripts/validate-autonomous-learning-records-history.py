@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (33 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (34 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -332,6 +332,31 @@ def self_test() -> None:
                     "supplemental history is not append-only", kind,
                 )
 
+
+
+    # A local refs/replace graft can rewrite apparent commit parentage.
+    # Trusted history inspection must ignore it and reject the real mutation.
+    root, baseline, temp = fixture("modify", SCOPES[0])
+    try:
+        git(root, "replace", "--graft", "HEAD")
+        untrusted_env = {key: value for key, value in os.environ.items()
+                         if not key.startswith("GIT_")}
+        untrusted_env.update(GIT_CONFIG_NOSYSTEM="1",
+                             GIT_CONFIG_GLOBAL=os.devnull)
+        untrusted = subprocess.run(
+            ["git", "-C", str(root), "rev-list", "--parents", "-n", "1", "HEAD"],
+            env=untrusted_env, capture_output=True, timeout=20, check=False,
+        )
+        trusted = git(root, "rev-list", "--parents", "-n", "1", "HEAD")
+        if (untrusted.returncode != 0 or untrusted.stderr
+                or untrusted.stdout == trusted.stdout):
+            raise GuardFailure("Git replacement negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "supplemental history is not append-only", "git-replace-graft",
+        )
+    finally:
+        temp.cleanup()
 
 
     # An octopus merge has three parent edges. A restored mutation on the

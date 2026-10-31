@@ -2862,11 +2862,11 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental learning history guard unavailable")
         return
     if (type(result.returncode) is not int or result.returncode != 0
-            or result.stdout != "Supplemental learning all-parent append-only history PASS (33 fixtures)\n"
+            or result.stdout != "Supplemental learning all-parent append-only history PASS (34 fixtures)\n"
             or type(result.stderr) is not str or result.stderr):
         failures.append("supplemental learning history guard missing verified PASS")
     else:
-        print("supplemental learning all-parent history and 33 scoped/merge/octopus/literal/Git-environment/diagnostic/wrong-reason negatives verified")
+        print("supplemental learning all-parent history and 34 scoped/merge/octopus/literal/Git-environment/diagnostic/wrong-reason negatives verified")
 
 
 def main() -> int:
