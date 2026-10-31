@@ -2835,6 +2835,32 @@ def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
             failures.append("supplemental history baseline negative accepted: " + label)
 
 
+def supplemental_history_head_stability_bound(source: str) -> bool:
+    """Bind the live history proof to a stable Git HEAD, not an old snapshot."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    checks = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name == "check_history"]
+    if len(checks) != 1 or len(checks[0].body) < 2:
+        return False
+    snapshot, rejection = checks[0].body[-2:]
+    return (
+        isinstance(snapshot, ast.Assign)
+        and len(snapshot.targets) == 1
+        and isinstance(snapshot.targets[0], ast.Name)
+        and snapshot.targets[0].id == "final_head"
+        and ast.unparse(snapshot.value) ==
+            "git(root, 'rev-parse', '--verify', 'HEAD^{commit}').stdout.strip().decode('ascii')"
+        and isinstance(rejection, ast.If)
+        and ast.unparse(rejection.test) == "final_head != head"
+        and len(rejection.body) == 1
+        and ast.unparse(rejection.body[0]) ==
+            "raise GuardFailure('supplemental history HEAD moved during audit')"
+    )
+
+
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -2849,6 +2875,14 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         return
     if not supplemental_history_baseline_bound(guard_source):
         failures.append("supplemental history immutable baseline or live call drift")
+        return
+    if not supplemental_history_head_stability_bound(guard_source):
+        failures.append("supplemental history HEAD stability proof drift")
+        return
+    # A reversed comparison must not be mistaken for the fail-closed guard.
+    weakened = guard_source.replace("if final_head != head:", "if final_head == head:", 1)
+    if weakened == guard_source or supplemental_history_head_stability_bound(weakened):
+        failures.append("supplemental history HEAD stability mutation accepted")
         return
     prove_supplemental_history_baseline_negatives(failures)
     try:
