@@ -2875,6 +2875,11 @@ def supplemental_history_reflog_bound(source: str) -> bool:
     if len(helpers) != 1 or len(checks) != 1:
         return False
     helper = ast.unparse(helpers[0])
+    returns = [node for node in ast.walk(helpers[0]) if isinstance(node, ast.Return)]
+    if (len(returns) != 1 or helpers[0].body[-1] is not returns[0]
+            or ast.unparse(returns[0].value) !=
+                "(observed.st_dev, observed.st_ino, observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns)"):
+        return False
     for needle in (
         "git(root, 'rev-parse', '--git-path', 'logs/HEAD')",
         "raw.decode('utf-8')",
@@ -2897,8 +2902,16 @@ def supplemental_history_reflog_bound(source: str) -> bool:
                 and len(node.body) == 1
                 and ast.unparse(node.body[0]) ==
                     "raise GuardFailure('supplemental history HEAD reflog changed during audit')"]
+    enumerations = [node for node in body if isinstance(node, ast.Assign)
+                    and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                    and node.targets[0].id == "commits"]
+    traversals = [node for node in body if isinstance(node, ast.For)
+                  and isinstance(node.target, ast.Name) and node.target.id == "commit"]
+    if len(enumerations) != 1 or len(traversals) != 1:
+        return False
     return len(captured) == 1 and len(rejected) == 1 and (
-        body.index(captured[0]) < body.index(rejected[0]) < len(body) - 2
+        body.index(captured[0]) < body.index(enumerations[0])
+        < body.index(traversals[0]) < body.index(rejected[0]) < len(body) - 2
     )
 
 
@@ -3061,6 +3074,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     for original, altered in (
         ("observed = path.lstat()", "observed = path.stat()"),
         ("observed.st_nlink != 1", "observed.st_nlink == 1"),
+        ("    return (observed.st_dev, observed.st_ino, observed.st_size,",
+         "    return (0, 0, 0, 0, 0)\n    return (observed.st_dev, observed.st_ino, observed.st_size,"),
         ("observed.st_mtime_ns, observed.st_ctime_ns",
          "observed.st_mtime_ns, 0"),
         ("head_reflog_witness(root) != head_witness",
