@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (37 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (38 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -42,6 +42,12 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
     if result.returncode == 0 and result.stderr:
         raise GuardFailure("Git history inspection emitted unexpected diagnostics")
     return result
+
+
+def reject_shallow_history(root: Path) -> None:
+    """Shallow side-branch boundaries can hide pre-merge record mutations."""
+    if git(root, "rev-parse", "--is-shallow-repository").stdout != b"false\n":
+        raise GuardFailure("shallow supplemental history is not complete")
 
 
 def reject_local_grafts(root: Path) -> None:
@@ -72,6 +78,7 @@ def check_history(root: Path, baseline: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", baseline):
         raise GuardFailure("invalid immutable history baseline")
     reject_local_grafts(root)
+    reject_shallow_history(root)
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise GuardFailure("invalid checked-out commit")
@@ -392,6 +399,59 @@ def self_test() -> None:
         )
     finally:
         temp.cleanup()
+
+
+    # A shallow side branch can hide a mutation restored before merge while
+    # the reviewed baseline remains reachable through the main branch.
+    with tempfile.TemporaryDirectory(prefix="supplemental-shallow-negative-") as temp:
+        root = Path(temp)
+        git(root, "init", "-q")
+        git(root, "config", "user.name", "Fixture")
+        git(root, "config", "user.email", "fixture@example.invalid")
+        old = root / SCOPES[0] / "original.md"
+        old.parent.mkdir(parents=True)
+        old.write_text("immutable\n", encoding="utf-8")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "baseline")
+        baseline = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        base_branch = git(root, "branch", "--show-current").stdout.decode("ascii").strip()
+        git(root, "checkout", "-qb", "feature")
+        old.write_text("mutated\n", encoding="utf-8")
+        git(root, "commit", "-qam", "mutate old record")
+        hidden_mutation = git(root, "rev-parse", "HEAD").stdout.strip()
+        old.write_text("immutable\n", encoding="utf-8")
+        git(root, "commit", "-qam", "restore old record")
+        feature_tip = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        git(root, "checkout", "-q", base_branch)
+        (old.parent / "new.md").write_text("new\n", encoding="utf-8")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "add new record")
+        git(root, "merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+        head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        before = git(root, "rev-list", "--reverse", baseline + ".." + head).stdout.splitlines()
+        if hidden_mutation not in before:
+            raise GuardFailure("full-history shallow negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "supplemental history is not append-only", "full-history-side-mutation",
+        )
+        raw_path = git(root, "rev-parse", "--git-path", "shallow").stdout.decode(
+            "utf-8").strip()
+        shallow_path = Path(raw_path)
+        if not shallow_path.is_absolute():
+            shallow_path = root / shallow_path
+        shallow_path.write_text(feature_tip + "\n", encoding="ascii")
+        if git(root, "rev-parse", "--is-shallow-repository").stdout != b"true\n":
+            raise GuardFailure("shallow negative control not activated")
+        after = git(root, "rev-list", "--reverse", baseline + ".." + head).stdout.splitlines()
+        ancestor = git(root, "merge-base", "--is-ancestor", baseline, head,
+                       allow_failure=True)
+        if hidden_mutation in after or ancestor.returncode != 0 or ancestor.stderr:
+            raise GuardFailure("shallow history masking negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "shallow supplemental history is not complete", "shallow-side-mutation",
+        )
 
 
     # A local refs/replace graft can rewrite apparent commit parentage.
