@@ -3226,7 +3226,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
             return False
         if name == "prove_atomic_poststage_drift_rejection" and not all(
                 token in ast.unparse(proof) for token in (
-                    "parent-mode-changed", "root.chmod(511)", "concurrent publication parent drift",
+                    "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
                     "poststage parent permission drift was overwritten")):
             return False
         if name == "prove_atomic_dup_failure_cleanup":
@@ -3568,16 +3568,14 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     except SyntaxError:
         return False
     names = ("atomic_write_bytes", "open_pinned_parent", "create_pinned_stage")
-    functions = {name: [node for node in tree.body if isinstance(node, ast.FunctionDef)
-                        and node.name == name] for name in names}
+    functions = {name: [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name] for name in names}
     if any(len(nodes) != 1 for nodes in functions.values()):
         return False
     body, opener, stage = (ast.unparse(functions[name][0]) for name in names)
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)", "os.O_DIRECTORY | os.O_NOFOLLOW",
         "expected_parent.st_dev", "expected_parent.st_ino", "expected_parent.st_mode", "expected_parent.st_ctime_ns",
-        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns",
-        "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)",
+        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns", "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)",
     )):
         return False
     if not all(fragment in stage for fragment in (
@@ -3588,7 +3586,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "getattr(os, 'O_DIRECTORY', None)", "initial_parent = path.parent.lstat()", "open_pinned_parent(path, initial_parent)",
         "create_pinned_stage(parent_fd, path.name)", "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
-        "os.unlink(temporary.name, dir_fd=parent_fd)", "staged_initial = os.fstat(descriptor)",
+        "os.unlink(temporary.name, dir_fd=parent_fd)", "staged_initial = os.fstat(descriptor)", "staged_stat.st_nlink == 1", "staged_live.st_nlink == 1",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)", "staging_guard_fd = os.dup(descriptor)", "if staging_guard_fd is not None:", "os.close(staging_guard_fd)", "untransferred_stage_fd: int | None = descriptor",
         "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)", "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity", "published = True", "if not published and staged_identity is not None:",
         "(pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode) == (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
@@ -3661,6 +3659,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ('"docs/operations/learning-alias.txt"',
              '"docs/operations/learning-alias.md"'),
             ('elif scenario == "parent-mode-changed":\n                    root.chmod(0o777)', 'elif scenario == "parent-mode-changed":\n                    pass'),
+            ('os.link(staged[0], stage_alias)', 'pass'),
             ("module.os.replace = replace_then_reuse",
              "module.os.replace = original_replace"),
             ("module.os.replace = reuse_before_failed_replace",
@@ -3799,6 +3798,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("for _ in range(8):", "for _ in range(0):"),
             ("os.urandom(16).hex()", "'fixed-stage-name'"),
+            ("staged_stat.st_nlink == 1", "staged_stat.st_nlink >= 1"),
+            ("staged_live.st_nlink == 1", "staged_live.st_nlink >= 1"),
             ("and (pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode)", "and (pinned_parent.st_dev, pinned_parent.st_ino, -1)"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
             ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",

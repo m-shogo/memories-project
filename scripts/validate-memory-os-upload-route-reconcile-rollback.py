@@ -881,15 +881,17 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
         replacement = root / "replacement.txt"
         canary = root / "external-canary.txt"
         canary.write_bytes(b"canary")
+        stage_alias = root / "independent-stage-alias.txt"
         original_fsync = module.os.fsync
         for scenario in ("modified", "inode-replaced", "mode-changed",
-                         "parent-mode-changed", "ctime-only", "symlink-swapped",
+                         "parent-mode-changed", "staged-hardlink", "ctime-only", "symlink-swapped",
                          "deleted", "created"):
             if target.is_symlink():
                 target.unlink()
             target.write_bytes(b"original")
             target.chmod(0o644)
             root.chmod(0o700)
+            stage_alias.unlink(missing_ok=True)
             created.unlink(missing_ok=True)
             replacement.unlink(missing_ok=True)
             destination = created if scenario == "created" else target
@@ -907,6 +909,10 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                     target.chmod(0o600)
                 elif scenario == "parent-mode-changed":
                     root.chmod(0o777)
+                elif scenario == "staged-hardlink":
+                    staged = list(root.glob(pattern))
+                    require(len(staged) == 1, "staged hardlink fixture missing stage")
+                    os.link(staged[0], stage_alias)
                 elif scenario == "ctime-only":
                     previous = target.stat()
                     target.write_bytes(b"original")
@@ -933,6 +939,8 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                     expected = ("symlink rollback/write path" if scenario == "symlink-swapped"
                                 else "concurrent publication parent drift"
                                 if scenario == "parent-mode-changed"
+                                else "concurrent publication staging drift"
+                                if scenario == "staged-hardlink"
                                 else "concurrent authority drift before publication")
                     require(expected in str(exc),
                             f"{scenario} rejected for unrelated reason: {exc}")
@@ -956,6 +964,10 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                 require(stat.S_IMODE(root.stat().st_mode) == 0o777
                         and target.read_bytes() == b"original",
                         "poststage parent permission drift was overwritten")
+            elif scenario == "staged-hardlink":
+                require(stage_alias.read_bytes() == b"our-staged-change"
+                        and target.read_bytes() == b"original",
+                        "staged hardlink rejection altered alias or target")
             elif scenario == "ctime-only":
                 require(target.read_bytes() == b"original",
                         "poststage ctime-only rewrite was overwritten")

@@ -361,6 +361,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 os.fchmod(handle.fileno(), original_mode)
             os.fsync(handle.fileno())
             staged_stat = os.fstat(handle.fileno())
+            require(stat.S_ISREG(staged_stat.st_mode) and staged_stat.st_nlink == 1,
+                    f"concurrent publication staging drift: {path}")
         # A bounded final compare rejects edits, inode swaps, mode changes,
         # symlink swaps and new-file races during temporary-file staging.
         # This is not a complete directory transaction or atomic leaf CAS.
@@ -400,6 +402,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             staged_live = os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)
             require(
                 stat.S_ISREG(staged_live.st_mode)
+                and staged_live.st_nlink == 1
                 and (staged_live.st_dev, staged_live.st_ino, staged_live.st_mode,
                      staged_live.st_ctime_ns)
                 == (staged_stat.st_dev, staged_stat.st_ino, staged_stat.st_mode,
