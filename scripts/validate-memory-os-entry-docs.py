@@ -3227,7 +3227,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         if name == "prove_atomic_poststage_drift_rejection":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
-                "parent-mode-changed", "root.chmod(0o777)",
+                "parent-mode-changed", "root.chmod(511)",
                 "concurrent publication parent drift",
                 "poststage parent permission drift was overwritten",
             )):
