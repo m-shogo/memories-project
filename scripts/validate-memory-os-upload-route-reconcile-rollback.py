@@ -858,6 +858,41 @@ def prove_nonblocking_special_file_reads(module) -> None:
             module.ROLLBACK_SNAPSHOT = None
             module.ROLLBACK_WRITTEN.clear()
             hardlink.unlink()
+        # Replace a regular leaf with an external symlink at the actual open
+        # boundary. The initial lstat is deliberately valid; the no-follow
+        # open must reject the later alias with a fixed domain diagnostic.
+        raced = root / "raced.txt"
+        raced.write_bytes(b"owned")
+        outside = root / "external.txt"
+        outside.write_bytes(b"external-canary")
+        original_open = module.os.open
+        opened_raced = [False]
+
+        def redirect_leaf_before_open(candidate, flags, *args, **kwargs):
+            if Path(candidate) == raced and flags & os.O_NOFOLLOW:
+                raced.unlink()
+                raced.symlink_to(outside)
+                opened_raced[0] = True
+            return original_open(candidate, flags, *args, **kwargs)
+
+        module.os.open = redirect_leaf_before_open
+        try:
+            try:
+                module.read_regular_bytes(raced)
+            except module.ReconcileFailure as exc:
+                require("concurrent authority drift during read" in str(exc),
+                        f"reader open race rejected for unrelated reason: {exc}")
+                require(exc.__suppress_context__,
+                        "reader open race exposed raw OS exception context")
+            else:
+                raise Fail("reader accepted a leaf swapped to an external symlink")
+        finally:
+            module.os.open = original_open
+        require(opened_raced[0] and raced.is_symlink(),
+                "reader open race did not replace the reviewed leaf")
+        require(outside.read_bytes() == b"external-canary",
+                "reader open race changed external canary bytes")
+
         require(module.read_regular_bytes(regular) == b"changed",
                 "hardlink removal did not restore a single-name authority")
         require(module.read_regular_bytes(root / "missing.txt") is None,

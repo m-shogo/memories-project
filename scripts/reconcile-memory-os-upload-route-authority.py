@@ -182,7 +182,12 @@ def read_regular_bytes(path: Path) -> bytes | None:
         value = getattr(os, flag, None)
         require(type(value) is int and value > 0,
                 f"unsupported safe authority read flag: {flag}")
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError:
+        # A leaf may disappear or become a symlink after lstat. Do not leak
+        # platform-specific open errors or fall back to following the alias.
+        raise ReconcileFailure(f"concurrent authority drift during read: {path}") from None
     try:
         pinned = os.fstat(descriptor)
         require(
