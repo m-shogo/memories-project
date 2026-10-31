@@ -1807,6 +1807,35 @@ def prove_atomic_prestage_parent_swap(module) -> None:
         require(sorted(item.name for item in root.glob(".authority.txt.*.tmp"))
                 == [collision.name], "stage collision left an unowned temporary file")
 
+    # One occupied private stage name must be retried without replacing the
+    # independent colliding file or weakening exclusive creation.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-retry-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original-owned")
+        collision = root / (".authority.txt." + "00" * 16 + ".tmp")
+        collision.write_bytes(b"independent-collision-canary")
+        original_random = module.os.urandom
+        draws: list[int] = []
+
+        def first_collision_then_unique(count):
+            require(count == 16, "stage collision retry requested unexpected entropy")
+            draws.append(count)
+            return bytes(16) if len(draws) == 1 else bytes([1]) * 16
+
+        module.os.urandom = first_collision_then_unique
+        try:
+            module.atomic_write_bytes(target, b"published-after-collision")
+        finally:
+            module.os.urandom = original_random
+        require(draws == [16, 16],
+                "transient collision retry did not draw twice")
+        require(target.read_bytes() == b"published-after-collision"
+                and collision.read_bytes() == b"independent-collision-canary"
+                and sorted(item.name for item in root.glob(".authority.txt.*.tmp"))
+                == [collision.name],
+                "transient stage collision overwrote independent canary or left residue")
+
     # A failing stage open must close the already pinned parent capability.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-open-") as temp_dir:
         root = Path(temp_dir)
