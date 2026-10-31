@@ -1,0 +1,32 @@
+# Supplemental OPS learning — reject shallow Git histories hiding merged record mutations (2026-10-31)
+
+Append-only learning only. Never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review or human promotion evidence.
+
+## Material history-integrity failure class
+
+- **symptom:** A supplemental append-only history scan can miss a record mutation restored on a merged side branch if the local checkout is shallow at the side-branch tip, despite the immutable baseline still being an ancestor through the main branch.
+- **evidence:** A disposable Git reproduction created a baseline with an existing record, a feature branch that modified and restored it, a main-branch record addition and a merge. Before the shallow boundary, `git rev-list baseline..HEAD` contained the mutation commit and the guard rejected it. Writing the feature tip SHA to the local Git shallow boundary made `git rev-parse --is-shallow-repository` report `true` and hid the mutation from `rev-list`, while `git merge-base --is-ancestor baseline HEAD` still exited 0. Merge-to-parent diffs showed only an allowed new record addition.
+- **rootCauseOrUnknown:** Verified: Git shallow boundaries truncate reachable side-branch ancestry independently of main-branch baseline reachability. A baseline ancestry check and per-visible-commit diff inspection alone cannot prove completeness of a shallow graph.
+- **failedApproach:** Treating a reachable immutable baseline and `rev-list` of the available graph as complete all-parent history without independently excluding shallow repository state.
+- **correction:** [f59cf655](https://github.com/m-shogo/memories-project/commit/f59cf6553b7987ffbf058cd42a681186569d5eca) adds `reject_shallow_history` before ancestry traversal, requiring the exact `false\n` result from `git rev-parse --is-shallow-repository`; an unavailable or ambiguous Git result fails closed.
+- **recurrenceGuard:** A real disposable merged-history fixture first proves full-history mutation rejection, then establishes the hidden mutation plus still-reachable baseline under a shallow side-branch boundary, and finally requires the cause-specific `shallow supplemental history is not complete` failure. The CI-bound independent entrypoint pins the exact **38-fixture** PASS string (previously 37).
+- **retryCondition:** Revisit only after reviewed checkout depth, Git shallow semantics, history-guard call topology, immutable baseline or CI binding changes. Do not re-enable shallow admission or retry unchanged MinIO HTTP 401, workflow-write permission, large canonical learning write or human approval blockers.
+
+## Material safe success
+
+- **outcome:** The supplemental all-parent history validator now refuses incomplete shallow repositories even when a reviewed baseline remains reachable and visible merge edges look append-only.
+- **evidence:** [Autonomous Learning Guard #41166346559](https://github.com/m-shogo/memories-project/actions/runs/41166346559) completed **SUCCESS** on exact source `f59cf655`: 601 canonical fail-closed negatives, **38 supplemental all-parent history fixtures**, 52 source-negative workflows / 63 Python commands / 204 fixtures, 195 fanout synthetics, 1,186 helper-ancestor negatives, canonical append-only, entrypoint and clean/read-only PASS. [Operability Contracts #41166346506](https://github.com/m-shogo/memories-project/actions/runs/41166346506) completed **SUCCESS** on the same SHA and independently reported the 38-fixture proof.
+- **whySafe:** Only two read-only Python validators changed; the shallow file was created in a disposable Git fixture, not in the checked-out production repository. No workflow YAML, production/recovery authority, MinIO, credentials, traffic, real generation, approved objective, reviewed request, request-bound evidence, independent review or human promotion was modified.
+- **reusableMechanism:** Prove Git history completeness separately from ancestor reachability. A real side-branch restore-and-merge counterexample is stronger than a shallow flag test alone; combine it with a fail-closed shallow-status check and exact-source CI reachability.
+- **protectedAuthorityCheck:** All ten protected Git blob SHAs unchanged on the code commit: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, and six protected generation/objective/request/evidence/non-resurrection/promotion registries. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/eligible generations 0/0, approved objectives 0, executable reviewed requests 0, request-bound evidence 0, typed eight-domain records 0, final candidates 0. Human promotion remains separate/non-automatic.
+
+## Scoped prepublication tool failure and correction
+
+- **symptom / evidence:** A first staged Git-tree orchestration raised JavaScript `ReferenceError: head is not defined` before calling the Git tree writer. A fresh branch read still showed `c96eaf4b`; no tree or ref mutation from that failed call was claimed.
+- **rootCauseOrUnknown / failedApproach:** Verified local variable mismatch: the current branch SHA was bound as `h` but referenced as `head` in the commit-tree fetch URL. The approach failed at argument evaluation, not GitHub.
+- **correction / recurrenceGuard:** Replaced the undefined identifier with the already verified `h` variable, then re-read the branch and both target blobs, checked exact staged blob identities, created the tree/commit, and published through a non-force expected-HEAD CAS. Subsequent tree, compare, CI and protected-authority checks succeeded. Keep each staged operation bounded and use one consistently named HEAD binding.
+- **retryCondition:** Retry a failed staging expression only after correcting its binding and re-reading the current branch and target authorities; never assume a failed pre-call expression wrote a Git object.
+
+## Next safe target
+
+Audit whether a partial/promisor object graph or local Git configuration can mask side-parent history despite full-depth status, with real cause-specific negative proof before any additional validator change. Separately preserve the known supplemental-record-only Push/PR trigger and pre-MinIO Go test reachability blockers until reviewed workflow write permission changes.
