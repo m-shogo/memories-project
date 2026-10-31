@@ -149,10 +149,18 @@ def require(condition: bool, message: str) -> None:
 
 
 def read(path: Path) -> str:
+    """Decode the same pinned regular-file bytes used by rollback snapshots."""
+    payload = read_regular_bytes(path)
+    if payload is None:
+        try:
+            label = path.relative_to(ROOT)
+        except ValueError:
+            label = path
+        raise ReconcileFailure(f"missing file: {label}")
     try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise ReconcileFailure(f"missing file: {path.relative_to(ROOT)}") from exc
+        return payload.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ReconcileFailure(f"invalid UTF-8 authority: {path}") from exc
 
 
 def read_regular_bytes(path: Path) -> bytes | None:
