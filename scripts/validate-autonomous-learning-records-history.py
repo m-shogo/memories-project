@@ -17,7 +17,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (23 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (25 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -25,7 +25,11 @@ class GuardFailure(RuntimeError):
 
 
 def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.CompletedProcess[bytes]:
-    env = dict(os.environ, GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+    # An inherited GIT_DIR or GIT_WORK_TREE can redirect -C to an unrelated
+    # repository. Reject every inherited Git override before inspecting history.
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith("GIT_")}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
                GIT_CONFIG_GLOBAL=os.devnull)
     try:
         result = subprocess.run(["git", "-C", str(root), *args], env=env,
@@ -112,6 +116,29 @@ def self_test() -> None:
             pass
         else:
             raise GuardFailure("supplemental history double-escape accepted")
+    # Prove the Git wrapper ignores hostile inherited repository selectors.
+    # Both selectors redirect a naive git -C invocation to the decoy worktree.
+    with tempfile.TemporaryDirectory(prefix="supplemental-git-env-negative-") as temp:
+        trusted = Path(temp) / "trusted"
+        decoy = Path(temp) / "decoy"
+        for repo in (trusted, decoy):
+            repo.mkdir()
+            git(repo, "init", "-q")
+        expected = git(trusted, "rev-parse", "--show-toplevel").stdout.strip()
+        for variable, value in (("GIT_DIR", str(decoy / ".git")),
+                                ("GIT_WORK_TREE", str(decoy))):
+            previous = os.environ.get(variable)
+            try:
+                os.environ[variable] = value
+                actual = git(trusted, "rev-parse", "--show-toplevel").stdout.strip()
+                if actual != expected:
+                    raise GuardFailure("supplemental history inherited Git repository override")
+            finally:
+                if previous is None:
+                    os.environ.pop(variable, None)
+                else:
+                    os.environ[variable] = previous
+
     def fixture(change: str, scope: str) -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="supplemental-history-negative-")
         root = Path(temp.name)
