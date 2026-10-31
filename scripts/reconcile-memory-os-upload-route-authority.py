@@ -454,6 +454,16 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     finally:
         try:
             try:
+                # Recover a stage identity only from the still-owned descriptor.
+                # Never infer ownership from a reused pathname after fstat fails.
+                if not published and staged_identity is None and untransferred_stage_fd is not None:
+                    try:
+                        recovery_stat = os.fstat(untransferred_stage_fd)
+                    except OSError:
+                        pass  # Unverified name stays untouched; fail closed.
+                    else:
+                        if stat.S_ISREG(recovery_stat.st_mode) and recovery_stat.st_nlink == 1:
+                            staged_identity = (recovery_stat.st_dev, recovery_stat.st_ino)
                 if not published and staged_identity is not None:
                     try:
                         cleanup_stat = os.stat(
