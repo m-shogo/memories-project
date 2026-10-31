@@ -3230,7 +3230,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
                     "poststage parent permission drift was overwritten")):
             return False
-        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()", "unverified-owned", "unverified-reused", "scenario.startswith(\'unverified-\')", "staged.read_bytes() == b\'\'", "staged.stat().st_mode")): return False
+        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()", "unverified-owned", "unverified-reused", "scenario.startswith(\'unverified-\')", "staged.read_bytes() == b\'\'", "staged.stat().st_mode", "module.open_pinned_parent = capture_parent", "original_fstat(pinned_parents[0])", "initial staged fstat failure leaked parent descriptor")): return False
         if name == "prove_atomic_initial_fstat_failure_cleanup":
             scenario_loops = [node for node in ast.walk(proof) if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "scenario" and isinstance(node.iter, ast.Tuple)]
             if len(scenario_loops) != 1 or tuple(item.value for item in scenario_loops[0].iter.elts if isinstance(item, ast.Constant)) != ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused"): return False
@@ -3671,7 +3671,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("module.os.dup = capture_stage_pin",
              "module.os.dup = original_dup"),
             ("module.os.dup = reject_dup",
-             "module.os.dup = original_dup"),
+             "module.os.dup = original_dup"), ("original_fstat(pinned_parents[0])", "original_fstat(-1)"),
             ('for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused")', 'for scenario in ("recover", "reused-unlinked", "reused-linked")'),
             ('"contracts/operations/production-operability-status.json"',
              '"contracts/operations/production-operability-status.txt"'),

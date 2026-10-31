@@ -517,6 +517,13 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             tripped: list[bool] = []
             original_stage = module.create_pinned_stage
             original_fstat = module.os.fstat
+            original_parent = module.open_pinned_parent
+            pinned_parents: list[int] = []
+
+            def capture_parent(path, expected):
+                fd = original_parent(path, expected)
+                pinned_parents.append(fd)
+                return fd
 
             def capture_stage(parent_fd, leaf):
                 fd, name = original_stage(parent_fd, leaf)
@@ -536,6 +543,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 return original_fstat(fd)
 
             module.create_pinned_stage = capture_stage
+            module.open_pinned_parent = capture_parent
             module.os.fstat = fail_initial_stage_fstat
             try:
                 try:
@@ -547,7 +555,17 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     raise Fail("atomic writer accepted initial staged fstat failure")
             finally:
                 module.create_pinned_stage = original_stage
+                module.open_pinned_parent = original_parent
                 module.os.fstat = original_fstat
+            require(len(pinned_parents) == 1, "initial staged fstat failure did not pin one parent")
+            try:
+                original_fstat(pinned_parents[0])
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        f"initial staged fstat parent fd closed for unrelated reason: {exc}")
+            else:
+                os.close(pinned_parents[0])
+                raise Fail("initial staged fstat failure leaked parent descriptor")
             require(len(captured) == 1 and tripped == ([True, True] if scenario.startswith("unverified-") else [True]),
                     "initial staged fstat injection did not reach owned descriptor")
             try:
