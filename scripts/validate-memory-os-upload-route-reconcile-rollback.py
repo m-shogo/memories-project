@@ -807,7 +807,7 @@ def prove_atomic_prestage_parent_swap(module) -> None:
         collision = root / (".authority.txt." + "00" * 16 + ".tmp")
         collision.write_bytes(b"independent-collision-canary")
         original_random = module.os.urandom
-        module.os.urandom = lambda count: b"\\x00" * count
+        module.os.urandom = lambda count: bytes(count)
         try:
             try:
                 module.atomic_write_bytes(target, b"must-not-publish")
