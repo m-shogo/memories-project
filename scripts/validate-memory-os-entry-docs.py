@@ -2733,7 +2733,7 @@ def supplemental_history_baseline_bound(source: str) -> bool:
     # An immutable literal is not enough if a later statement can delete or
     # indirectly rebind the epoch or the live history checker. This is a
     # conservative source guard, not a claim of complete Python alias closure.
-    guarded_names = {"BASELINE", "check_history"}
+    guarded_names = {"BASELINE", "check_history", "main"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and node.id in guarded_names and isinstance(
                 node.ctx, (ast.Store, ast.Del)):
@@ -2828,6 +2828,7 @@ def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
         ("attribute-rebind", good + 'module.BASELINE = "0" * 40\n'),
         ("setattr-rebind", good + 'setattr(module, "BASELINE", "0" * 40)\n'),
         ("indirect-subscript", good + 'registry["BASELINE"] = "0" * 40\n'),
+        ("rebind-main", good + 'main = lambda: 0\n'),
     )
     for label, candidate in bad:
         if supplemental_history_baseline_bound(candidate):
@@ -2861,11 +2862,11 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental learning history guard unavailable")
         return
     if (type(result.returncode) is not int or result.returncode != 0
-            or result.stdout != "Supplemental learning all-parent append-only history PASS (30 fixtures)\n"
+            or result.stdout != "Supplemental learning all-parent append-only history PASS (32 fixtures)\n"
             or type(result.stderr) is not str or result.stderr):
         failures.append("supplemental learning history guard missing verified PASS")
     else:
-        print("supplemental learning all-parent history and 30 scoped/merge/literal/Git-environment/diagnostic/wrong-reason negatives verified")
+        print("supplemental learning all-parent history and 32 scoped/merge/octopus/literal/Git-environment/diagnostic/wrong-reason negatives verified")
 
 
 def main() -> int:

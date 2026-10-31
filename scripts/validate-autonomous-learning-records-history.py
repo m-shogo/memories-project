@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (30 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (32 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -314,6 +314,52 @@ def self_test() -> None:
                     "supplemental history is not append-only", kind,
                 )
 
+
+
+    # An octopus merge has three parent edges. A restored mutation on the
+    # third side branch must not disappear behind a clean merge result.
+    for corrupt in (False, True):
+        with tempfile.TemporaryDirectory(prefix="supplemental-octopus-negative-") as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.name", "Fixture")
+            git(root, "config", "user.email", "fixture@example.invalid")
+            old = root / SCOPES[0] / "original.md"
+            old.parent.mkdir(parents=True)
+            old.write_text("immutable\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "baseline")
+            baseline = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+            base_branch = git(root, "branch", "--show-current").stdout.decode("ascii").strip()
+            git(root, "checkout", "-qb", "feature-add")
+            (old.parent / "new.md").write_text("new\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "add record")
+            git(root, "checkout", "-qb", "feature-third", baseline)
+            if corrupt:
+                old.write_text("mutated\n", encoding="utf-8")
+                git(root, "commit", "-qam", "mutate old record")
+                old.write_text("immutable\n", encoding="utf-8")
+                git(root, "commit", "-qam", "restore old record")
+            else:
+                (root / "README.md").write_text("safe\n", encoding="utf-8")
+                git(root, "add", ".")
+                git(root, "commit", "-qm", "safe outside scope")
+            git(root, "checkout", "-q", base_branch)
+            git(root, "merge", "-q", "--no-ff", "-m", "octopus merge",
+                "feature-add", "feature-third")
+            parents = git(root, "rev-list", "--parents", "-n", "1", "HEAD").stdout.decode(
+                "ascii").split()
+            if len(parents) != 4:
+                raise GuardFailure("octopus fixture did not create three parents")
+            if corrupt:
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental history is not append-only",
+                    "octopus-third-parent-restore",
+                )
+            else:
+                check_history(root, baseline)
 
 
 def main() -> int:
