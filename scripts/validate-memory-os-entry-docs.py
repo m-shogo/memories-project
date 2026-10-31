@@ -3167,7 +3167,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_rollback_write_ownership", "prove_atomic_mode_preservation",
              "prove_atomic_mode_failure_cleanup",
              "prove_atomic_fdopen_failure_cleanup",
-             "prove_atomic_dup_failure_cleanup",
+             "prove_atomic_dup_failure_cleanup", "prove_atomic_initial_fstat_failure_cleanup",
              "prove_postpublication_temp_reuse_preserved",
              "prove_failed_publication_temp_reuse_preserved",
              "prove_atomic_parent_publication_capability",
@@ -3210,7 +3210,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
-                        "prove_atomic_dup_failure_cleanup",
+                        "prove_atomic_dup_failure_cleanup", "prove_atomic_initial_fstat_failure_cleanup",
                         "prove_postpublication_temp_reuse_preserved",
                         "prove_failed_publication_temp_reuse_preserved",
                         "prove_atomic_parent_publication_capability",
@@ -3230,6 +3230,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
                     "poststage parent permission drift was overwritten")):
             return False
+        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()")): return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3588,7 +3589,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "create_pinned_stage(parent_fd, path.name)", "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)", "os.unlink(temporary.name, dir_fd=parent_fd)", "staged_initial = os.fstat(descriptor)", "staged_stat.st_nlink == 1", "staged_live.st_nlink == 1",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)", "staging_guard_fd = os.dup(descriptor)", "if staging_guard_fd is not None:", "os.close(staging_guard_fd)", "untransferred_stage_fd: int | None = descriptor",
-        "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)", "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity", "published = True", "if not published and staged_identity is not None:",
+        "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)", "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity", "published = True", "if not published and staged_identity is not None:", "if not published and staged_identity is None and untransferred_stage_fd is not None:", "recovery_stat = os.fstat(untransferred_stage_fd)", "recovery_stat.st_nlink == 1",
         "(pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode) == (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
         "(live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
         "concurrent publication parent drift", "os.close(parent_fd)",
@@ -3799,7 +3800,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("for _ in range(8):", "for _ in range(0):"),
             ("os.urandom(16).hex()", "'fixed-stage-name'"),
             ("staged_stat.st_nlink == 1", "staged_stat.st_nlink >= 1"),
-            ("staged_live.st_nlink == 1", "staged_live.st_nlink >= 1"),
+            ("staged_live.st_nlink == 1", "staged_live.st_nlink >= 1"), ("recovery_stat.st_nlink == 1", "recovery_stat.st_nlink >= 1"),
             ("and (pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode)", "and (pinned_parent.st_dev, pinned_parent.st_ino, -1)"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
             ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
