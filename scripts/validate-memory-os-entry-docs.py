@@ -2949,6 +2949,20 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                 "original_unlink(source, dir_fd=kwargs['src_dir_fd'])",
                 "independent.write_bytes(b'independent-failed-replace-canary')",
                 "reused[0].read_bytes() == b'independent-failed-replace-canary'",
+                "module.os.dup = capture_stage_pin",
+                "module.os.dup = original_dup",
+                "os.fstat(pinned_fds[0])",
+                "exc.errno == errno.EBADF",
+            )):
+                return False
+        if name == "prove_nonblocking_special_file_reads":
+            proof_source = ast.unparse(proof)
+            if not all(fragment in proof_source for fragment in (
+                "module.os.open = redirect_leaf_before_open",
+                "module.os.open = original_open",
+                "raced.symlink_to(outside)",
+                "outside.read_bytes() == b'external-canary'",
+                "exc.__suppress_context__",
             )):
                 return False
         if name == "prove_atomic_parent_publication_capability":
@@ -3067,6 +3081,45 @@ def has_upload_route_pinned_text_read_binding(source: str) -> bool:
         and node.func.attr in {"read_text", "read_bytes", "open"}
     ]
     return len(pinned) == 1 and not unsafe
+
+
+def has_upload_route_reader_open_failure_binding(source: str) -> bool:
+    """Bind a pinned reader's no-follow open race to a fixed private error."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    functions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "read_regular_bytes"
+    ]
+    if len(functions) != 1:
+        return False
+    matches = []
+    for node in ast.walk(functions[0]):
+        if (not isinstance(node, ast.Try) or len(node.body) != 1
+                or not isinstance(node.body[0], ast.Assign)
+                or ast.unparse(node.body[0]) !=
+                "descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)"
+                or len(node.handlers) != 1):
+            continue
+        handler = node.handlers[0]
+        if (not isinstance(handler.type, ast.Name)
+                or handler.type.id != "OSError"):
+            continue
+        raises = [
+            statement for statement in handler.body
+            if isinstance(statement, ast.Raise)
+            and isinstance(statement.exc, ast.Call)
+            and isinstance(statement.exc.func, ast.Name)
+            and statement.exc.func.id == "ReconcileFailure"
+            and isinstance(statement.cause, ast.Constant)
+            and statement.cause.value is None
+            and "concurrent authority drift during read" in ast.unparse(statement.exc)
+        ]
+        if len(raises) == 1:
+            matches.append(node)
+    return len(matches) == 1
 
 
 def has_upload_route_bounded_read_binding(source: str) -> bool:
@@ -3211,6 +3264,9 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "os.unlink(temporary.name, dir_fd=parent_fd)",
         "staged_initial = os.fstat(descriptor)",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)",
+        "staging_guard_fd = os.dup(descriptor)",
+        "if staging_guard_fd is not None:",
+        "os.close(staging_guard_fd)",
         "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity",
         "published = True",
         "if not published and staged_identity is not None:",
@@ -3274,6 +3330,10 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "module.os.replace = original_replace"),
             ("module.os.replace = reuse_before_failed_replace",
              "module.os.replace = original_replace"),
+            ("module.os.dup = capture_stage_pin",
+             "module.os.dup = original_dup"),
+            ("module.os.open = redirect_leaf_before_open",
+             "module.os.open = original_open"),
             ("module.os.replace = swap_parent_at_replace",
              "module.os.replace = original_replace"),
             ("module.os.unlink = swap_parent_at_unlink",
@@ -3347,6 +3407,25 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
                     reader_source.replace(marker, "payload = path.read_bytes()", 1))):
             failures.append("upload-route pinned text reader binding drift")
             return
+        if not has_upload_route_reader_open_failure_binding(reader_source):
+            failures.append("upload-route reader open race classification missing")
+            return
+        reader_start = reader_source.index("def read_regular_bytes(path: Path)")
+        reader_end = reader_source.index("\ndef published_identity(path: Path)", reader_start)
+        reader_span = reader_source[reader_start:reader_end]
+        for original, replacement in (
+            ("except OSError:", "except ValueError:"),
+            ("from None", "from exc"),
+        ):
+            if reader_span.count(original) != 1:
+                failures.append("upload-route reader open negative fixture drift")
+                return
+            weakened = (reader_source[:reader_start]
+                        + reader_span.replace(original, replacement, 1)
+                        + reader_source[reader_end:])
+            if has_upload_route_reader_open_failure_binding(weakened):
+                failures.append("upload-route reader open mutation accepted")
+                return
         if not has_upload_route_bounded_read_binding(reader_source):
             failures.append("upload-route pinned reader bound missing")
             return
@@ -3369,6 +3448,9 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "and (cleanup_stat.st_dev, -1)"),
             ("staged_initial = os.fstat(descriptor)",
              "staged_initial = path.stat()"),
+            ("staging_guard_fd = os.dup(descriptor)",
+             "staging_guard_fd = None"),
+            ("os.close(staging_guard_fd)", "pass"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
