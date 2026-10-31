@@ -923,6 +923,70 @@ def prove_rollback_write_ownership(module) -> None:
         require(parent.is_symlink() and parent.resolve() == outside,
                 "parent-swap fixture did not redirect the live pathname")
 
+        # A swap before opening the parent must fail closed with a fixed
+        # diagnostic instead of leaking a raw OS error or following the alias.
+        guarded_parent = root / "guarded-parent"
+        guarded_parent.mkdir()
+        guarded_file = guarded_parent / "created.txt"
+        guarded_outside = root / "guarded-outside"
+        guarded_outside.mkdir()
+        guarded_canary = guarded_outside / "created.txt"
+        guarded_canary.write_bytes(b"guarded-external")
+        module.ROLLBACK_SNAPSHOT = {guarded_file: None}
+        module.ROLLBACK_WRITTEN.clear()
+        module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
+        module.atomic_write_bytes(guarded_file, b"guarded-owned")
+        original_open = module.os.open
+        open_swapped = [False]
+
+        def redirect_before_parent_open(candidate, flags, *args, **kwargs):
+            if Path(candidate) == guarded_parent and flags & os.O_DIRECTORY:
+                guarded_parent.rename(root / "renamed-guarded-parent")
+                guarded_parent.symlink_to(guarded_outside, target_is_directory=True)
+                open_swapped[0] = True
+            return original_open(candidate, flags, *args, **kwargs)
+
+        module.os.open = redirect_before_parent_open
+        try:
+            try:
+                module.rollback_authority_files()
+            except module.ReconcileFailure as exc:
+                require("concurrent rollback parent drift" in str(exc),
+                        f"parent-open swap rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("rollback followed a swapped parent before open")
+        finally:
+            module.os.open = original_open
+        require(open_swapped[0], "parent-open swap did not reach directory acquisition")
+        require(guarded_canary.read_bytes() == b"guarded-external",
+                "parent-open swap changed the external canary")
+        require((root / "renamed-guarded-parent/created.txt").read_bytes()
+                == b"guarded-owned", "parent-open swap changed the owned file")
+
+        # Missing O_DIRECTORY is an explicit unsupported capability, never
+        # permission to downgrade to pathname unlink.
+        unsupported_parent = root / "unsupported-parent"
+        unsupported_parent.mkdir()
+        unsupported_file = unsupported_parent / "created.txt"
+        module.ROLLBACK_SNAPSHOT = {unsupported_file: None}
+        module.ROLLBACK_WRITTEN.clear()
+        module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
+        module.atomic_write_bytes(unsupported_file, b"unsupported-owned")
+        original_directory_flag = module.os.O_DIRECTORY
+        module.os.O_DIRECTORY = None
+        try:
+            try:
+                module.rollback_authority_files()
+            except module.ReconcileFailure as exc:
+                require("unsupported safe rollback directory flags" in str(exc),
+                        f"missing O_DIRECTORY rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("rollback downgraded when O_DIRECTORY was unavailable")
+        finally:
+            module.os.O_DIRECTORY = original_directory_flag
+        require(unsupported_file.read_bytes() == b"unsupported-owned",
+                "missing O_DIRECTORY changed an owned new file")
+
         module.ROLLBACK_SNAPSHOT = None
         module.ROLLBACK_WRITTEN.clear()
         module.ROLLBACK_PUBLISHED_IDENTITIES.clear()

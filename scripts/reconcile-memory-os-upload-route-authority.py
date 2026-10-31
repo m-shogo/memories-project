@@ -407,10 +407,16 @@ def rollback_authority_files() -> None:
                                getattr(os, "O_NOFOLLOW", None))
             require(all(type(flag) is int and flag > 0 for flag in directory_flags),
                     f"unsupported safe rollback directory flags: {path}")
-            parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            except OSError:
+                raise ReconcileFailure(f"concurrent rollback parent drift: {path}") from None
             try:
                 pinned_parent = os.fstat(parent_fd)
-                live_parent = path.parent.lstat()
+                try:
+                    live_parent = path.parent.lstat()
+                except OSError:
+                    raise ReconcileFailure(f"concurrent rollback parent drift: {path}") from None
                 require(
                     stat.S_ISDIR(pinned_parent.st_mode)
                     and stat.S_ISDIR(live_parent.st_mode)
@@ -418,7 +424,10 @@ def rollback_authority_files() -> None:
                     == (live_parent.st_dev, live_parent.st_ino),
                     f"concurrent rollback parent drift: {path}",
                 )
-                leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+                try:
+                    leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+                except OSError:
+                    raise ReconcileFailure(f"concurrent authority identity drift before rollback: {path}") from None
                 require(
                     stat.S_ISREG(leaf.st_mode) and leaf.st_nlink == 1
                     and (leaf.st_dev, leaf.st_ino, leaf.st_mode, leaf.st_ctime_ns)
