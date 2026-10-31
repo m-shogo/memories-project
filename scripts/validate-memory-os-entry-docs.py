@@ -3569,7 +3569,6 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
         and main.count("ROLLBACK_PUBLISHED_IDENTITIES.clear()") == 1
     )
 
-
 def has_upload_route_pinned_publication_binding(source: str) -> bool:
     """Require descriptor-relative publication and cleanup, not pathname replace."""
     try:
