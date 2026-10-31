@@ -41,6 +41,20 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
         raise GuardFailure("Git history inspection failed closed")
     if result.returncode == 0 and result.stderr:
         raise GuardFailure("Git history inspection emitted unexpected diagnostics")
+    # Reject malformed successful Git transport before callers can strip,
+    # split or decode it into an apparently trustworthy commit identity.
+    if result.returncode == 0:
+        raw = result.stdout
+        if args == ("rev-parse", "--verify", "HEAD^{commit}"):
+            if type(raw) is not bytes or re.fullmatch(rb"[0-9a-f]{40}\\n", raw) is None:
+                raise GuardFailure("malformed supplemental HEAD oid")
+        elif len(args) == 3 and args[:2] == ("rev-list", "--reverse"):
+            if type(raw) is not bytes or re.fullmatch(rb"(?:[0-9a-f]{40}\\n)*", raw) is None:
+                raise GuardFailure("malformed supplemental commit enumeration")
+        elif len(args) == 5 and args[:4] == ("rev-list", "--parents", "-n", "1"):
+            if (type(raw) is not bytes or re.fullmatch(
+                    rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\\n", raw) is None):
+                raise GuardFailure("malformed supplemental parent enumeration")
     return result
 
 
@@ -197,6 +211,37 @@ def self_test() -> None:
                 raise
         else:
             raise GuardFailure("Git success with unexpected stderr accepted")
+
+    # Successful Git commands with malformed object identities must fail
+    # for the exact transport reason, not an unrelated ancestry failure.
+    oid = b"a" * 40
+    cases = (
+        (("rev-parse", "--verify", "HEAD^{commit}"), oid + b"\\n",
+         (oid + b" \\n", oid + b"\\r\\n", oid + b"\\n\\n", oid,
+          b"A" * 40 + b"\\n", oid + b"\\x00\\n", oid.decode("ascii") + "\\n"),
+         "malformed supplemental HEAD oid"),
+        (("rev-list", "--reverse", "base..head"), oid + b"\\n",
+         (b" " + oid + b"\\n", oid + b"\\n\\n", oid,
+          b"z" * 40 + b"\\n", oid.decode("ascii") + "\\n"),
+         "malformed supplemental commit enumeration"),
+        (("rev-list", "--parents", "-n", "1", "head"), oid + b" " + oid + b"\\n",
+         (oid + b"\\n", oid + b"\\t" + oid + b"\\n",
+          oid + b" " + oid + b"\\n\\n", oid + b" " + oid,
+          oid.decode("ascii") + " " + oid.decode("ascii") + "\\n"),
+         "malformed supplemental parent enumeration"),
+    )
+    for command, valid, invalids, reason in cases:
+        for index, invalid in enumerate(invalids):
+            with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=["git"], returncode=0, stdout=invalid, stderr=b""
+            )):
+                expect_guard_failure(lambda: git(Path("."), *command), reason,
+                                     "malformed-git-transport-" + str(index))
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=["git"], returncode=0, stdout=valid, stderr=b""
+        )):
+            if git(Path("."), *command).stdout != valid:
+                raise GuardFailure("valid supplemental Git transport rejected")
 
     # Prove the Git wrapper ignores hostile inherited repository selectors.
     # Both selectors redirect a naive git -C invocation to the decoy worktree.
