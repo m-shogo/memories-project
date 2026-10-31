@@ -2882,6 +2882,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_atomic_fdopen_failure_cleanup",
              "prove_atomic_poststage_drift_rejection",
              "prove_atomic_short_write_rejection",
+             "prove_pinned_pathname_swap_rejection",
              "prove_nonblocking_special_file_reads")
     definitions = {
         name: [node for node in tree.body
@@ -2908,6 +2909,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         required = ({"read_regular_bytes", "atomic_write_bytes",
                      "rollback_authority_files", "snapshot_authority_files"}
                     if name == "prove_nonblocking_special_file_reads" else
+                    {"read_regular_bytes"} if name == "prove_pinned_pathname_swap_rejection" else
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
@@ -2917,6 +2919,13 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_pinned_pathname_swap_rejection":
+            scenarios = {
+                node.value for node in ast.walk(proof)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            }
+            if not {"same-content-leaf-swap", "parent-symlink-swap"}.issubset(scenarios):
+                return False
         # The ctime-only mutation negatives must stay live. Inode, size,
         # mode and mtime alone cannot detect a same-size rewrite with restored
         # mtime during a pinned read or staged publication.
@@ -2944,6 +2953,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             failures.append("upload-route symlink rollback negative is not CI-bound")
             return
         for original, replacement in (
+            ('"parent-symlink-swap"', '"parent-alias-removed"'),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
             ("observed.st_ctime_ns != baseline.st_ctime_ns",
