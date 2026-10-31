@@ -205,6 +205,15 @@ def prove_learning_scan_boundary(module) -> None:
             "docs/operations/autonomous-learning-records/old.md",
             "docs/operations/autonomous-learning-addenda/old.md",
             "docs/operations/learning/old.md",
+            "contracts/operations/autonomous-learning-system.json",
+            "contracts/operations/production-operability-status.json",
+            "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+            "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+            "contracts/operations/recovery-objectives-registry.v1.json",
+            "contracts/operations/backup-restore-drill-request-registry.v1.json",
+            "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+            "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+            "contracts/operations/backup-restore-promotion-review-registry.v1.json",
         )
         for relative in protected:
             candidate = root / relative
@@ -219,7 +228,7 @@ def prove_learning_scan_boundary(module) -> None:
             require(ordinary in scanned, "route-label scan omitted an ordinary authority")
             for relative in protected:
                 require(root / relative not in scanned,
-                        f"append-only learning entered route-label rewrite scan: {relative}")
+                        f"protected operations/learning authority entered route-label scan: {relative}")
             alias = root / "docs/operations/learning-alias.md"
             alias.symlink_to(root / protected[0])
             try:

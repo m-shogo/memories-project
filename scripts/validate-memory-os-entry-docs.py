@@ -2993,7 +2993,18 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
             proof_source = ast.unparse(proof)
             if ("learning-alias.txt" not in proof_source
                     or "hidden_alias.symlink_to" not in proof_source
-                    or "hidden_alias.unlink" not in proof_source):
+                    or "hidden_alias.unlink" not in proof_source
+                    or not all(path in proof_source for path in (
+                        "contracts/operations/autonomous-learning-system.json",
+                        "contracts/operations/production-operability-status.json",
+                        "contracts/operations/ops-p0-007-admission-snapshot.v1.json",
+                        "contracts/operations/production-equivalent-environment-generation-registry.v1.json",
+                        "contracts/operations/recovery-objectives-registry.v1.json",
+                        "contracts/operations/backup-restore-drill-request-registry.v1.json",
+                        "contracts/operations/backup-restore-generation-evidence-registry.v1.json",
+                        "contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json",
+                        "contracts/operations/backup-restore-promotion-review-registry.v1.json",
+                    ))):
                 return False
         if name == "prove_scan_root_alias_rejection":
             loops = [
@@ -3314,11 +3325,25 @@ def has_upload_route_scan_root_binding(source: str) -> bool:
         "require(stat.S_ISDIR(root.lstat().st_mode),",
         'for path in root.rglob("*"):',
         "relative = path.relative_to(ROOT)",
+        "if relative in protected_authorities",
         "if path.is_symlink():",
         "if path.suffix not in allowed_suffixes:",
     )
     positions = [body.find(marker) for marker in markers]
-    return all(pos >= 0 for pos in positions) and positions == sorted(positions)
+    protected_paths = (
+        'Path("contracts/operations/autonomous-learning-system.json")',
+        'Path("contracts/operations/production-operability-status.json")',
+        'Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json")',
+        'Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json")',
+        'Path("contracts/operations/recovery-objectives-registry.v1.json")',
+        'Path("contracts/operations/backup-restore-drill-request-registry.v1.json")',
+        'Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")',
+        'Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json")',
+        'Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")',
+    )
+    return (all(pos >= 0 for pos in positions)
+            and positions == sorted(positions)
+            and all(fragment in body for fragment in protected_paths))
 
 
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
@@ -3350,6 +3375,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "module.os.dup = original_dup"),
             ("module.os.dup = reject_dup",
              "module.os.dup = original_dup"),
+            ('"contracts/operations/production-operability-status.json"',
+             '"contracts/operations/production-operability-status.txt"'),
             ("module.os.open = redirect_leaf_before_open",
              "module.os.open = original_open"),
             ("module.os.replace = swap_parent_at_replace",
@@ -3409,6 +3436,9 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("require(not ancestor.is_symlink(),", "require(True,"),
             ("require(stat.S_ISDIR(root.lstat().st_mode),", "require(True,"),
             ("if path.is_symlink():", "if False:"),
+            ("if relative in protected_authorities:", "if False:"),
+            ('Path("contracts/operations/production-operability-status.json")',
+             'Path("contracts/operations/production-operability-status.txt")'),
         ):
             if scan_source.count(original) != 1:
                 failures.append("upload-route scan-root guard source drift")

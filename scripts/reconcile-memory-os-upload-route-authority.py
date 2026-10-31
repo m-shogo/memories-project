@@ -458,6 +458,19 @@ def current_authority_files() -> list[Path]:
     roots = [ROOT / "contracts", ROOT / "scripts", ROOT / "services/import-api", ROOT / ".github/workflows", ROOT / "docs"]
     allowed_suffixes = {".go", ".json", ".py", ".yml", ".yaml", ".md"}
     protected_learning = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
+    # The upload-route label migration must never rewrite independent
+    # production/restore/admission or mandatory learning policy authorities.
+    protected_authorities = {
+        Path("contracts/operations/autonomous-learning-system.json"),
+        Path("contracts/operations/production-operability-status.json"),
+        Path("contracts/operations/ops-p0-007-admission-snapshot.v1.json"),
+        Path("contracts/operations/production-equivalent-environment-generation-registry.v1.json"),
+        Path("contracts/operations/recovery-objectives-registry.v1.json"),
+        Path("contracts/operations/backup-restore-drill-request-registry.v1.json"),
+        Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json"),
+        Path("contracts/operations/backup-restore-non-resurrection-admission-registry.v1.json"),
+        Path("contracts/operations/backup-restore-promotion-review-registry.v1.json"),
+    }
     protected_learning_scopes = {
         ("docs", "operations", "autonomous-learning-records"),
         ("docs", "operations", "autonomous-learning-addenda"),
@@ -478,7 +491,9 @@ def current_authority_files() -> list[Path]:
             if relative.parts[:2] in (("docs", "fixtures"), ("docs", "evidence")):
                 continue
             # Operational learning is append-only, never a route-label rewrite target.
-            if relative == protected_learning or relative.parts[:3] in protected_learning_scopes:
+            if (relative == protected_learning
+                    or relative in protected_authorities
+                    or relative.parts[:3] in protected_learning_scopes):
                 continue
             # Even a disallowed-suffix symlink can conceal an unreviewed
             # directory or external authority; reject aliases before filtering.
