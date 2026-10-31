@@ -568,6 +568,97 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                     and not list(root.glob(".authority.txt.*.tmp")),
                     "fdopen close fault changed original, canary or stage residue")
 
+    # If fdopen fails and its ownership probe also fails, never close an
+    # unverified numeric descriptor. The test alone reclaims an owned FD.
+    for fdopen_probe_case in ("owned-probe-fault", "reused-probe-fault"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fdopen-probe-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            target.chmod(0o744)
+            canary = root / "fdopen-probe-canary.txt"
+            canary.write_bytes(b"independent-probe-canary")
+            opened: list[int] = []
+            recycled = [None]
+            acquisition_failed = [False]
+            attempted_close: list[int] = []
+            original_stage = module.create_pinned_stage
+            original_fdopen = module.os.fdopen
+            original_fstat = module.os.fstat
+            original_close = module.os.close
+            original_open = module.os.open
+
+            def capture_probe_stage(parent_fd, leaf):
+                descriptor, name = original_stage(parent_fd, leaf)
+                opened.append(descriptor)
+                return descriptor, name
+
+            def reject_probe_fdopen(descriptor, *_args, **_kwargs):
+                require(len(opened) == 1 and descriptor == opened[0],
+                        "fdopen probe fault did not target owned stage")
+                if fdopen_probe_case == "reused-probe-fault":
+                    original_close(descriptor)
+                    probe = original_open(canary, module.os.O_RDONLY)
+                    if probe != descriptor:
+                        module.os.dup2(probe, descriptor)
+                        original_close(probe)
+                    recycled[0] = descriptor
+                acquisition_failed[0] = True
+                raise OSError("synthetic fdopen failure")
+
+            def fail_fdopen_ownership_probe(descriptor):
+                if acquisition_failed[0] and opened and descriptor == opened[0]:
+                    raise OSError("synthetic fdopen ownership probe failure")
+                return original_fstat(descriptor)
+
+            def track_unverified_close(descriptor):
+                if opened and descriptor == opened[0]:
+                    attempted_close.append(descriptor)
+                return original_close(descriptor)
+
+            module.create_pinned_stage = capture_probe_stage
+            module.os.fdopen = reject_probe_fdopen
+            module.os.fstat = fail_fdopen_ownership_probe
+            module.os.close = track_unverified_close
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"must-not-publish")
+                except OSError as exc:
+                    require(str(exc) == "synthetic fdopen failure",
+                            f"fdopen probe failure masked primary error: {exc}")
+                    require(any("fdopen stage descriptor ownership unverified" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "fdopen probe failure lacked bounded ownership diagnostic")
+                else:
+                    raise Fail("fdopen probe failure was accepted")
+            finally:
+                module.create_pinned_stage = original_stage
+                module.os.fdopen = original_fdopen
+                module.os.fstat = original_fstat
+                module.os.close = original_close
+
+            require(len(opened) == 1 and not attempted_close,
+                    "fdopen probe failure closed an unverified descriptor")
+            observed = original_fstat(opened[0])
+            try:
+                if fdopen_probe_case == "reused-probe-fault":
+                    expected = canary.stat()
+                    require(recycled[0] == opened[0]
+                            and stat.S_ISREG(observed.st_mode)
+                            and (observed.st_dev, observed.st_ino)
+                            == (expected.st_dev, expected.st_ino),
+                            "fdopen probe failure consumed recycled canary descriptor")
+                else:
+                    require(stat.S_ISREG(observed.st_mode) and observed.st_nlink == 0,
+                            "fdopen probe fault did not retain unverified owned stage")
+            finally:
+                original_close(opened[0])
+            require(target.read_bytes() == b"original"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o744
+                    and canary.read_bytes() == b"independent-probe-canary"
+                    and not list(root.glob(".authority.txt.*.tmp")),
+                    "fdopen probe fault changed original, canary or staged residue")
+
 
 def prove_atomic_dup_failure_cleanup(module) -> None:
     """A failed stage-descriptor duplication must not leak or leave residue."""
