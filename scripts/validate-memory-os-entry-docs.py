@@ -3256,11 +3256,29 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("observed.st_ctime_ns != baseline.st_ctime_ns",
              "observed.st_mtime_ns != baseline.st_mtime_ns"),
         ):
-            if negative_source.count(original) != 1:
-                failures.append("upload-route ctime-only negative fixture drift")
-                return
-            if has_upload_route_symlink_negative_binding(
-                    negative_source.replace(original, replacement, 1)):
+            # Scope the capability mutation to rollback: publication has
+            # a separate O_DIRECTORY negative with the same source spelling.
+            if original == "module.os.O_DIRECTORY = None":
+                marker = "def prove_rollback_write_ownership("
+                start = negative_source.find(marker)
+                end = negative_source.find("\ndef main()", start)
+                if (start < 0 or end < 0
+                        or negative_source.count(marker) != 1):
+                    failures.append("upload-route ownership negative scope drift")
+                    return
+                scoped = negative_source[start:end]
+                if scoped.count(original) != 1:
+                    failures.append("upload-route ownership negative fixture drift")
+                    return
+                mutated = (negative_source[:start]
+                           + scoped.replace(original, replacement, 1)
+                           + negative_source[end:])
+            else:
+                if negative_source.count(original) != 1:
+                    failures.append("upload-route ctime-only negative fixture drift")
+                    return
+                mutated = negative_source.replace(original, replacement, 1)
+            if has_upload_route_symlink_negative_binding(mutated):
                 failures.append("upload-route ctime-only negative mutation accepted")
                 return
     except OSError:
