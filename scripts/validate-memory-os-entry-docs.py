@@ -133,7 +133,9 @@ def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess
     raw = (completed.stderr or completed.stdout).strip()
     if not raw:
         return "empty"
-    return re.sub(r"[\x00-\x1f\x7f-\x9f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]", " ", raw[-800:])
+    # Reject every Unicode nonprintable, including soft hyphen, joiners and
+    # surrogate code points that an enumerated control regex can overlook.
+    return "".join(char if char.isprintable() else " " for char in raw[-800:])
 
 
 def prove_learning_guard_classifier(failures: list[str]) -> None:
@@ -189,6 +191,11 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         ("Unicode line separators", "", "a\u0085b\u2028c\u2029d", "a b c d"),
         ("bidi direction controls", "", "a\u061cb\u202ec\u2066d\u2069e", "a b c d e"),
         ("zero-width and BOM", "", "a\u200bb\u200fc\ufeffd", "a b c d"),
+        ("soft hyphen", "", "a\u00adb", "a b"),
+        ("zero-width joiner", "", "a\u200db", "a b"),
+        ("nonbreaking space", "", "a\u00a0b", "a b"),
+        ("lone surrogate", "", "a\ud800b", "a b"),
+        ("visible Japanese", "", "失敗理由", "失敗理由"),
         ("missing stdout", None, "", "unreviewed captured stream type"),
         ("missing stderr", "", None, "unreviewed captured stream type"),
         ("byte stdout", b"bytes", "", "unreviewed captured stream type"),
