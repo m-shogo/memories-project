@@ -1409,6 +1409,95 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                     "child open cleanup changed original or independent authority")
 
 
+    # A pinned-parent identity rejection must retain its primary failure
+    # even when closing the final parent capability has an uncertain effect.
+    for parent_identity_close_case in ("before-parent-identity-close", "after-parent-identity-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-identity-close-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "owned"
+            parent.mkdir()
+            target = parent / "authority.txt"
+            target.write_bytes(b"original-owned")
+            canary = root / "identity-close-canary.txt"
+            canary.write_bytes(b"independent-identity-canary")
+            original_open = module.os.open
+            original_close = module.os.close
+            original_fstat = module.os.fstat
+            opened: list[int] = []
+            recycled = [None]
+
+            def capture_identity_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+
+            def fail_pinned_identity_fstat(descriptor):
+                if len(opened) >= 2 and descriptor == opened[-1]:
+                    return canary.stat()
+                return original_fstat(descriptor)
+
+            def fail_parent_identity_close(descriptor):
+                if len(opened) >= 2 and descriptor == opened[-1]:
+                    if parent_identity_close_case == "after-parent-identity-close":
+                        original_close(descriptor)
+                        probe = original_open(canary, module.os.O_RDONLY)
+                        if probe != descriptor:
+                            module.os.dup2(probe, descriptor)
+                            original_close(probe)
+                        recycled[0] = descriptor
+                    raise OSError("synthetic pinned identity cleanup close fault")
+                return original_close(descriptor)
+
+            module.os.open = capture_identity_open
+            module.os.fstat = fail_pinned_identity_fstat
+            module.os.close = fail_parent_identity_close
+            try:
+                try:
+                    module.open_pinned_parent(target, parent.lstat())
+                except module.ReconcileFailure as exc:
+                    require("concurrent publication parent drift" in str(exc),
+                            f"pinned identity close rejected for unrelated reason: {exc}")
+                    require(any("pinned ancestor cleanup descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "pinned identity close lost original drift diagnostic")
+                else:
+                    raise Fail("pinned parent identity drift was accepted")
+            finally:
+                module.os.open = original_open
+                module.os.fstat = original_fstat
+                module.os.close = original_close
+
+            require(len(opened) >= 2, "pinned identity fault missed parent traversal")
+            for earlier in opened[:-1]:
+                try:
+                    original_fstat(earlier)
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "pinned identity earlier ancestor closed for unrelated reason")
+                else:
+                    original_close(earlier)
+                    raise Fail("pinned identity fault leaked earlier ancestor")
+            try:
+                observed = original_fstat(opened[-1])
+            except OSError as exc:
+                raise Fail(f"pinned identity close retried uncertain descriptor: {exc}") from exc
+            try:
+                if parent_identity_close_case == "after-parent-identity-close":
+                    require(recycled[0] == opened[-1]
+                            and stat.S_ISREG(observed.st_mode)
+                            and (observed.st_dev, observed.st_ino)
+                            == (canary.stat().st_dev, canary.stat().st_ino),
+                            "pinned identity close consumed recycled canary descriptor")
+                else:
+                    require(stat.S_ISDIR(observed.st_mode),
+                            "pinned identity pre-effect close lost parent capability")
+            finally:
+                original_close(opened[-1])
+            require(target.read_bytes() == b"original-owned"
+                    and canary.read_bytes() == b"independent-identity-canary",
+                    "pinned identity close changed original or independent authority")
+
+
     # A renamed ancestor must not be followed through an external symlink.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ancestor-") as temp_dir:
         root = Path(temp_dir)
