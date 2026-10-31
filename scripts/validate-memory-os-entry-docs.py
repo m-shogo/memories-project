@@ -3116,7 +3116,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         for original, replacement in (
             ('"identical-inode-swap", "identical-mode-change"',
              '"identical-inode-swap", "unreviewed-mode-change"'),
-            ('"same-content-leaf-swap", "parent-symlink-swap"'
+            ('"same-content-leaf-swap", "parent-symlink-swap"',
              '"same-content-leaf-swap", "parent-alias-removed"'),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
