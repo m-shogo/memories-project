@@ -262,13 +262,19 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
         fd = os.open(path.anchor, flags)
         for part in path.parent.parts[1:]:
             next_fd = os.open(part, flags, dir_fd=fd)
+            # Release ownership before an ambiguous close: a post-close error
+            # must not cause the outer handler to close a recycled FD number.
+            closing_fd, fd = fd, None
             try:
-                os.close(fd)
-            except BaseException:
+                os.close(closing_fd)
+            except BaseException as close_exc:
+                close_exc.add_note("ancestor pinned parent descriptor close status unknown")
                 try:
                     os.close(next_fd)
-                except OSError:
-                    pass
+                except BaseException as next_close_exc:
+                    close_exc.add_note(
+                        f"next pinned parent descriptor close status unknown "
+                        f"({type(next_close_exc).__name__})")
                 raise
             fd = next_fd
         pinned = os.fstat(fd)
@@ -289,7 +295,10 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
             except OSError:
                 pass
         if isinstance(exc, OSError):
-            raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
+            failure = ReconcileFailure(f"concurrent publication parent drift: {path}")
+            for note in getattr(exc, "__notes__", ()):
+                failure.add_note(note)
+            raise failure from None
         raise
 
 

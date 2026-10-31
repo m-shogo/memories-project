@@ -1157,6 +1157,90 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                         "prestage real-directory replacement was modified")
 
 
+    # A close may fail before or after consuming an ancestor FD. Neither
+    # outcome authorizes a retry against a potentially recycled FD number.
+    for traversal_close_case in ("before-traversal-close", "after-traversal-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-traversal-close-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "owned"
+            parent.mkdir()
+            target = parent / "authority.txt"
+            target.write_bytes(b"original-owned")
+            canary = root / "independent-canary.txt"
+            canary.write_bytes(b"independent-canary")
+            original_close = module.os.close
+            original_open = module.os.open
+            closing = [None]
+            recycled = [None]
+            children: list[int] = []
+
+            def capture_traversal_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                if kwargs.get("dir_fd") is not None:
+                    children.append(descriptor)
+                return descriptor
+
+            def fail_traversal_close(descriptor):
+                if closing[0] is None:
+                    closing[0] = descriptor
+                    if traversal_close_case == "after-traversal-close":
+                        original_close(descriptor)
+                        probe = original_open(canary, module.os.O_RDONLY)
+                        if probe != descriptor:
+                            module.os.dup2(probe, descriptor)
+                            original_close(probe)
+                        recycled[0] = descriptor
+                    raise OSError("synthetic parent traversal close failure")
+                return original_close(descriptor)
+
+            module.os.open = capture_traversal_open
+            module.os.close = fail_traversal_close
+            try:
+                try:
+                    module.open_pinned_parent(target, parent.lstat())
+                except module.ReconcileFailure as exc:
+                    require("concurrent publication parent drift" in str(exc),
+                            f"traversal close rejected for unrelated reason: {exc}")
+                    require(any("ancestor pinned parent descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "traversal close lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("traversal close failure was accepted")
+            finally:
+                module.os.open = original_open
+                module.os.close = original_close
+
+            require(closing[0] is not None and len(children) == 1,
+                    "traversal close fault missed the first ancestor handoff")
+            for child in children:
+                try:
+                    os.fstat(child)
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            f"traversal child closed for unrelated reason: {exc}")
+                else:
+                    original_close(child)
+                    raise Fail("traversal close leaked the next pinned parent descriptor")
+            try:
+                observed = os.fstat(closing[0])
+            except OSError as exc:
+                raise Fail(f"traversal close consumed an independent descriptor: {exc}") from exc
+            try:
+                if traversal_close_case == "after-traversal-close":
+                    require(recycled[0] == closing[0] and stat.S_ISREG(observed.st_mode)
+                            and (observed.st_dev, observed.st_ino)
+                            == (canary.stat().st_dev, canary.stat().st_ino),
+                            "traversal close recycled canary descriptor was not preserved")
+                else:
+                    require(stat.S_ISDIR(observed.st_mode),
+                            "pre-effect traversal close retried an ambiguous descriptor")
+            finally:
+                original_close(closing[0])
+            require(target.read_bytes() == b"original-owned"
+                    and canary.read_bytes() == b"independent-canary",
+                    "traversal close modified an authority or independent canary")
+
+
     # A renamed ancestor must not be followed through an external symlink.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ancestor-") as temp_dir:
         root = Path(temp_dir)
