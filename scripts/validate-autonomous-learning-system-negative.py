@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import os
 import stat
@@ -712,6 +713,32 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
 
         if read() != b"stable":
             raise RuntimeError("canonical descriptor positive drift")
+        opened: list[int] = []
+        real_open = os.open
+
+        def capture_open(path, flags):
+            descriptor = real_open(path, flags)
+            opened.append(descriptor)
+            return descriptor
+
+        def reject_fdopen(*_args, **_kwargs):
+            raise OSError("synthetic fdopen acquisition failure")
+
+        with mock.patch.object(module.os, "open", side_effect=capture_open), \
+             mock.patch.object(module.os, "fdopen", side_effect=reject_fdopen):
+            reject("fdopen acquisition", f"unreadable authority: {target}")
+        if len(opened) != 1:
+            raise RuntimeError("canonical fdopen negative did not capture one descriptor")
+        try:
+            os.fstat(opened[0])
+        except OSError as exc:
+            if exc.errno != errno.EBADF:
+                raise RuntimeError("canonical fdopen failure returned wrong descriptor state") from exc
+        else:
+            os.close(opened[0])
+            raise RuntimeError("canonical fdopen failure leaked raw descriptor")
+        if read() != b"stable":
+            raise RuntimeError("canonical fdopen negative corrupted authority")
         target.write_bytes(b"x" * 11)
         reject("oversized", "reviewed source oversized")
         target.write_bytes(b"stable")

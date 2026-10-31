@@ -61,7 +61,17 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
     except OSError:
         raise ValidationFailure(f"unreadable authority: {path}") from None
     try:
-        with os.fdopen(fd, "rb") as stream:
+        # fdopen owns the descriptor only after returning a stream. If stream
+        # acquisition fails, close the raw descriptor before failing closed.
+        try:
+            stream = os.fdopen(fd, "rb")
+        except BaseException:
+            try:
+                os.close(fd)
+            except OSError:
+                pass  # fdopen may already have closed the descriptor.
+            raise
+        with stream:
             before = os.fstat(stream.fileno())
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                     or before.st_mode & 0o022
