@@ -1,0 +1,25 @@
+# Supplemental OPS learning — Git replacement-ref history masking negative (2026-10-31)
+
+Append-only learning only. This is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, recovery-objective, reviewed-request, request-bound recovery-evidence, typed eight-domain non-resurrection, independent-review or human-promotion authority.
+
+## Material failure class: symptom, evidence, rootCauseOrUnknown, failedApproach, correction, recurrenceGuard, retryCondition
+
+- **symptom:** The supplemental history guard already set `GIT_NO_REPLACE_OBJECTS=1`, but its self-test did not prove this environment boundary against a *real* `refs/replace` graft. This was a regression-test coverage gap, not observed repository-history corruption.
+- **evidence:** In a disposable Git repository, `git replace --graft HEAD` rewrote the apparent HEAD parent list for ordinary `git rev-list --parents`, while `GIT_NO_REPLACE_OBJECTS=1 git rev-list --parents` still showed the real baseline parent. The untrusted and trusted ancestry outputs were demonstrably different.
+- **rootCauseOrUnknown:** Verified: Git replace objects can change apparent commit parentage and hence the history graph inspected by a naive validator. No actual malicious replacement ref was observed in the canonical repository; future Git implementation changes remain unknown.
+- **failedApproach:** Relying only on the existing `GIT_NO_REPLACE_OBJECTS` assignment without a negative fixture that would fail if the setting were removed or bypassed.
+- **correction:** [Code commit 85cc47e0](https://github.com/m-shogo/memories-project/commit/85cc47e0e7bf5535155633dfe09c93705a96ad2a) adds a disposable Git fixture with a modified supplemental record and a real `refs/replace` graft. It proves ordinary Git observes altered ancestry while the sanitized wrapper sees the original ancestry and rejects the actual record mutation.
+- **recurrenceGuard:** The `git-replace-graft` fixture requires the cause-specific `supplemental history is not append-only` failure. A missing replacement effect, unrelated Git error or false acceptance cannot satisfy the negative. The CI-bound exact PASS proof is now 34 fixtures, previously 33.
+- **retryCondition:** Revisit after Git environment policy, replacement-ref handling, Git history topology or reviewed CI binding changes. Do not relax the sanitized wrapper or repeat an unchanged failed approach. Do not retry unchanged workflow permission, external MinIO HTTP 401, canonical large-file transport or human approval blockers.
+
+## Material success: outcome, evidence, whySafe, reusableMechanism, protectedAuthorityCheck
+
+- **outcome:** A real replacement-ref ancestry rewrite is now exercised and shown not to mask a supplemental record mutation from the trusted history guard.
+- **evidence:** [Autonomous Learning Guard #41164362933](https://github.com/m-shogo/memories-project/actions/runs/41164362933) completed **SUCCESS** on exact source `85cc47e0`, including 601 canonical fail-closed negatives, 34 supplemental all-parent history fixtures, 195 fanout synthetics, 1,186 helper-ancestor negatives, canonical append-only and read-only checks. [Operability Contracts #41164362925](https://github.com/m-shogo/memories-project/actions/runs/41164362925) completed **SUCCESS** and independently printed the 34-fixture history proof.
+- **whySafe:** The code commit modified only two read-only Python validators; the Git replacement was created exclusively in an isolated temporary fixture, not in the real repository. No workflow YAML, production/recovery registry, credentials, traffic, drill, objective, evidence, independent review or human promotion was changed.
+- **reusableMechanism:** Test history-graph isolation with real Git replacement objects and a wrong-reason-sensitive oracle; environment variables alone are insufficient proof of enforcement.
+- **protectedAuthorityCheck:** The exact code-commit compare lists only `scripts/validate-autonomous-learning-records-history.py` and `scripts/validate-memory-os-entry-docs.py`. Canonical learning blob `b809c69d`, mandatory contract `87712ea9`, production status `b55ee4ad` and OPS-P0-007 snapshot `dbaa36b0` remain unchanged. `productionDecision=NO_GO` and `PREREQUISITES_BLOCKED` remain authoritative, with 0 registered and 0 semantically eligible generations, no current human-approved recovery objective, and no separate human production promotion.
+
+## Next safe target
+
+A distinct local Git mechanism, deprecated `.git/info/grafts`, may rewrite parentage even with `GIT_NO_REPLACE_OBJECTS=1`. A disposable Git reproduction shows a restored mutation can disappear from the apparent `baseline..HEAD` traversal if a graft file rewires HEAD directly to baseline and `advice.graftFileDeprecated=false` suppresses warnings. The existing guard has **not** yet been proven to reject this case. Next implement a fail-closed local graft-file guard and an actual history-masking negative, without modifying workflows or treating this learning as production evidence.
