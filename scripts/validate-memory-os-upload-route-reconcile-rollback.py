@@ -374,6 +374,83 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                 "atomic writer left temporary residue after fdopen failure")
 
 
+
+def prove_atomic_poststage_drift_rejection(module) -> None:
+    """Staged writes must not replace independent edits made during fsync."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-poststage-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        created = root / "created.txt"
+        replacement = root / "replacement.txt"
+        canary = root / "external-canary.txt"
+        canary.write_bytes(b"canary")
+        original_fsync = module.os.fsync
+        for scenario in ("modified", "inode-replaced", "mode-changed",
+                         "symlink-swapped", "deleted", "created"):
+            if target.is_symlink():
+                target.unlink()
+            target.write_bytes(b"original")
+            target.chmod(0o644)
+            created.unlink(missing_ok=True)
+            replacement.unlink(missing_ok=True)
+            destination = created if scenario == "created" else target
+            pattern = f".{destination.name}.*.tmp"
+            before = {item.name for item in root.glob(pattern)}
+
+            def inject_drift(fd):
+                original_fsync(fd)
+                if scenario == "modified":
+                    target.write_bytes(b"external-edit")
+                elif scenario == "inode-replaced":
+                    replacement.write_bytes(b"original")
+                    replacement.replace(target)
+                elif scenario == "mode-changed":
+                    target.chmod(0o600)
+                elif scenario == "symlink-swapped":
+                    target.unlink()
+                    target.symlink_to(canary)
+                elif scenario == "deleted":
+                    target.unlink()
+                elif scenario == "created":
+                    created.write_bytes(b"external-new")
+
+            module.os.fsync = inject_drift
+            try:
+                try:
+                    module.atomic_write_bytes(destination, b"our-staged-change")
+                except module.ReconcileFailure as exc:
+                    expected = ("symlink rollback/write path" if scenario == "symlink-swapped"
+                                else "concurrent authority drift before publication")
+                    require(expected in str(exc),
+                            f"{scenario} rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail(f"atomic writer overwrote poststage drift: {scenario}")
+            finally:
+                module.os.fsync = original_fsync
+
+            require(canary.read_bytes() == b"canary",
+                    f"poststage {scenario} changed external canary")
+            if scenario == "modified":
+                require(target.read_bytes() == b"external-edit",
+                        "poststage byte drift was overwritten")
+            elif scenario == "inode-replaced":
+                require(target.read_bytes() == b"original",
+                        "poststage inode replacement was overwritten")
+            elif scenario == "mode-changed":
+                require(stat.S_IMODE(target.stat().st_mode) == 0o600,
+                        "poststage mode drift was overwritten")
+            elif scenario == "symlink-swapped":
+                require(target.is_symlink() and target.resolve() == canary,
+                        "poststage symlink was overwritten")
+            elif scenario == "deleted":
+                require(not target.exists(), "poststage deletion was overwritten")
+            elif scenario == "created":
+                require(created.read_bytes() == b"external-new",
+                        "poststage creation was overwritten")
+            after = {item.name for item in root.glob(pattern)}
+            require(after == before,
+                    f"poststage {scenario} left temporary residue")
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -447,6 +524,7 @@ def main() -> int:
     prove_atomic_mode_preservation(module)
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
+    prove_atomic_poststage_drift_rejection(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

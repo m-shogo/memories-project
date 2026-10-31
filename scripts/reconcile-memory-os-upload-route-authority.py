@@ -166,7 +166,17 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         current = path.read_bytes() if path.exists() else None
         require(current == expected, f"concurrent authority drift before write: {path}")
     # mkstemp defaults to 0600; retain the reviewed mode of existing files.
-    original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
+    # Bind publication to the exact target observed before staging. Atomic
+    # rename alone does not prevent a concurrent local writer's lost update.
+    try:
+        initial_stat = path.lstat()
+    except FileNotFoundError:
+        initial_stat = None
+    if initial_stat is not None:
+        require(stat.S_ISREG(initial_stat.st_mode),
+                f"nonregular rollback/write path: {path}")
+    initial_bytes = path.read_bytes() if initial_stat is not None else None
+    original_mode = stat.S_IMODE(initial_stat.st_mode) if initial_stat is not None else None
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -189,6 +199,27 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             if original_mode is not None:
                 os.fchmod(handle.fileno(), original_mode)
             os.fsync(handle.fileno())
+        # A bounded final compare rejects edits, inode swaps, mode changes,
+        # symlink swaps and new-file races during temporary-file staging.
+        # This is not a dir_fd transaction or protection against a later swap.
+        for ancestor in (path, *path.parents):
+            require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
+        try:
+            current_stat = path.lstat()
+        except FileNotFoundError:
+            current_stat = None
+        if initial_stat is None:
+            require(current_stat is None,
+                    f"concurrent authority drift before publication: {path}")
+        else:
+            require(
+                current_stat is not None
+                and stat.S_ISREG(current_stat.st_mode)
+                and (current_stat.st_dev, current_stat.st_ino, current_stat.st_mode)
+                == (initial_stat.st_dev, initial_stat.st_ino, initial_stat.st_mode)
+                and path.read_bytes() == initial_bytes,
+                f"concurrent authority drift before publication: {path}",
+            )
         os.replace(temporary, path)
         if ROLLBACK_SNAPSHOT is not None:
             ROLLBACK_WRITTEN[path] = payload
