@@ -282,10 +282,17 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     parent_fd: int | None = None
     published = False
     staged_identity: tuple[int, int] | None = None
+    staging_guard_fd: int | None = None
     try:
-        # Keep the staging inode's identity even if fdopen, write or fsync
-        # fails before the final staged_stat snapshot is available.
-        staged_initial = os.fstat(descriptor)
+        # Pin the staging inode across fdopen close, rename and cleanup.
+        # Without an open descriptor, unlink + immediate name reuse can
+        # recycle the same inode and defeat a device/inode-only cleanup guard.
+        try:
+            staged_initial = os.fstat(descriptor)
+            staging_guard_fd = os.dup(descriptor)
+        except BaseException:
+            os.close(descriptor)
+            raise
         staged_identity = (staged_initial.st_dev, staged_initial.st_ino)
         # fdopen owns the descriptor only after it returns successfully.
         # Close an untransferred descriptor if stream construction fails.
@@ -384,40 +391,44 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             ROLLBACK_WRITTEN[path] = payload
             ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)
     finally:
-        if parent_fd is None:
-            # No pinned parent is available. Never follow a redirected parent
-            # or delete a different inode that reused the temporary name.
-            if (staged_identity is not None
-                    and all(not ancestor.is_symlink()
-                            for ancestor in (path.parent, *path.parent.parents))):
-                try:
-                    cleanup_stat = temporary.lstat()
-                except FileNotFoundError:
-                    pass
-                else:
-                    if ((cleanup_stat.st_dev, cleanup_stat.st_ino)
-                            == staged_identity):
-                        temporary.unlink(missing_ok=True)
-        else:
-            try:
-                # A failed publication may also lose ownership of its staged
-                # name. Check the pinned directory's current inode before
-                # unlinking; this is a bounded check, not atomic leaf CAS.
-                if not published and staged_identity is not None:
+        try:
+            if parent_fd is None:
+                # No pinned parent is available. Never follow a redirected parent
+                # or delete a different inode that reused the temporary name.
+                if (staged_identity is not None
+                        and all(not ancestor.is_symlink()
+                                for ancestor in (path.parent, *path.parent.parents))):
                     try:
-                        cleanup_stat = os.stat(
-                            temporary.name, dir_fd=parent_fd,
-                            follow_symlinks=False)
+                        cleanup_stat = temporary.lstat()
                     except FileNotFoundError:
                         pass
                     else:
-                        if (stat.S_ISREG(cleanup_stat.st_mode)
-                                and (cleanup_stat.st_dev, cleanup_stat.st_ino)
+                        if ((cleanup_stat.st_dev, cleanup_stat.st_ino)
                                 == staged_identity):
-                            os.unlink(temporary.name, dir_fd=parent_fd)
-            finally:
-                os.close(parent_fd)
+                            temporary.unlink(missing_ok=True)
+            else:
+                try:
+                    # A failed publication may also lose ownership of its staged
+                    # name. Check the pinned directory's current inode before
+                    # unlinking; this is a bounded check, not atomic leaf CAS.
+                    if not published and staged_identity is not None:
+                        try:
+                            cleanup_stat = os.stat(
+                                temporary.name, dir_fd=parent_fd,
+                                follow_symlinks=False)
+                        except FileNotFoundError:
+                            pass
+                        else:
+                            if (stat.S_ISREG(cleanup_stat.st_mode)
+                                    and (cleanup_stat.st_dev, cleanup_stat.st_ino)
+                                    == staged_identity):
+                                os.unlink(temporary.name, dir_fd=parent_fd)
+                finally:
+                    os.close(parent_fd)
 
+        finally:
+            if staging_guard_fd is not None:
+                os.close(staging_guard_fd)
 
 def atomic_write_text(path: Path, value: str) -> None:
     atomic_write_bytes(path, value.encode("utf-8"))

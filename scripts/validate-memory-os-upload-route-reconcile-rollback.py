@@ -475,17 +475,32 @@ def prove_failed_publication_temp_reuse_preserved(module) -> None:
         target.write_bytes(b"original")
         original_replace = module.os.replace
         original_unlink = module.os.unlink
+        original_dup = module.os.dup
         reused = []
+        pinned_fds = []
+
+        def capture_stage_pin(fd):
+            guard_fd = original_dup(fd)
+            pinned_fds.append(guard_fd)
+            return guard_fd
 
         def reuse_before_failed_replace(source, destination, *args, **kwargs):
             if destination == target.name and kwargs.get("src_dir_fd") is not None:
+                require(len(pinned_fds) == 1,
+                        "publication did not hold a staging inode descriptor")
+                original_stat = os.fstat(pinned_fds[0])
                 original_unlink(source, dir_fd=kwargs["src_dir_fd"])
+                require(os.fstat(pinned_fds[0]).st_nlink == 0,
+                        "publication did not pin the unlinked staging inode")
                 independent = root / Path(source).name
                 independent.write_bytes(b"independent-failed-replace-canary")
+                require(independent.stat().st_ino != original_stat.st_ino,
+                        "independent name reused an inode that should remain pinned")
                 reused.append(independent)
                 raise OSError("synthetic failed publication with reused stage name")
             return original_replace(source, destination, *args, **kwargs)
 
+        module.os.dup = capture_stage_pin
         module.os.replace = reuse_before_failed_replace
         try:
             try:
@@ -497,6 +512,17 @@ def prove_failed_publication_temp_reuse_preserved(module) -> None:
                 raise Fail("failed publication unexpectedly succeeded")
         finally:
             module.os.replace = original_replace
+            module.os.dup = original_dup
+        require(len(pinned_fds) == 1,
+                "publication staging descriptor was not acquired")
+        try:
+            os.fstat(pinned_fds[0])
+        except OSError as exc:
+            require(exc.errno == errno.EBADF,
+                    f"publication staging descriptor closed for unrelated reason: {exc}")
+        else:
+            os.close(pinned_fds[0])
+            raise Fail("publication staging descriptor leaked after failed rename")
         require(target.read_bytes() == b"original",
                 "failed publication changed original authority bytes")
         require(len(reused) == 1, "failed publication stage reuse not injected")
