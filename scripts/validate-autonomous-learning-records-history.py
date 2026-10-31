@@ -17,7 +17,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (25 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (26 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -138,6 +138,39 @@ def self_test() -> None:
                     os.environ.pop(variable, None)
                 else:
                     os.environ[variable] = previous
+
+    # A caller can also inject Git configuration without touching GIT_DIR.
+    # Prove that a synthetic hooksPath override is visible to naive Git but
+    # absent from the trusted history wrapper.
+    with tempfile.TemporaryDirectory(prefix="supplemental-git-config-negative-") as temp:
+        trusted = Path(temp) / "trusted"
+        trusted.mkdir()
+        git(trusted, "init", "-q")
+        overrides = {
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "core.hooksPath",
+            "GIT_CONFIG_VALUE_0": str(Path(temp) / "untrusted-hooks"),
+        }
+        previous = {key: os.environ.get(key) for key in overrides}
+        try:
+            os.environ.update(overrides)
+            untrusted = subprocess.run(
+                ["git", "-C", str(trusted), "config", "--get", "core.hooksPath"],
+                env=dict(os.environ), capture_output=True, timeout=20, check=False,
+            )
+            if (untrusted.returncode != 0 or
+                    untrusted.stdout.strip() != overrides["GIT_CONFIG_VALUE_0"].encode()):
+                raise GuardFailure("supplemental history Git config negative control invalid")
+            sanitized = git(trusted, "config", "--get", "core.hooksPath",
+                            allow_failure=True)
+            if sanitized.returncode != 1 or sanitized.stdout:
+                raise GuardFailure("supplemental history inherited Git configuration")
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
     def fixture(change: str, scope: str) -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="supplemental-history-negative-")
