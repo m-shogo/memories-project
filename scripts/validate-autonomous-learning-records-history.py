@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (29 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (30 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -104,6 +104,17 @@ def prove_delimiter_literals(source: str) -> None:
         raise GuardFailure("supplemental history delimiter literal drift")
 
 
+def expect_guard_failure(action, expected: str, label: str) -> None:
+    """A negative is valid only when it fails for its reviewed cause."""
+    try:
+        action()
+    except GuardFailure as exc:
+        if str(exc) != expected:
+            raise GuardFailure("negative fixture failed for unrelated reason: " + label) from exc
+    else:
+        raise GuardFailure("negative fixture accepted: " + label)
+
+
 def self_test() -> None:
     source = Path(__file__).read_text(encoding="utf-8")
     prove_delimiter_literals(source)
@@ -119,6 +130,20 @@ def self_test() -> None:
             pass
         else:
             raise GuardFailure("supplemental history double-escape accepted")
+    # An unrelated Git failure must never count as proof of a rejected
+    # mutation. This deliberately fails the negative-assertion helper.
+    def unrelated_failure() -> None:
+        raise GuardFailure("Git history inspection unavailable")
+
+    try:
+        expect_guard_failure(unrelated_failure, "supplemental history is not append-only",
+                             "wrong-reason-control")
+    except GuardFailure as exc:
+        if str(exc) != "negative fixture failed for unrelated reason: wrong-reason-control":
+            raise
+    else:
+        raise GuardFailure("unrelated negative failure accepted")
+
     # Successful Git commands must not silently ignore corruption warnings or
     # other unexpected diagnostics on stderr.
     with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
@@ -227,12 +252,12 @@ def self_test() -> None:
                 if kind == "add":
                     check_history(root, baseline)
                 else:
-                    try:
-                        check_history(root, baseline)
-                    except GuardFailure:
-                        pass
-                    else:
-                        raise GuardFailure("negative history fixture accepted: " + scope + kind)
+                    expect_guard_failure(
+                        lambda: check_history(root, baseline),
+                        ("supplemental history added nonregular authority"
+                         if kind == "symlink" else "supplemental history is not append-only"),
+                        scope + kind,
+                    )
             finally:
                 temp.cleanup()
 
@@ -284,12 +309,10 @@ def self_test() -> None:
             if kind == "merge-add":
                 check_history(root, baseline)
             else:
-                try:
-                    check_history(root, baseline)
-                except GuardFailure:
-                    pass
-                else:
-                    raise GuardFailure("merged history negative accepted: " + kind)
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental history is not append-only", kind,
+                )
 
 
 
