@@ -3230,7 +3230,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
                     "poststage parent permission drift was overwritten")):
             return False
-        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()")): return False
+        if name == "prove_atomic_initial_fstat_failure_cleanup" and not all(token in ast.unparse(proof) for token in ("module.os.fstat = fail_initial_stage_fstat", "independent-initial-fstat-canary", "retained-stage-alias.txt", "os.link(independent", "synthetic initial staged fstat failure", "original_fstat(captured[0][0])", "not staged.exists()")): return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
