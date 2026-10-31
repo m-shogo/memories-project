@@ -3854,7 +3854,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         for original, replacement in (
             ("before.st_nlink == 1", "before.st_nlink == 2"),
             ("pinned.st_nlink == 1", "pinned.st_nlink == 2"),
-            ("live.st_nlink == 1", "live.st_nlink == 2"),
+            ("and live.st_nlink == 1", "and live.st_nlink == 2"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_single_link_binding(
