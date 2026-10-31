@@ -188,6 +188,22 @@ def read_regular_bytes(path: Path) -> bytes | None:
             == (after.st_size, after.st_mtime_ns, after.st_ctime_ns),
             f"concurrent authority drift during read: {path}",
         )
+        # The descriptor can remain stable after its pathname is replaced.
+        # Recheck the live leaf and every ancestor before accepting its bytes.
+        for ancestor in (path, *path.parents):
+            require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
+        try:
+            live = path.lstat()
+        except FileNotFoundError as exc:
+            raise ReconcileFailure(f"concurrent authority drift during read: {path}") from exc
+        require(
+            stat.S_ISREG(live.st_mode)
+            and (live.st_dev, live.st_ino, live.st_mode, live.st_size,
+                 live.st_mtime_ns, live.st_ctime_ns)
+            == (after.st_dev, after.st_ino, after.st_mode, after.st_size,
+                after.st_mtime_ns, after.st_ctime_ns),
+            f"concurrent authority drift during read: {path}",
+        )
         return b"".join(chunks)
     finally:
         os.close(descriptor)
