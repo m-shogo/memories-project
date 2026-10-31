@@ -126,6 +126,10 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
 
 def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
     """Keep child failure evidence bounded and on one CI log line."""
+    # An unexpected capture type is a diagnostic failure, never an excuse
+    # to stringify arbitrary objects or leak unbounded byte representations.
+    if type(completed.stderr) is not str or type(completed.stdout) is not str:
+        return "unreviewed captured stream type"
     raw = (completed.stderr or completed.stdout).strip()
     if not raw:
         return "empty"
@@ -185,6 +189,12 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         ("Unicode line separators", "", "a\u0085b\u2028c\u2029d", "a b c d"),
         ("bidi direction controls", "", "a\u061cb\u202ec\u2066d\u2069e", "a b c d e"),
         ("zero-width and BOM", "", "a\u200bb\u200fc\ufeffd", "a b c d"),
+        ("missing stdout", None, "", "unreviewed captured stream type"),
+        ("missing stderr", "", None, "unreviewed captured stream type"),
+        ("byte stdout", b"bytes", "", "unreviewed captured stream type"),
+        ("byte stderr", "", b"bytes", "unreviewed captured stream type"),
+        ("object stdout", object(), "", "unreviewed captured stream type"),
+        ("object stderr", "", object(), "unreviewed captured stream type"),
     ):
         completed = subprocess.CompletedProcess([], 1, stdout, stderr)
         if bounded_learning_guard_failure_detail(completed) != expected:
