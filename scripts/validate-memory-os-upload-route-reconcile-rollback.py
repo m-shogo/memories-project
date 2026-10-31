@@ -551,6 +551,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 except OSError as exc:
                     require(str(exc) == "synthetic initial staged fstat failure",
                             f"initial staged fstat rejected for unrelated reason: {exc}")
+                    if scenario.startswith("unverified-"):
+                        require(any("private stage identity unavailable" in note
+                                    for note in getattr(exc, "__notes__", [])),
+                                "unverified stage retention lacked primary-error diagnostic")
                 else:
                     raise Fail("atomic writer accepted initial staged fstat failure")
             finally:
@@ -596,6 +600,58 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 require(not staged.exists(),
                         "initial staged fstat cleanup left recoverable owned stage")
 
+
+    # A cleanup stat fault must not mask the primary publication error or
+    # delete a stage whose current pathname ownership cannot be established.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-stat-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original")
+        original_replace = module.os.replace
+        original_stat = module.os.stat
+        original_stage = module.create_pinned_stage
+        staged_names: list[str] = []
+        replace_failed = [False]
+
+        def capture_cleanup_stage(parent_fd, leaf):
+            fd, name = original_stage(parent_fd, leaf)
+            staged_names.append(name)
+            return fd, name
+
+        def fail_primary_replace(*args, **kwargs):
+            replace_failed[0] = True
+            raise OSError("synthetic primary publication failure")
+
+        def fail_cleanup_stat(candidate, *args, **kwargs):
+            if (replace_failed[0] and staged_names and candidate == staged_names[0]
+                    and kwargs.get("dir_fd") is not None):
+                raise PermissionError("synthetic private cleanup stat failure")
+            return original_stat(candidate, *args, **kwargs)
+
+        module.create_pinned_stage = capture_cleanup_stage
+        module.os.replace = fail_primary_replace
+        module.os.stat = fail_cleanup_stat
+        try:
+            try:
+                module.atomic_write_bytes(target, b"unpublished")
+            except OSError as exc:
+                require(str(exc) == "synthetic primary publication failure",
+                        f"cleanup stat masked primary publication error: {exc}")
+                require(any("private staged cleanup skipped in pinned parent" in note
+                            and "PermissionError" in note for note in getattr(exc, "__notes__", [])),
+                        "cleanup stat failure lacked bounded retention diagnostic")
+            else:
+                raise Fail("cleanup stat failure unexpectedly published")
+        finally:
+            module.create_pinned_stage = original_stage
+            module.os.replace = original_replace
+            module.os.stat = original_stat
+        require(replace_failed[0] and len(staged_names) == 1,
+                "cleanup stat fault did not reach actual publication failure")
+        require(target.read_bytes() == b"original",
+                "cleanup stat failure changed original authority")
+        require((root / staged_names[0]).read_bytes() == b"unpublished",
+                "cleanup stat failure removed an unverified private stage")
 
 
 def prove_postpublication_temp_reuse_preserved(module) -> None:

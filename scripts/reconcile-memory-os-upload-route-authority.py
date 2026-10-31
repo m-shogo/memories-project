@@ -452,6 +452,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             ROLLBACK_WRITTEN[path] = payload
             ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)
     finally:
+        original_failure = sys.exception()
         try:
             try:
                 # Recover a stage identity only from the still-owned descriptor.
@@ -460,7 +461,10 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                     try:
                         recovery_stat = os.fstat(untransferred_stage_fd)
                     except OSError:
-                        pass  # Unverified name stays untouched; fail closed.
+                        # The stage name is not trustworthy when fd identity is unavailable.
+                        if original_failure is not None:
+                            original_failure.add_note(
+                                f"private stage identity unavailable; name left untouched: {temporary.name}")
                     else:
                         if stat.S_ISREG(recovery_stat.st_mode) and recovery_stat.st_nlink == 1:
                             staged_identity = (recovery_stat.st_dev, recovery_stat.st_ino)
@@ -471,6 +475,13 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                             follow_symlinks=False)
                     except FileNotFoundError:
                         pass
+                    except OSError as cleanup_exc:
+                        # Do not mask the primary publication failure or unlink an unverified name.
+                        if original_failure is None:
+                            raise
+                        original_failure.add_note(
+                            f"private staged cleanup skipped in pinned parent: {temporary.name} "
+                            f"({type(cleanup_exc).__name__})")
                     else:
                         if (stat.S_ISREG(cleanup_stat.st_mode)
                                 and (cleanup_stat.st_dev, cleanup_stat.st_ino)
