@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (32 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (33 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -60,7 +60,7 @@ def check_history(root: Path, baseline: str) -> None:
             raise GuardFailure("ambiguous supplemental history parentage")
         for parent in parents[1:]:
             raw = git(root, "diff-tree", "-r", "--no-renames", "--name-status", "-z",
-                      parent, commit, "--", *SCOPES).stdout
+                      parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES)).stdout
             if not raw:
                 continue
             fields = raw.split(b"\0")
@@ -235,6 +235,12 @@ def self_test() -> None:
             original.rename(original.parent / "renamed.md")
         elif change == "symlink":
             (original.parent / "new.md").symlink_to("original.md")
+        elif change == "scope-root-symlink":
+            # A pathspec ending in / misses a symlink at the scope root.
+            # The parent path must be part of the diff authority too.
+            (root / SCOPES[1].rstrip("/")).symlink_to(
+                Path(SCOPES[0]).name, target_is_directory=True
+            )
         elif change == "add-then-modify":
             added = original.parent / "new.md"
             added.write_text("new\n", encoding="utf-8")
@@ -260,6 +266,18 @@ def self_test() -> None:
                     )
             finally:
                 temp.cleanup()
+
+
+    # An added symlink exactly at a protected scope root is not a record,
+    # but it must not disappear behind a trailing-slash Git pathspec.
+    root, baseline, temp = fixture("scope-root-symlink", SCOPES[0])
+    try:
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "supplemental history is not append-only", "scope-root-symlink",
+        )
+    finally:
+        temp.cleanup()
 
 
     # First-parent-only history would miss a side-branch rewrite that is
