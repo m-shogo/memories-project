@@ -3942,7 +3942,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         reconciler.read_text(encoding="utf-8"),
         {
             "current_authority_files": "13fbe397d4aea26fa8d5bfe7baabe088124abe17b25a34eba7b62bd5b666d7f1",
-            "snapshot_authority_files": "6a11c9e680ca9f9499cd145b10ee81d90f9f59ffb2385ef068c36a8e81c7515d",
+            "snapshot_authority_files": "1d499f69657dea11195d85e9746da5cd5f18b0a2c4f1fe1c6c8e123b9c88ddae",
         },
     )
     reviewed_imports = {
