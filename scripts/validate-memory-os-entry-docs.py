@@ -2922,6 +2922,21 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_rollback_write_ownership":
+            scenario_loops = [
+                node for node in ast.walk(proof)
+                if isinstance(node, ast.For)
+                and isinstance(node.target, ast.Name) and node.target.id == "scenario"
+                and isinstance(node.iter, ast.Tuple)
+            ]
+            if len(scenario_loops) != 1:
+                return False
+            labels = {
+                item.value for item in scenario_loops[0].iter.elts
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            }
+            if labels != {"identical-inode-swap", "identical-mode-change"}:
+                return False
         if name == "prove_pinned_pathname_swap_rejection":
             scenario_loops = [
                 node for node in ast.walk(proof)
@@ -3050,6 +3065,42 @@ def has_upload_route_single_link_binding(source: str) -> bool:
     return checked == {"before", "pinned", "live"}
 
 
+def has_upload_route_published_identity_binding(source: str) -> bool:
+    """Bind owned rollback to inode/mode/ctime, not byte equality alone."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    names = ("published_identity", "atomic_write_bytes",
+             "rollback_authority_files", "main")
+    functions = {
+        name: [node for node in tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == name]
+        for name in names
+    }
+    if any(len(nodes) != 1 for nodes in functions.values()):
+        return False
+    identity = functions["published_identity"][0]
+    attrs = {
+        node.attr for node in ast.walk(identity)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name) and node.value.id == "observed"
+    }
+    if not {"st_dev", "st_ino", "st_mode", "st_ctime_ns", "st_nlink"}.issubset(attrs):
+        return False
+    writer = ast.unparse(functions["atomic_write_bytes"][0])
+    rollback = ast.unparse(functions["rollback_authority_files"][0])
+    main = ast.unparse(functions["main"][0])
+    check = "published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)"
+    return (
+        writer.count(check) == 1 and rollback.count(check) == 1
+        and writer.count(
+            "ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)") == 1
+        and rollback.count("ROLLBACK_PUBLISHED_IDENTITIES.pop(path, None)") == 2
+        and main.count("ROLLBACK_PUBLISHED_IDENTITIES.clear()") == 1
+    )
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
@@ -3063,7 +3114,9 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             failures.append("upload-route symlink rollback negative is not CI-bound")
             return
         for original, replacement in (
-            ('"same-content-leaf-swap", "parent-symlink-swap"',
+            ('"identical-inode-swap", "identical-mode-change"',
+             '"identical-inode-swap", "unreviewed-mode-change"'),
+            ('"same-content-leaf-swap", "parent-symlink-swap"'
              '"same-content-leaf-swap", "parent-alias-removed"'),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
@@ -3099,6 +3152,21 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         if not has_upload_route_single_link_binding(reader_source):
             failures.append("upload-route pinned reader single-link identity missing")
             return
+        if not has_upload_route_published_identity_binding(reader_source):
+            failures.append("upload-route published rollback identity guard missing")
+            return
+        for original, replacement in (
+            ("published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)",
+             "published_identity(path) != ROLLBACK_PUBLISHED_IDENTITIES.get(path)"),
+            ("ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)",
+             "ROLLBACK_PUBLISHED_IDENTITIES[path] = (0, 0, 0, 0)"),
+            ("observed.st_ctime_ns)", "observed.st_mtime_ns)"),
+        ):
+            if (reader_source.count(original) not in (1, 2)
+                    or has_upload_route_published_identity_binding(
+                        reader_source.replace(original, replacement, 1))):
+                failures.append("upload-route published identity mutation accepted: " + original)
+                return
         for original, replacement in (
             ("before.st_nlink == 1", "before.st_nlink == 2"),
             ("pinned.st_nlink == 1", "pinned.st_nlink == 2"),
