@@ -230,6 +230,52 @@ def prove_learning_scan_boundary(module) -> None:
         finally:
             module.ROOT = previous_root
 
+def prove_scan_root_alias_rejection(module) -> None:
+    """Reject linked roots, linked ancestors and non-directory scan roots."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-scan-root-") as temp_dir:
+        base = Path(temp_dir)
+        root = base / "workspace"
+        outside = base / "outside"
+        root.mkdir()
+        outside.mkdir()
+        ordinary = root / "docs/operations/route-guide.md"
+        ordinary.parent.mkdir(parents=True)
+        ordinary.write_bytes(b"ordinary-route-guide")
+        canary = outside / "external.md"
+        canary.write_bytes(b"external-canary")
+        previous_root = module.ROOT
+        try:
+            module.ROOT = root
+            require(ordinary in set(module.current_authority_files()),
+                    "safe route-label scan root was not enumerated")
+            for scenario in ("root-symlink", "ancestor-symlink", "non-directory-root"):
+                if scenario == "root-symlink":
+                    unsafe = root / "contracts"
+                    unsafe.symlink_to(outside, target_is_directory=True)
+                    expected = "symlink authority scan root"
+                elif scenario == "ancestor-symlink":
+                    (outside / "import-api").mkdir(exist_ok=True)
+                    unsafe = root / "services"
+                    unsafe.symlink_to(outside, target_is_directory=True)
+                    expected = "symlink authority scan root"
+                else:
+                    unsafe = root / "contracts"
+                    unsafe.write_bytes(b"not-a-directory")
+                    expected = "non-directory authority scan root"
+                try:
+                    module.current_authority_files()
+                except module.ReconcileFailure as exc:
+                    require(expected in str(exc),
+                            f"{scenario} rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail(f"route-label scanner accepted unsafe root: {scenario}")
+                require(canary.read_bytes() == b"external-canary",
+                        f"route-label scan changed an external canary: {scenario}")
+                unsafe.unlink()
+        finally:
+            module.ROOT = previous_root
+
+
 def prove_rollback_symlink_boundaries(module) -> None:
     """Reject redirected rollback targets before touching any snapshot entry."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-symlink-") as temp_dir:
@@ -1004,6 +1050,7 @@ def main() -> int:
     prove_nonblocking_special_file_reads(module)
     prove_bounded_authority_reads(module)
     prove_learning_scan_boundary(module)
+    prove_scan_root_alias_rejection(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)
 

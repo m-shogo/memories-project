@@ -352,8 +352,14 @@ def current_authority_files() -> list[Path]:
     }
     files: list[Path] = []
     for root in roots:
+        # A symlinked traversal root can escape the reviewed authority tree.
+        for ancestor in (root, *root.parents):
+            require(not ancestor.is_symlink(),
+                    f"symlink authority scan root: {root}")
         if not root.exists():
             continue
+        require(stat.S_ISDIR(root.lstat().st_mode),
+                f"non-directory authority scan root: {root}")
         for path in root.rglob("*"):
             if path.suffix not in allowed_suffixes:
                 continue

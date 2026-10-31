@@ -2884,7 +2884,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_atomic_short_write_rejection",
              "prove_pinned_pathname_swap_rejection",
              "prove_nonblocking_special_file_reads",
-             "prove_bounded_authority_reads")
+             "prove_bounded_authority_reads",
+             "prove_scan_root_alias_rejection")
     definitions = {
         name: [node for node in tree.body
                if isinstance(node, ast.FunctionDef) and node.name == name]
@@ -2919,9 +2920,26 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                         "prove_atomic_poststage_drift_rejection",
                         "prove_atomic_short_write_rejection",
                         "prove_nonblocking_special_file_reads")
+                    else {"current_authority_files"}
+                    if name == "prove_scan_root_alias_rejection"
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_scan_root_alias_rejection":
+            loops = [
+                node for node in ast.walk(proof)
+                if isinstance(node, ast.For)
+                and isinstance(node.target, ast.Name) and node.target.id == "scenario"
+                and isinstance(node.iter, ast.Tuple)
+            ]
+            if len(loops) != 1:
+                return False
+            labels = {
+                item.value for item in loops[0].iter.elts
+                if isinstance(item, ast.Constant) and isinstance(item.value, str)
+            }
+            if labels != {"root-symlink", "ancestor-symlink", "non-directory-root"}:
+                return False
         if name == "prove_rollback_write_ownership":
             # Bind the real parent-swap injection to the live ownership proof.
             # Merely naming a scenario without patching os.unlink is not proof.
@@ -3129,6 +3147,31 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
     )
 
 
+def has_upload_route_scan_root_binding(source: str) -> bool:
+    """Require root/ancestor no-follow and regular directory preflight before rglob."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    functions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "current_authority_files"
+    ]
+    if len(functions) != 1:
+        return False
+    body = ast.get_source_segment(source, functions[0]) or ""
+    markers = (
+        "for root in roots:",
+        "for ancestor in (root, *root.parents):",
+        "require(not ancestor.is_symlink(),",
+        "if not root.exists():",
+        "require(stat.S_ISDIR(root.lstat().st_mode),",
+        'for path in root.rglob("*"):',
+    )
+    positions = [body.find(marker) for marker in markers]
+    return all(pos >= 0 for pos in positions) and positions == sorted(positions)
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
@@ -3146,6 +3189,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '"identical-inode-swap", "unreviewed-mode-change"'),
             ('"same-content-leaf-swap", "parent-symlink-swap"',
              '"same-content-leaf-swap", "parent-alias-removed"'),
+            ('("root-symlink", "ancestor-symlink", "non-directory-root")',
+             '("root-symlink", "ancestor-symlink")'),
             ("module.os.unlink = swap_parent_at_unlink",
              "module.os.unlink = original_unlink"),
             ("module.os.open = redirect_before_parent_open",
@@ -3173,6 +3218,24 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         return
     try:
         reader_source = reconciler.read_text(encoding="utf-8")
+        if not has_upload_route_scan_root_binding(reader_source):
+            failures.append("upload-route scan-root no-follow binding missing")
+            return
+        scan_start = reader_source.index("def current_authority_files()")
+        scan_end = reader_source.index("\ndef snapshot_authority_files", scan_start)
+        scan_source = reader_source[scan_start:scan_end]
+        for original, replacement in (
+            ("require(not ancestor.is_symlink(),", "require(True,"),
+            ("require(stat.S_ISDIR(root.lstat().st_mode),", "require(True,"),
+        ):
+            if scan_source.count(original) != 1:
+                failures.append("upload-route scan-root guard source drift")
+                return
+            weakened = reader_source[:scan_start] + scan_source.replace(
+                original, replacement, 1) + reader_source[scan_end:]
+            if has_upload_route_scan_root_binding(weakened):
+                failures.append("upload-route scan-root mutation accepted")
+                return
         marker = "payload = read_regular_bytes(path)"
         if (not has_upload_route_pinned_text_read_binding(reader_source)
                 or reader_source.count(marker) != 1
