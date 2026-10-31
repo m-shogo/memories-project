@@ -40,10 +40,12 @@ def prove_atomic_replace_failure(module) -> None:
         pattern = f".{target.name}.*.tmp"
         before = {item.name for item in target.parent.glob(pattern)}
 
-        def reject_replace(source, destination) -> None:
-            if Path(destination) == target:
+        def reject_replace(source, destination, *args, **kwargs) -> None:
+            if Path(destination) == target or (
+                destination == target.name and kwargs.get("dst_dir_fd") is not None
+            ):
                 raise OSError("synthetic atomic replace rejection")
-            original_replace(source, destination)
+            original_replace(source, destination, *args, **kwargs)
 
         module.os.replace = reject_replace
         try:
@@ -433,6 +435,71 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
         require(after == before,
                 "atomic writer left temporary residue after fdopen failure")
 
+
+
+def prove_atomic_parent_publication_capability(module) -> None:
+    """A parent swap at replace must not overwrite an external authority."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-publication-") as temp_dir:
+        root = Path(temp_dir)
+        parent = root / "owned"
+        outside = root / "outside"
+        parent.mkdir()
+        outside.mkdir()
+        target = parent / "authority.txt"
+        target.write_bytes(b"original-owned")
+        canary = outside / "authority.txt"
+        canary.write_bytes(b"external-canary")
+        original_replace = module.os.replace
+        swapped = [False]
+        decoy = [None]
+
+        def swap_parent_at_replace(source, destination, *args, **kwargs):
+            if Path(destination) == target or destination == target.name:
+                require(not swapped[0], "publication race injected twice")
+                parent.rename(root / "renamed-owned")
+                parent.symlink_to(outside, target_is_directory=True)
+                decoy[0] = outside / Path(source).name
+                decoy[0].write_bytes(b"external-decoy")
+                swapped[0] = True
+            return original_replace(source, destination, *args, **kwargs)
+
+        module.os.replace = swap_parent_at_replace
+        try:
+            try:
+                module.atomic_write_bytes(target, b"published-owned")
+            except module.ReconcileFailure as exc:
+                require("concurrent publication parent drift" in str(exc),
+                        f"parent swap rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic publication accepted a redirected parent")
+        finally:
+            module.os.replace = original_replace
+        require(swapped[0], "parent-swap injection never reached actual replace")
+        require(canary.read_bytes() == b"external-canary",
+                "atomic publication overwrote an external canary")
+        require(decoy[0] is not None and decoy[0].read_bytes() == b"external-decoy",
+                "atomic publication consumed a redirected external temporary file")
+        require((root / "renamed-owned/authority.txt").read_bytes() == b"published-owned",
+                "pinned publication did not stay in the original directory")
+
+        safe = root / "safe"
+        safe.mkdir()
+        safe_target = safe / "authority.txt"
+        safe_target.write_bytes(b"untouched")
+        original_directory_flag = module.os.O_DIRECTORY
+        module.os.O_DIRECTORY = None
+        try:
+            try:
+                module.atomic_write_bytes(safe_target, b"unreviewed")
+            except module.ReconcileFailure as exc:
+                require("unsupported safe publication directory flags" in str(exc),
+                        f"missing directory capability rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic publication downgraded without O_DIRECTORY")
+        finally:
+            module.os.O_DIRECTORY = original_directory_flag
+        require(safe_target.read_bytes() == b"untouched",
+                "unsupported publication changed an existing authority")
 
 
 def prove_atomic_poststage_drift_rejection(module) -> None:
@@ -1055,6 +1122,7 @@ def main() -> int:
     prove_atomic_mode_preservation(module)
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
+    prove_atomic_parent_publication_capability(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)
     prove_pinned_pathname_swap_rejection(module)

@@ -2880,6 +2880,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_rollback_write_ownership", "prove_atomic_mode_preservation",
              "prove_atomic_mode_failure_cleanup",
              "prove_atomic_fdopen_failure_cleanup",
+             "prove_atomic_parent_publication_capability",
              "prove_atomic_poststage_drift_rejection",
              "prove_atomic_short_write_rejection",
              "prove_pinned_pathname_swap_rejection",
@@ -2918,6 +2919,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
+                        "prove_atomic_parent_publication_capability",
                         "prove_atomic_poststage_drift_rejection",
                         "prove_atomic_short_write_rejection",
                         "prove_nonblocking_special_file_reads")
@@ -2927,6 +2929,17 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_atomic_parent_publication_capability":
+            proof_source = ast.unparse(proof)
+            if not all(fragment in proof_source for fragment in (
+                "module.os.replace = swap_parent_at_replace",
+                "module.os.replace = original_replace",
+                "parent.symlink_to(outside, target_is_directory=True)",
+                "canary.read_bytes() == b'external-canary'",
+                "decoy[0].read_bytes() == b'external-decoy'",
+                "module.os.O_DIRECTORY = None",
+            )):
+                return False
         if name == "prove_learning_scan_boundary":
             proof_source = ast.unparse(proof)
             if ("learning-alias.txt" not in proof_source
@@ -3155,6 +3168,32 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
     )
 
 
+def has_upload_route_pinned_publication_binding(source: str) -> bool:
+    """Require descriptor-relative publication and cleanup, not pathname replace."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    functions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "atomic_write_bytes"
+    ]
+    if len(functions) != 1:
+        return False
+    body = ast.unparse(functions[0])
+    return all(fragment in body for fragment in (
+        "getattr(os, 'O_DIRECTORY', None)",
+        "os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)",
+        "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
+        "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
+        "os.unlink(temporary.name, dir_fd=parent_fd)",
+        "pinned_parent.st_dev", "pinned_parent.st_ino",
+        "live_parent.st_dev", "live_parent.st_ino",
+        "concurrent publication parent drift",
+        "os.close(parent_fd)",
+    ))
+
+
 def has_upload_route_scan_root_binding(source: str) -> bool:
     """Require root/ancestor no-follow and regular directory preflight before rglob."""
     try:
@@ -3204,6 +3243,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '("root-symlink", "ancestor-symlink")'),
             ('"docs/operations/learning-alias.txt"',
              '"docs/operations/learning-alias.md"'),
+            ("module.os.replace = swap_parent_at_replace",
+             "module.os.replace = original_replace"),
             ("module.os.unlink = swap_parent_at_unlink",
              "module.os.unlink = original_unlink"),
             ("module.os.open = redirect_before_parent_open",
@@ -3266,6 +3307,20 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
         if not has_upload_route_published_identity_binding(reader_source):
             failures.append("upload-route published rollback identity guard missing")
             return
+        if not has_upload_route_pinned_publication_binding(reader_source):
+            failures.append("upload-route pinned publication binding missing")
+            return
+        for original, replacement in (
+            ("os.replace(temporary.name, path.name,\n                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
+             "os.replace(temporary, path)"),
+            ("os.unlink(temporary.name, dir_fd=parent_fd)",
+             "temporary.unlink()"),
+        ):
+            if (reader_source.count(original) != 1
+                    or has_upload_route_pinned_publication_binding(
+                        reader_source.replace(original, replacement, 1))):
+                failures.append("upload-route pinned publication mutation accepted")
+                return
         for original, replacement in (
             ("published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)",
              "published_identity(path) != ROLLBACK_PUBLISHED_IDENTITIES.get(path)"),

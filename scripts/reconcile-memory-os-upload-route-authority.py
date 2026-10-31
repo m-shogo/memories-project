@@ -241,6 +241,10 @@ def published_identity(path: Path) -> tuple[int, int, int, int]:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    directory_flags = (getattr(os, 'O_DIRECTORY', None),
+                       getattr(os, 'O_NOFOLLOW', None))
+    require(all(type(flag) is int and flag > 0 for flag in directory_flags),
+            f"unsupported safe publication directory flags: {path}")
     # Reject path aliases before staging bytes; parent symlinks can redirect
     # temporary-file creation outside the reviewed authority scope.
     for ancestor in (path, *path.parents):
@@ -270,6 +274,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
     temporary = Path(temporary_name)
+    parent_fd: int | None = None
     try:
         # fdopen owns the descriptor only after it returns successfully.
         # Close an untransferred descriptor if stream construction fails.
@@ -289,6 +294,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             if original_mode is not None:
                 os.fchmod(handle.fileno(), original_mode)
             os.fsync(handle.fileno())
+            staged_stat = os.fstat(handle.fileno())
         # A bounded final compare rejects edits, inode swaps, mode changes,
         # symlink swaps and new-file races during temporary-file staging.
         # This is not a dir_fd transaction or protection against a later swap.
@@ -312,12 +318,72 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 and read_regular_bytes(path) == initial_bytes,
                 f"concurrent authority drift before publication: {path}",
             )
-        os.replace(temporary, path)
+        # A pinned directory confines publication if its pathname is swapped
+        # at the syscall. The leaf comparison remains bounded, not a CAS.
+        try:
+            parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            pinned_parent = os.fstat(parent_fd)
+            live_parent = path.parent.lstat()
+            require(
+                stat.S_ISDIR(pinned_parent.st_mode)
+                and stat.S_ISDIR(live_parent.st_mode)
+                and (pinned_parent.st_dev, pinned_parent.st_ino)
+                == (live_parent.st_dev, live_parent.st_ino),
+                f"concurrent publication parent drift: {path}",
+            )
+            staged_live = os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)
+            require(
+                stat.S_ISREG(staged_live.st_mode)
+                and (staged_live.st_dev, staged_live.st_ino, staged_live.st_mode,
+                     staged_live.st_ctime_ns)
+                == (staged_stat.st_dev, staged_stat.st_ino, staged_stat.st_mode,
+                    staged_stat.st_ctime_ns),
+                f"concurrent publication staging drift: {path}",
+            )
+            try:
+                leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                leaf = None
+            if initial_stat is None:
+                require(leaf is None, f"concurrent authority drift before publication: {path}")
+            else:
+                require(
+                    leaf is not None
+                    and (leaf.st_dev, leaf.st_ino, leaf.st_mode, leaf.st_ctime_ns)
+                    == (initial_stat.st_dev, initial_stat.st_ino, initial_stat.st_mode,
+                        initial_stat.st_ctime_ns),
+                    f"concurrent authority drift before publication: {path}",
+                )
+        except OSError:
+            raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
+        os.replace(temporary.name, path.name,
+                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        try:
+            live_parent = path.parent.lstat()
+        except OSError:
+            raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
+        require(
+            stat.S_ISDIR(live_parent.st_mode)
+            and (live_parent.st_dev, live_parent.st_ino)
+            == (pinned_parent.st_dev, pinned_parent.st_ino),
+            f"concurrent publication parent drift: {path}",
+        )
         if ROLLBACK_SNAPSHOT is not None:
             ROLLBACK_WRITTEN[path] = payload
             ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)
     finally:
-        temporary.unlink(missing_ok=True)
+        if parent_fd is None:
+            # Never clean up a staged name through a redirected parent.
+            if all(not ancestor.is_symlink()
+                   for ancestor in (path.parent, *path.parent.parents)):
+                temporary.unlink(missing_ok=True)
+        else:
+            try:
+                os.unlink(temporary.name, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+            finally:
+                os.close(parent_fd)
 
 
 def atomic_write_text(path: Path, value: str) -> None:
