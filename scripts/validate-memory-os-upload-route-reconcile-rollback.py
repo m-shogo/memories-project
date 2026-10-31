@@ -466,6 +466,44 @@ def prove_postpublication_temp_reuse_preserved(module) -> None:
                 "successful publication cleanup removed an independent file")
 
 
+
+def prove_failed_publication_temp_reuse_preserved(module) -> None:
+    """A failed replace must not unlink a different inode reusing the stage name."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-failed-reuse-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original")
+        original_replace = module.os.replace
+        original_unlink = module.os.unlink
+        reused = []
+
+        def reuse_before_failed_replace(source, destination, *args, **kwargs):
+            if destination == target.name and kwargs.get("src_dir_fd") is not None:
+                original_unlink(source, dir_fd=kwargs["src_dir_fd"])
+                independent = root / Path(source).name
+                independent.write_bytes(b"independent-failed-replace-canary")
+                reused.append(independent)
+                raise OSError("synthetic failed publication with reused stage name")
+            return original_replace(source, destination, *args, **kwargs)
+
+        module.os.replace = reuse_before_failed_replace
+        try:
+            try:
+                module.atomic_write_bytes(target, b"unpublished")
+            except OSError as exc:
+                require(str(exc) == "synthetic failed publication with reused stage name",
+                        f"failed publication rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("failed publication unexpectedly succeeded")
+        finally:
+            module.os.replace = original_replace
+        require(target.read_bytes() == b"original",
+                "failed publication changed original authority bytes")
+        require(len(reused) == 1, "failed publication stage reuse not injected")
+        require(reused[0].read_bytes() == b"independent-failed-replace-canary",
+                "failed publication cleanup deleted an independent stage-name owner")
+
+
 def prove_atomic_parent_publication_capability(module) -> None:
     """A parent swap at replace must not overwrite an external authority."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-publication-") as temp_dir:
@@ -1152,6 +1190,7 @@ def main() -> int:
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
     prove_postpublication_temp_reuse_preserved(module)
+    prove_failed_publication_temp_reuse_preserved(module)
     prove_atomic_parent_publication_capability(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)
