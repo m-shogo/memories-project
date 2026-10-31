@@ -46,14 +46,14 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
     if result.returncode == 0:
         raw = result.stdout
         if args == ("rev-parse", "--verify", "HEAD^{commit}"):
-            if type(raw) is not bytes or re.fullmatch(rb"[0-9a-f]{40}\\n", raw) is None:
+            if type(raw) is not bytes or re.fullmatch(rb"[0-9a-f]{40}\n", raw) is None:
                 raise GuardFailure("malformed supplemental HEAD oid")
         elif len(args) == 3 and args[:2] == ("rev-list", "--reverse"):
-            if type(raw) is not bytes or re.fullmatch(rb"(?:[0-9a-f]{40}\\n)*", raw) is None:
+            if type(raw) is not bytes or re.fullmatch(rb"(?:[0-9a-f]{40}\n)*", raw) is None:
                 raise GuardFailure("malformed supplemental commit enumeration")
         elif len(args) == 5 and args[:4] == ("rev-list", "--parents", "-n", "1"):
             if (type(raw) is not bytes or re.fullmatch(
-                    rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\\n", raw) is None):
+                    rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n", raw) is None):
                 raise GuardFailure("malformed supplemental parent enumeration")
     return result
 
@@ -216,18 +216,18 @@ def self_test() -> None:
     # for the exact transport reason, not an unrelated ancestry failure.
     oid = b"a" * 40
     cases = (
-        (("rev-parse", "--verify", "HEAD^{commit}"), oid + b"\\n",
-         (oid + b" \\n", oid + b"\\r\\n", oid + b"\\n\\n", oid,
-          b"A" * 40 + b"\\n", oid + b"\\x00\\n", oid.decode("ascii") + "\\n"),
+        (("rev-parse", "--verify", "HEAD^{commit}"), oid + b"\n",
+         (oid + b" \n", oid + b"\r\n", oid + b"\n\n", oid,
+          b"A" * 40 + b"\n", oid + b"\x00\n", oid.decode("ascii") + "\n"),
          "malformed supplemental HEAD oid"),
-        (("rev-list", "--reverse", "base..head"), oid + b"\\n",
-         (b" " + oid + b"\\n", oid + b"\\n\\n", oid,
-          b"z" * 40 + b"\\n", oid.decode("ascii") + "\\n"),
+        (("rev-list", "--reverse", "base..head"), oid + b"\n",
+         (b" " + oid + b"\n", oid + b"\n\n", oid,
+          b"z" * 40 + b"\n", oid.decode("ascii") + "\n"),
          "malformed supplemental commit enumeration"),
-        (("rev-list", "--parents", "-n", "1", "head"), oid + b" " + oid + b"\\n",
-         (oid + b"\\n", oid + b"\\t" + oid + b"\\n",
-          oid + b" " + oid + b"\\n\\n", oid + b" " + oid,
-          oid.decode("ascii") + " " + oid.decode("ascii") + "\\n"),
+        (("rev-list", "--parents", "-n", "1", "head"), oid + b" " + oid + b"\n",
+         (oid + b"\n", oid + b"\t" + oid + b"\n",
+          oid + b" " + oid + b"\n\n", oid + b" " + oid,
+          oid.decode("ascii") + " " + oid.decode("ascii") + "\n"),
          "malformed supplemental parent enumeration"),
     )
     for command, valid, invalids, reason in cases:
