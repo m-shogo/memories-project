@@ -2880,7 +2880,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_rollback_write_ownership", "prove_atomic_mode_preservation",
              "prove_atomic_mode_failure_cleanup",
              "prove_atomic_fdopen_failure_cleanup",
-             "prove_atomic_poststage_drift_rejection")
+             "prove_atomic_poststage_drift_rejection",
+             "prove_atomic_short_write_rejection")
     definitions = {
         name: [node for node in tree.body
                if isinstance(node, ast.FunctionDef) and node.name == name]
@@ -2906,7 +2907,8 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         required = ({"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
-                        "prove_atomic_poststage_drift_rejection")
+                        "prove_atomic_poststage_drift_rejection",
+                        "prove_atomic_short_write_rejection")
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False

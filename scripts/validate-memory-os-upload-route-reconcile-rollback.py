@@ -451,6 +451,58 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
             require(after == before,
                     f"poststage {scenario} left temporary residue")
 
+
+def prove_atomic_short_write_rejection(module) -> None:
+    """A non-raising partial or non-integer stream write cannot be published."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-short-write-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        original_fdopen = module.os.fdopen
+        for label, reported in (("partial", 1), ("boolean", True), ("none", None)):
+            target.write_bytes(b"original")
+            target.chmod(0o755)
+            before = {item.name for item in root.glob(".authority.txt.*.tmp")}
+
+            class ShortStream:
+                def __init__(self, handle):
+                    self.handle = handle
+
+                def __enter__(self):
+                    self.handle.__enter__()
+                    return self
+
+                def __exit__(self, *args):
+                    return self.handle.__exit__(*args)
+
+                def write(self, payload):
+                    self.handle.write(payload[:1])
+                    return reported
+
+                def flush(self):
+                    return self.handle.flush()
+
+                def fileno(self):
+                    return self.handle.fileno()
+
+            module.os.fdopen = lambda fd, mode: ShortStream(original_fdopen(fd, mode))
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"staged-long-payload")
+                except module.ReconcileFailure as exc:
+                    require("short atomic authority write" in str(exc),
+                            f"{label} stream rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail(f"atomic writer accepted {label} stream result")
+            finally:
+                module.os.fdopen = original_fdopen
+            require(target.read_bytes() == b"original",
+                    f"{label} stream changed original authority bytes")
+            require(stat.S_IMODE(target.stat().st_mode) == 0o755,
+                    f"{label} stream changed original authority mode")
+            after = {item.name for item in root.glob(".authority.txt.*.tmp")}
+            require(after == before,
+                    f"{label} stream left temporary residue")
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -525,6 +577,7 @@ def main() -> int:
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
     prove_atomic_poststage_drift_rejection(module)
+    prove_atomic_short_write_rejection(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

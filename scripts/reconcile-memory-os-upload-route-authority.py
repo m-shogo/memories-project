@@ -194,7 +194,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 pass  # fdopen may have closed it before raising.
             raise
         with handle:
-            handle.write(payload)
+            written = handle.write(payload)
+            require(type(written) is int and written == len(payload),
+                    f"short atomic authority write: {path}")
             handle.flush()
             if original_mode is not None:
                 os.fchmod(handle.fileno(), original_mode)
