@@ -3224,6 +3224,14 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_atomic_poststage_drift_rejection":
+            proof_source = ast.unparse(proof)
+            if not all(fragment in proof_source for fragment in (
+                "parent-mode-changed", "root.chmod(0o777)",
+                "concurrent publication parent drift",
+                "poststage parent permission drift was overwritten",
+            )):
+                return False
         if name == "prove_atomic_dup_failure_cleanup":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3595,8 +3603,8 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)",
         "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity",
         "published = True", "if not published and staged_identity is not None:",
-        "pinned_parent.st_dev", "pinned_parent.st_ino",
-        "live_parent.st_dev", "live_parent.st_ino",
+        "(pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode) == (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
+        "(live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
         "concurrent publication parent drift", "os.close(parent_fd)",
     ))
 
@@ -3664,6 +3672,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '("root-symlink", "ancestor-symlink")'),
             ('"docs/operations/learning-alias.txt"',
              '"docs/operations/learning-alias.md"'),
+            ('elif scenario == "parent-mode-changed":\n                    root.chmod(0o777)',
+             'elif scenario == "parent-mode-changed":\n                    pass'),
             ("module.os.replace = replace_then_reuse",
              "module.os.replace = original_replace"),
             ("module.os.replace = reuse_before_failed_replace",
@@ -3802,6 +3812,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("for _ in range(8):", "for _ in range(0):"),
             ("os.urandom(16).hex()", "'fixed-stage-name'"),
+            ("and (pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode)",
+             "and (pinned_parent.st_dev, pinned_parent.st_ino, -1)"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
             ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
              "os.O_WRONLY | os.O_CREAT"),

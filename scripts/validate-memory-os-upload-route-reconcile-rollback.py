@@ -883,11 +883,13 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
         canary.write_bytes(b"canary")
         original_fsync = module.os.fsync
         for scenario in ("modified", "inode-replaced", "mode-changed",
-                         "ctime-only", "symlink-swapped", "deleted", "created"):
+                         "parent-mode-changed", "ctime-only", "symlink-swapped",
+                         "deleted", "created"):
             if target.is_symlink():
                 target.unlink()
             target.write_bytes(b"original")
             target.chmod(0o644)
+            root.chmod(0o700)
             created.unlink(missing_ok=True)
             replacement.unlink(missing_ok=True)
             destination = created if scenario == "created" else target
@@ -903,6 +905,8 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                     replacement.replace(target)
                 elif scenario == "mode-changed":
                     target.chmod(0o600)
+                elif scenario == "parent-mode-changed":
+                    root.chmod(0o777)
                 elif scenario == "ctime-only":
                     previous = target.stat()
                     target.write_bytes(b"original")
@@ -927,6 +931,8 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
                     module.atomic_write_bytes(destination, b"our-staged-change")
                 except module.ReconcileFailure as exc:
                     expected = ("symlink rollback/write path" if scenario == "symlink-swapped"
+                                else "concurrent publication parent drift"
+                                if scenario == "parent-mode-changed"
                                 else "concurrent authority drift before publication")
                     require(expected in str(exc),
                             f"{scenario} rejected for unrelated reason: {exc}")
@@ -946,6 +952,10 @@ def prove_atomic_poststage_drift_rejection(module) -> None:
             elif scenario == "mode-changed":
                 require(stat.S_IMODE(target.stat().st_mode) == 0o600,
                         "poststage mode drift was overwritten")
+            elif scenario == "parent-mode-changed":
+                require(stat.S_IMODE(root.stat().st_mode) == 0o777
+                        and target.read_bytes() == b"original",
+                        "poststage parent permission drift was overwritten")
             elif scenario == "ctime-only":
                 require(target.read_bytes() == b"original",
                         "poststage ctime-only rewrite was overwritten")

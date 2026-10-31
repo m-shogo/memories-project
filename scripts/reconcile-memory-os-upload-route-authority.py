@@ -392,8 +392,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             require(
                 stat.S_ISDIR(pinned_parent.st_mode)
                 and stat.S_ISDIR(live_parent.st_mode)
-                and (pinned_parent.st_dev, pinned_parent.st_ino)
-                == (live_parent.st_dev, live_parent.st_ino),
+                and (pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode)
+                == (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode)
+                == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode),
                 f"concurrent publication parent drift: {path}",
             )
             staged_live = os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)
@@ -430,8 +431,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
         require(
             stat.S_ISDIR(live_parent.st_mode)
-            and (live_parent.st_dev, live_parent.st_ino)
-            == (pinned_parent.st_dev, pinned_parent.st_ino),
+            and (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode)
+            == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode),
             f"concurrent publication parent drift: {path}",
         )
         if ROLLBACK_SNAPSHOT is not None:
