@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
 BASELINE = "1a2eeab517d8744df42de984fca921aebd747ff8"
@@ -17,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (26 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (29 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -38,6 +39,8 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
         raise GuardFailure("Git history inspection unavailable") from None
     if result.returncode and not allow_failure:
         raise GuardFailure("Git history inspection failed closed")
+    if result.returncode == 0 and result.stderr:
+        raise GuardFailure("Git history inspection emitted unexpected diagnostics")
     return result
 
 
@@ -116,6 +119,19 @@ def self_test() -> None:
             pass
         else:
             raise GuardFailure("supplemental history double-escape accepted")
+    # Successful Git commands must not silently ignore corruption warnings or
+    # other unexpected diagnostics on stderr.
+    with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+        args=["git"], returncode=0, stdout=b"safe\n", stderr=b"unexpected\n"
+    )):
+        try:
+            git(Path("."), "rev-parse", "HEAD")
+        except GuardFailure as exc:
+            if str(exc) != "Git history inspection emitted unexpected diagnostics":
+                raise
+        else:
+            raise GuardFailure("Git success with unexpected stderr accepted")
+
     # Prove the Git wrapper ignores hostile inherited repository selectors.
     # Both selectors redirect a naive git -C invocation to the decoy worktree.
     with tempfile.TemporaryDirectory(prefix="supplemental-git-env-negative-") as temp:
@@ -223,7 +239,8 @@ def self_test() -> None:
 
     # First-parent-only history would miss a side-branch rewrite that is
     # restored before merge; inspect every reachable parent edge instead.
-    for kind in ("merge-add", "merge-rewrite-old", "merge-rewrite-new"):
+    for kind in ("merge-add", "merge-rewrite-old", "merge-rewrite-new",
+                 "merge-delete-restore", "merge-mode-restore"):
         with tempfile.TemporaryDirectory(prefix="supplemental-merge-negative-") as temp:
             root = Path(temp)
             git(root, "init", "-q")
@@ -249,6 +266,19 @@ def self_test() -> None:
             elif kind == "merge-rewrite-new":
                 new.write_text("mutated\n", encoding="utf-8")
                 git(root, "commit", "-qam", "mutate new")
+            elif kind == "merge-delete-restore":
+                old.unlink()
+                git(root, "add", "-A")
+                git(root, "commit", "-qm", "delete existing")
+                old.write_text("immutable\n", encoding="utf-8")
+                git(root, "add", "-A")
+                git(root, "commit", "-qm", "restore existing")
+            elif kind == "merge-mode-restore":
+                relative = old.relative_to(root).as_posix()
+                git(root, "update-index", "--chmod=+x", relative)
+                git(root, "commit", "-qm", "make existing executable")
+                git(root, "update-index", "--chmod=-x", relative)
+                git(root, "commit", "-qm", "restore existing mode")
             git(root, "checkout", "-q", base_branch)
             git(root, "merge", "-q", "--no-ff", "-m", "merge feature", "feature")
             if kind == "merge-add":
