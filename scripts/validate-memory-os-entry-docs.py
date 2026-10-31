@@ -2720,7 +2720,7 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental learning history guard unavailable")
         return
     if (type(result.returncode) is not int or result.returncode != 0
-            or result.stdout != "Supplemental learning all-parent append-only history PASS\n"
+            or result.stdout != "Supplemental learning all-parent append-only history PASS (21 fixtures)\n"
             or type(result.stderr) is not str or result.stderr):
         failures.append("supplemental learning history guard missing verified PASS")
     else:

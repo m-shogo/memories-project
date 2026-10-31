@@ -16,7 +16,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS"
+PASS = "Supplemental learning all-parent append-only history PASS (21 fixtures)"
 
 
 class GuardFailure(RuntimeError):
