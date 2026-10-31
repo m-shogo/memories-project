@@ -1,0 +1,33 @@
+# Supplemental OPS learning — Upload Route rollback symlink preflight and independent CI (2026-10-31)
+
+This append-only record is operational learning only. It cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, request-bound recovery, typed eight-domain non-resurrection, independent review or promotion gates.
+
+## Material failure: latent rollback path aliasing
+
+- **symptom:** A source audit found that the Upload Route reconciler's rollback iterated captured paths and its atomic writer staged temporary files under their current parent directories without checking symlinks introduced after the snapshot. A symlinked parent could redirect temporary-file creation; this was a source-proven latent risk, **not** an observed production compromise.
+- **evidence:** The original `atomic_write_bytes` called `path.parent.mkdir` and `tempfile.mkstemp(dir=path.parent)` without a symlink-ancestor check. The original `rollback_authority_files` restored every snapshot path without a full-set preflight. The scanner's earlier candidate-symlink exclusion did not protect paths replaced **after** snapshot capture. A disposable local Python reproduction of the new guard passed two negative cases (symlink leaf and symlinked parent), preserving the external target and an earlier safe snapshot entry.
+- **rootCauseOrUnknown:** Verified missing write/rollback-time path checks; a snapshot-time scanner check is not a rollback-time authority check.
+- **failedApproach:** Relying on candidate scan exclusions and atomic rename alone to prevent redirection through a symlinked parent.
+- **correction:** [3ca78d44](https://github.com/m-shogo/memories-project/commit/3ca78d44ad96b7571ea1a32105d7958a5383567d) checks the destination and all parents before staging an atomic write, and preflights **all** snapshot destinations before restoring any entry. Its rollback validator adds leaf and parent symlink negatives, including unchanged external-target and no-partial-rollback assertions.
+- **recurrenceGuard:** [3476a3d4](https://github.com/m-shogo/memories-project/commit/3476a3d4d402100e6c12ed7659f985135b09d8e4) binds the real negative suite to the existing pre-MinIO entry-document CI and AST-checks that the live test is called directly by `main` and exercises both rollback and atomic-write transports. The actual negative suite must pass with exact stdout and empty stderr.
+- **retryCondition:** Reassess on changes to the route reconciler's snapshot/write/rollback helpers, directory alias policy, or CI negative invocation. The path checks are not a directory-fd/no-follow proof against a concurrent filesystem rename between check and write; do not claim that stronger guarantee.
+
+## Material success: exact-source executable guard
+
+- **outcome/evidence:** [Autonomous Learning Guard #41172450493](https://github.com/m-shogo/memories-project/actions/runs/41172450493) completed **SUCCESS** on exact code HEAD `3476a3d4`. Job logs show 601 direct fail-closed negatives, 601 nested negatives, 39 supplemental all-parent history fixtures, 52 source-negative workflows, 63 direct Python commands, 204 reachability fixtures, 195 fanout synthetics and 1,186 helper-ancestor negatives. The log explicitly reports `upload-route append-only scan and symlink negatives verified`; clean-source, append-only, learning contract and entry-document checks passed.
+- **whySafe:** Only two Upload Route Python files and the existing read-only CI entry-document validator changed. No reconciler was executed against production data, and no workflow YAML, production/recovery registry, historical learning, credential, traffic, readiness or human promotion authority was written.
+- **reusableMechanism:** Preflight all rollback targets before the first restoration; independently reject symlinked leaf and ancestor paths in disposable fixtures; require the negative's live call and both exercised transports in an already reviewed, MinIO-independent CI route.
+- **protectedAuthorityCheck:** All ten protected Git blobs remained unchanged after the code commits: canonical learning `b809c69d`, mandatory learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, and generation/objective/drill-request/recovery-evidence/non-resurrection/promotion registries `bfd1b045`, `f4d74f33`, `acebcd02`, `ae7e57ef`, `26bb1cc7`, `99cb895f`.
+- **separate known blocker:** [Reconcile Upload Route Authority #41172345980](https://github.com/m-shogo/memories-project/actions/runs/41172345980) FAILED at `Start local MinIO`; its rollback and Go regression steps were skipped. This is **not** evidence that the focused Go test passed. Do not retry the unchanged Quay MinIO HTTP 401 blocker.
+
+## Independent bounded read-only writer survey
+
+- **outcome/evidence:** At `3476a3d4`, the Git tree enumerated 21 `scripts/(register|request|generate)-memory-os-*.py` files and 12 `scripts/*.sh` files. All 33 were fetched in bounded batches of at most seven. The inspected Python scripts had no observed `rglob`, `os.walk`, `Path.walk`, or broad `glob` traversal. The shell survey found no broad recursive replacement of `docs/operations` learning; observed `find` in the fuzz-corpus script was limited to corpus file counts. This is a bounded source-pattern survey, not proof against indirect/dynamic writers.
+- **whySafe/reusableMechanism:** Read-only GitHub source inspection with an exact Git-tree inventory, bounded batches and explicit matching-pattern review. No script was executed or evidence produced.
+- **protectedAuthorityCheck:** No protected file was modified by the survey; the same ten protected blobs remained unchanged.
+
+## Residual gap and next safe target
+
+The Upload Route rollback still iterates the full snapshot and can overwrite a file changed independently after capture, even if this reconciler never modified that file. This is a source-level concurrency risk, not an observed production overwrite. Next add owned-write tracking and deterministic concurrent-writer negatives before changing rollback behavior, while preserving fail-closed authority and CI reachability. Stronger directory-fd/no-follow checks are a separate race-hardening target. Supplemental-record-only Push/PR append-only CI reachability, workflow-write permission and human approval remain separately blocked.
+
+`productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`. Registered/semantically eligible generations remain 0/0; no human-approved current objective, executable reviewed request, request-bound evidence, complete typed eight-domain coverage, independent review, final candidate or separate human promotion was admitted. Learning is never evidence or automatic readiness.
