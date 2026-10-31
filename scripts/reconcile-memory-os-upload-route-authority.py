@@ -230,14 +230,14 @@ def read_regular_bytes(path: Path) -> bytes | None:
         )
         return b"".join(chunks)
     finally:
-        original_failure = sys.exception()
+        read_failure = sys.exception()
         try:
             os.close(descriptor)
         except OSError as read_close_exc:
             # A failed close may already have consumed the descriptor.
-            if original_failure is None:
+            if read_failure is None:
                 raise
-            original_failure.add_note(
+            read_failure.add_note(
                 f"pinned reader descriptor close status unknown "
                 f"({type(read_close_exc).__name__})")
 

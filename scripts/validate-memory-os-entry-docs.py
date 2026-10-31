@@ -3486,7 +3486,7 @@ def has_upload_route_bounded_read_binding(source: str) -> bool:
         isinstance(node.left, ast.Name) and node.left.id == "total"
         for node in checks
     )
-    return preflight and streaming and all(fragment in ast.unparse(definitions[0]) for fragment in ("original_failure = sys.exception()", "except OSError as read_close_exc:", "pinned reader descriptor close status unknown"))
+    return preflight and streaming and all(fragment in ast.unparse(definitions[0]) for fragment in ("read_failure = sys.exception()", "except OSError as read_close_exc:", "pinned reader descriptor close status unknown"))
 
 
 def has_upload_route_single_link_binding(source: str) -> bool:
