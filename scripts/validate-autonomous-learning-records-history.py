@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (35 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (37 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -75,8 +75,12 @@ def check_history(root: Path, baseline: str) -> None:
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise GuardFailure("invalid checked-out commit")
-    if git(root, "merge-base", "--is-ancestor", baseline, head, allow_failure=True).returncode:
+    ancestry = git(root, "merge-base", "--is-ancestor", baseline, head,
+                   allow_failure=True)
+    if ancestry.returncode == 1 and not ancestry.stderr:
         raise GuardFailure("immutable learning baseline is not an ancestor")
+    if ancestry.returncode != 0 or ancestry.stderr:
+        raise GuardFailure("immutable learning ancestry inspection unavailable")
     commits = git(root, "rev-list", "--reverse", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
     seen: dict[bytes, bytes] = {}
     for commit in commits:
@@ -357,6 +361,37 @@ def self_test() -> None:
                     "supplemental history is not append-only", kind,
                 )
 
+
+
+    # A divergent but existing baseline is different from an unavailable
+    # baseline object. Prove both cases with real Git ancestry results.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        git(root, "checkout", "-q", "--orphan", "unrelated")
+        git(root, "rm", "-qrf", ".")
+        (root / "README.md").write_text("unrelated\n", encoding="utf-8")
+        git(root, "add", ".")
+        git(root, "commit", "-qm", "unrelated root")
+        divergent = git(root, "merge-base", "--is-ancestor", baseline, "HEAD",
+                        allow_failure=True)
+        if divergent.returncode != 1 or divergent.stderr:
+            raise GuardFailure("unrelated baseline negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "immutable learning baseline is not an ancestor", "unrelated-baseline",
+        )
+        missing = "0" * 40
+        unavailable = git(root, "merge-base", "--is-ancestor", missing, "HEAD",
+                          allow_failure=True)
+        if (unavailable.returncode in (0, 1) or not unavailable.stderr
+                or missing.encode("ascii") not in unavailable.stderr):
+            raise GuardFailure("missing baseline negative control ineffective")
+        expect_guard_failure(
+            lambda: check_history(root, missing),
+            "immutable learning ancestry inspection unavailable", "missing-baseline",
+        )
+    finally:
+        temp.cleanup()
 
 
     # A local refs/replace graft can rewrite apparent commit parentage.
