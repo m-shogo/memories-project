@@ -382,11 +382,26 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         # Close an untransferred descriptor if stream construction fails.
         try:
             handle = os.fdopen(descriptor, "wb")
-        except BaseException:
+        except BaseException as fdopen_exc:
+            # fdopen may have consumed this numeric descriptor before raising.
+            # Inspect the still-pinned stage identity before a bounded close;
+            # this is not an atomic FD CAS against concurrent descriptor reuse.
             try:
-                os.close(descriptor)
-            except OSError:
-                pass  # fdopen may have closed it before raising.
+                current_fd = os.fstat(descriptor)
+            except OSError as probe_exc:
+                fdopen_exc.add_note(
+                    f"fdopen stage descriptor ownership unverified ({type(probe_exc).__name__})")
+            else:
+                if (stat.S_ISREG(current_fd.st_mode)
+                        and (current_fd.st_dev, current_fd.st_ino) == staged_identity):
+                    try:
+                        os.close(descriptor)
+                    except OSError as close_exc:
+                        fdopen_exc.add_note(
+                            f"fdopen stage descriptor close status unknown ({type(close_exc).__name__})")
+                else:
+                    fdopen_exc.add_note(
+                        "fdopen stage descriptor ownership changed; close skipped")
             untransferred_stage_fd = None
             raise
         untransferred_stage_fd = None
