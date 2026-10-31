@@ -1,0 +1,25 @@
+# Supplemental OPS learning — indirect history epoch/checker rebinding guard (2026-10-31)
+
+Append-only operational learning only. It is separate from canonical learning and cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credentials, traffic, readiness, environment generations, human-approved recovery objectives, executable reviewed requests, request-bound recovery evidence, typed eight-domain non-resurrection, independent review or promotion.
+
+## Material failure class: symptom, observed evidence, root cause or unknown, failed approach, correction, recurrence guard, retry condition
+
+- **symptom:** The independent AST baseline checker accepted a reviewed literal `BASELINE` plus a syntactically direct `check_history` call even when later Python statements could delete the epoch, overwrite it through a module dictionary, or replace the checker. This was a source-validator bypass, not observed production or recovery-history corruption.
+- **evidence:** A disposable Python AST reproduction of the pre-change `supplemental_history_baseline_bound` logic returned `True` for `globals()["BASELINE"] = "0" * 40`, `del BASELINE`, and `globals()["check_history"] = lambda *args: None` appended to an otherwise valid source. The original helper counted only explicit `BASELINE` assignment nodes and a direct call shape.
+- **rootCauseOrUnknown:** Verified narrow AST inspection missed `Delete`, dictionary/attribute mutation, dynamic execution and checker rebinding. Complete Python alias closure is still **UNKNOWN** and is not claimed.
+- **failedApproach:** Assuming exactly one literal assignment and one direct call proved immutable runtime binding, without checking other executable AST nodes that can alter those bindings.
+- **correction:** [Code commit 42c03f80](https://github.com/m-shogo/memories-project/commit/42c03f80ed550412630a130744ed9104f6516577) strengthens the CI-bound read-only entrypoint's independent AST proof. It conservatively rejects protected-name stores/deletes, indirect dictionary/attribute writes, dynamic execution and import aliases, and requires one top-level `check_history` function definition. The positive fixture now includes that function.
+- **recurrenceGuard:** Nine new deterministic negative sources reject `globals` epoch store, epoch deletion, checker rebinding, dynamic `exec`, duplicate checker, loop target rebinding, attribute store, `setattr`, and indirect subscript store. Existing baseline reset, shadow, redirect and unreachable-call negatives remain required.
+- **retryCondition:** Revisit when a reviewed script legitimately requires an excluded dynamic construct, a new rebinding form is observed, or exact-source CI fails. Do not silently allow an alias/dynamic execution route or retry unchanged workflow-write, external MinIO 401, canonical learning full-text transport or human-approval blockers.
+
+## Material success: outcome, evidence, why safe, reusable mechanism, protected-authority check
+
+- **outcome:** The stronger independent AST binding and nine new negatives passed exact-source CI without changing the history script or its immutable epoch.
+- **evidence:** [Autonomous Learning Guard #41160905651](https://github.com/m-shogo/memories-project/actions/runs/41160905651) completed **SUCCESS** on exact source `42c03f80`; logs show 601 canonical fail-closed negatives, 30 supplemental all-parent history fixtures, 195 fanout synthetics, 1,186 helper ancestor negatives, learning contract/append-only/entry-doc/read-only PASS. [Operability Contracts #41160905609](https://github.com/m-shogo/memories-project/actions/runs/41160905609) also completed **SUCCESS**.
+- **whySafe:** Only `scripts/validate-memory-os-entry-docs.py` changed. No workflow YAML, production/recovery authority, credentials, traffic, external MinIO, generation, objective, drill, independent review or human promotion was modified. Ref publication used a non-force expected-HEAD CAS.
+- **reusableMechanism:** A source-binding guard must independently constrain runtime mutation of the protected name and callable, not just inspect their declaration/call syntax. Couple conservative AST checks to both positive and adversarial negative fixtures.
+- **protectedAuthorityCheck:** The exact code-commit compare contains only the read-only Python entrypoint validator. The canonical learning blob `b809c69d`, mandatory contract `87712ea9`, production status `b55ee4ad`, and other protected authorities did not change. `productionDecision=NO_GO`; OPS-P0-007 remains blocking, and human production promotion remains separate/non-automatic.
+
+## Limits and next safe target
+
+This is a conservative *scoped* AST defense, not a complete Python evaluator or proof against all reflective alias paths. The supplemental-history script and record-only Push/PR path-trigger gaps remain blocked by unchanged workflow-write permission. Next: independently test all-parent history with an octopus merge whose third parent contains a mutation restored before merge, plus a valid multi-parent positive control; do not alter the nested canonical 120-second deadline.
