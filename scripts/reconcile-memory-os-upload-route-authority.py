@@ -259,9 +259,10 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
         live = path.parent.lstat()
         require(
             stat.S_ISDIR(pinned.st_mode) and stat.S_ISDIR(live.st_mode)
-            and (pinned.st_dev, pinned.st_ino)
-            == (expected_parent.st_dev, expected_parent.st_ino)
-            == (live.st_dev, live.st_ino),
+            and (pinned.st_dev, pinned.st_ino, pinned.st_mode, pinned.st_ctime_ns)
+            == (expected_parent.st_dev, expected_parent.st_ino,
+                expected_parent.st_mode, expected_parent.st_ctime_ns)
+            == (live.st_dev, live.st_ino, live.st_mode, live.st_ctime_ns),
             f"concurrent publication parent drift: {path}",
         )
         return fd

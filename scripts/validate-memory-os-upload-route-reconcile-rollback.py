@@ -730,6 +730,75 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                         "prestage real-directory replacement was modified")
 
 
+    # A renamed ancestor must not be followed through an external symlink.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ancestor-") as temp_dir:
+        root = Path(temp_dir)
+        parent = root / "top" / "owned"
+        parent.mkdir(parents=True)
+        target = parent / "authority.txt"
+        target.write_bytes(b"original-owned")
+        external_parent = root / "outside" / "owned"
+        external_parent.mkdir(parents=True)
+        canary = external_parent / "authority.txt"
+        canary.write_bytes(b"external-canary")
+        original_open_parent = module.open_pinned_parent
+        swapped = [False]
+
+        def swap_ancestor_before_open(path, expected):
+            (root / "top").rename(root / "moved-top")
+            (root / "top").symlink_to(root / "outside", target_is_directory=True)
+            swapped[0] = True
+            return original_open_parent(path, expected)
+
+        module.open_pinned_parent = swap_ancestor_before_open
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except module.ReconcileFailure as exc:
+                require("concurrent publication parent drift" in str(exc),
+                        f"ancestor swap rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("prestage ancestor symlink swap was accepted")
+        finally:
+            module.open_pinned_parent = original_open_parent
+        require(swapped[0], "ancestor swap did not execute")
+        require(canary.read_bytes() == b"external-canary"
+                and sorted(item.name for item in external_parent.iterdir()) == ["authority.txt"],
+                "ancestor swap staged or published into external canary tree")
+        require((root / "moved-top/owned/authority.txt").read_bytes() == b"original-owned",
+                "ancestor swap modified the original owned authority")
+
+    # Permission and ctime changes before parent acquisition are authority drift.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-parent-mode-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original-owned")
+        root.chmod(0o700)
+        original_open_parent = module.open_pinned_parent
+        mutated = [False]
+
+        def change_mode_before_open(path, expected):
+            root.chmod(0o755)
+            mutated[0] = True
+            return original_open_parent(path, expected)
+
+        module.open_pinned_parent = change_mode_before_open
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except module.ReconcileFailure as exc:
+                require("concurrent publication parent drift" in str(exc),
+                        f"parent mode drift rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("prestage parent mode drift was accepted")
+        finally:
+            module.open_pinned_parent = original_open_parent
+        require(mutated[0] and target.read_bytes() == b"original-owned",
+                "prestage parent mode drift altered the authority")
+        require(not list(root.glob(".authority.txt.*.tmp")),
+                "prestage parent mode drift left temporary residue")
+
+
 def prove_atomic_poststage_drift_rejection(module) -> None:
     """Staged writes must not replace independent edits made during fsync."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-poststage-") as temp_dir:

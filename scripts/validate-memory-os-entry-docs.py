@@ -3571,8 +3571,9 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)",
         "os.O_DIRECTORY | os.O_NOFOLLOW",
-        "expected_parent.st_dev", "expected_parent.st_ino",
-        "pinned.st_dev", "pinned.st_ino", "live.st_dev", "live.st_ino", "os.close(fd)",
+        "expected_parent.st_dev", "expected_parent.st_ino", "expected_parent.st_mode", "expected_parent.st_ctime_ns",
+        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns",
+        "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)",
     )):
         return False
     if not all(fragment in stage for fragment in (
@@ -3798,6 +3799,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("os.close(untransferred_stage_fd)", "pass"),
             ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
             ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"),
+            ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
             ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
              "os.O_WRONLY | os.O_CREAT"),
