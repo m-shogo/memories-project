@@ -2701,6 +2701,32 @@ def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None
 
 
 
+
+def validate_supplemental_learning_history(failures: list[str]) -> None:
+    """Run additive-history proof and destructive Git negatives before admission."""
+    relative = "scripts/validate-autonomous-learning-records-history.py"
+    guard = REPO_ROOT / relative
+    if guard.is_symlink() or not guard.is_file():
+        failures.append("supplemental learning history guard missing or symlinked")
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, "-B", str(guard), "--self-test",
+             "--repo-root", str(REPO_ROOT)],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+            timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        failures.append("supplemental learning history guard unavailable")
+        return
+    if (type(result.returncode) is not int or result.returncode != 0
+            or result.stdout != "Supplemental learning first-parent append-only history PASS\n"
+            or type(result.stderr) is not str or result.stderr):
+        failures.append("supplemental learning history guard missing verified PASS")
+    else:
+        print("supplemental learning history append-only and negatives verified")
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, rules in ENTRYPOINTS.items():
@@ -2723,6 +2749,7 @@ def main() -> int:
             failures.append(f"{relative}: unqualified production-ready wording")
 
     validate_learning_guards(failures)
+    validate_supplemental_learning_history(failures)
     validate_learning_workflow_reachability(failures)
     validate_source_negative_ci_reachability(failures)
     validate_upload_route_rate_limit_trigger_scope(failures)
