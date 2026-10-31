@@ -3968,7 +3968,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     require_reviewed_upload_route_snapshot_functions(
         reconciler.read_text(encoding="utf-8"),
         {
-            "current_authority_files": "2e6cb80c64fae77f01b3a75cef73e0b9e7ec4b117ca0ca372ee29ca4b8020269",
+            "current_authority_files": "b05f7363a1c0b5b80afcb50fd869804bd6d5f3b9b1cb7cd86799fd8f99fdde4c",
             "snapshot_authority_files": "1d499f69657dea11195d85e9746da5cd5f18b0a2c4f1fe1c6c8e123b9c88ddae",
         },
     )
