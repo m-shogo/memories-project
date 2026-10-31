@@ -397,8 +397,9 @@ def prove_atomic_mode_failure_cleanup(module) -> None:
 
 
 def prove_atomic_fdopen_failure_cleanup(module) -> None:
-    """Before-/after-effect fdopen faults must not close a recycled canary FD."""
-    for fdopen_case in ("before-fdopen", "after-fdopen-closed", "after-fdopen-reused"):
+    """Failed fdopen handoff never authorizes a close by numeric FD identity."""
+    for fdopen_case in ("before-fdopen", "after-fdopen-closed",
+                        "after-fdopen-reused", "after-fdopen-same-inode"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fdopen-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -408,6 +409,8 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             canary.write_bytes(b"independent-fdopen-canary")
             before = {item.name for item in root.glob(".authority.txt.*.tmp")}
             opened: list[int] = []
+            names: list[str] = []
+            initial_inode: list[tuple[int, int]] = []
             recycled = [None]
             original_stage = module.create_pinned_stage
             original_fdopen = module.os.fdopen
@@ -418,6 +421,9 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             def capture_stage(parent_fd, leaf):
                 descriptor, name = original_stage(parent_fd, leaf)
                 opened.append(descriptor)
+                names.append(name)
+                st = original_fstat(descriptor)
+                initial_inode.append((st.st_dev, st.st_ino))
                 return descriptor, name
 
             def reject_fdopen(descriptor, *_args, **_kwargs):
@@ -425,8 +431,10 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                         "fdopen fault did not target the owned stage")
                 if fdopen_case != "before-fdopen":
                     original_close(descriptor)
-                    if fdopen_case == "after-fdopen-reused":
-                        probe = original_open(canary, module.os.O_RDONLY)
+                    if fdopen_case in ("after-fdopen-reused", "after-fdopen-same-inode"):
+                        source = (canary if fdopen_case == "after-fdopen-reused"
+                                  else root / names[0])
+                        probe = original_open(source, module.os.O_RDONLY)
                         if probe != descriptor:
                             module.os.dup2(probe, descriptor)
                             original_close(probe)
@@ -442,55 +450,60 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                     require(str(exc) == "synthetic fdopen failure",
                             f"fdopen failure rejected for unrelated reason: {exc}")
                     notes = getattr(exc, "__notes__", [])
-                    if fdopen_case == "after-fdopen-reused":
-                        require(any("fdopen stage descriptor ownership changed" in note
-                                    for note in notes),
-                                "recycled fdopen ownership lacked bounded diagnostic")
-                    elif fdopen_case == "after-fdopen-closed":
-                        require(any("fdopen stage descriptor ownership unverified" in note
-                                    for note in notes),
-                                "closed fdopen descriptor lacked bounded diagnostic")
+                    expected = ("ownership changed" if fdopen_case == "after-fdopen-reused"
+                                else "ownership unverified" if fdopen_case == "after-fdopen-closed"
+                                else "ownership ambiguous despite inode match")
+                    require(any(expected in note and "close skipped" in note for note in notes),
+                            f"fdopen {fdopen_case} lacked fail-closed diagnostic")
                 else:
                     raise Fail("atomic writer accepted fdopen acquisition failure")
             finally:
                 module.create_pinned_stage = original_stage
                 module.os.fdopen = original_fdopen
 
-            require(len(opened) == 1, "atomic writer did not stage exactly one descriptor")
-            if fdopen_case == "after-fdopen-reused":
-                try:
-                    observed = original_fstat(opened[0])
-                except OSError as exc:
-                    raise Fail(f"recycled fdopen canary descriptor was closed: {exc}") from exc
-                try:
-                    expected = canary.stat()
-                    require(recycled[0] == opened[0]
-                            and stat.S_ISREG(observed.st_mode)
-                            and (observed.st_dev, observed.st_ino)
-                            == (expected.st_dev, expected.st_ino),
-                            "recycled fdopen canary descriptor was closed")
-                finally:
-                    original_close(opened[0])
-            else:
+            require(len(opened) == 1, "atomic writer did not stage one descriptor")
+            if fdopen_case == "after-fdopen-closed":
                 try:
                     original_fstat(opened[0])
                 except OSError as exc:
                     require(exc.errno == errno.EBADF,
-                            f"descriptor verification failed for unrelated reason: {exc}")
+                            f"closed fdopen descriptor failed unexpectedly: {exc}")
                 else:
                     original_close(opened[0])
-                    raise Fail("atomic writer leaked a descriptor after fdopen failure")
+                    raise Fail("closed fdopen descriptor unexpectedly survived")
+            else:
+                try:
+                    observed = original_fstat(opened[0])
+                except OSError as exc:
+                    raise Fail(f"fdopen cleanup consumed a live descriptor: {exc}") from exc
+                try:
+                    if fdopen_case == "after-fdopen-reused":
+                        expected_stat = canary.stat()
+                        require(recycled[0] == opened[0]
+                                and (observed.st_dev, observed.st_ino)
+                                == (expected_stat.st_dev, expected_stat.st_ino),
+                                "recycled fdopen canary descriptor was closed")
+                    else:
+                        require((observed.st_dev, observed.st_ino) == initial_inode[0]
+                                and observed.st_nlink == 0,
+                                "same-inode or pre-effect fdopen descriptor was closed")
+                        if fdopen_case == "after-fdopen-same-inode":
+                            require(recycled[0] == opened[0],
+                                    "same-inode FD did not reuse the original number")
+                finally:
+                    # Only the isolated test can reclaim a leaked pre-effect FD
+                    # or an independently reopened descriptor after hook restoration.
+                    original_close(opened[0])
             require(target.read_bytes() == b"original"
                     and stat.S_IMODE(target.stat().st_mode) == 0o755,
                     "fdopen failure changed original bytes or mode")
             require(canary.read_bytes() == b"independent-fdopen-canary",
                     "fdopen failure changed independent canary")
-            after = {item.name for item in root.glob(".authority.txt.*.tmp")}
-            require(after == before,
-                    "atomic writer left temporary residue after fdopen failure")
+            require({item.name for item in root.glob(".authority.txt.*.tmp")} == before,
+                    "fdopen failure left temporary residue")
 
-    # A close failure during fdopen acquisition cleanup can occur before
-    # or after consuming the numeric descriptor. Never retry an unknown FD.
+    # A close hook that would fail before or after consuming an FD must never
+    # be invoked for an ambiguous fdopen handoff.
     for fdopen_close_case in ("before-fdopen-close", "after-fdopen-close"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fdopen-close-") as temp_dir:
             root = Path(temp_dir)
@@ -500,6 +513,7 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             canary.write_bytes(b"independent-close-canary")
             opened: list[int] = []
             recycled = [None]
+            attempted_close: list[int] = []
             original_stage = module.create_pinned_stage
             original_fdopen = module.os.fdopen
             original_close = module.os.close
@@ -514,17 +528,18 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             def reject_close_fdopen(descriptor, *_args, **_kwargs):
                 require(len(opened) == 1 and descriptor == opened[0],
                         "fdopen close fault did not reach owned stage")
+                if fdopen_close_case == "after-fdopen-close":
+                    original_close(descriptor)
+                    probe = original_open(canary, module.os.O_RDONLY)
+                    if probe != descriptor:
+                        module.os.dup2(probe, descriptor)
+                        original_close(probe)
+                    recycled[0] = descriptor
                 raise OSError("synthetic fdopen failure")
 
             def fail_fdopen_close(descriptor):
                 if opened and descriptor == opened[0]:
-                    if fdopen_close_case == "after-fdopen-close":
-                        original_close(descriptor)
-                        probe = original_open(canary, module.os.O_RDONLY)
-                        if probe != descriptor:
-                            module.os.dup2(probe, descriptor)
-                            original_close(probe)
-                        recycled[0] = descriptor
+                    attempted_close.append(descriptor)
                     raise OSError("synthetic fdopen stage close failure")
                 return original_close(descriptor)
 
@@ -537,9 +552,9 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                 except OSError as exc:
                     require(str(exc) == "synthetic fdopen failure",
                             f"fdopen close fault masked primary failure: {exc}")
-                    require(any("fdopen stage descriptor close status unknown" in note
+                    require(any("close skipped" in note
                                 for note in getattr(exc, "__notes__", [])),
-                            "fdopen close fault lacked bounded uncertainty diagnostic")
+                            "fdopen close avoidance lacked bounded diagnostic")
                 else:
                     raise Fail("fdopen close failure was accepted")
             finally:
@@ -547,26 +562,25 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                 module.os.fdopen = original_fdopen
                 module.os.close = original_close
 
-            require(len(opened) == 1, "fdopen close fault did not stage one descriptor")
+            require(len(opened) == 1 and not attempted_close,
+                    "failed fdopen attempted to close an ambiguous numeric descriptor")
             observed = original_fstat(opened[0])
             try:
                 if fdopen_close_case == "after-fdopen-close":
                     expected = canary.stat()
                     require(recycled[0] == opened[0]
-                            and stat.S_ISREG(observed.st_mode)
                             and (observed.st_dev, observed.st_ino)
                             == (expected.st_dev, expected.st_ino),
                             "fdopen close consumed recycled canary descriptor")
                 else:
-                    require(stat.S_ISREG(observed.st_mode),
-                            "fdopen pre-effect close unexpectedly consumed owned stage")
+                    require(stat.S_ISREG(observed.st_mode) and observed.st_nlink == 0,
+                            "fdopen pre-effect stage was unexpectedly consumed")
             finally:
-                # Test-only reclamation after restoring the injected fault.
                 original_close(opened[0])
             require(target.read_bytes() == b"original"
                     and canary.read_bytes() == b"independent-close-canary"
                     and not list(root.glob(".authority.txt.*.tmp")),
-                    "fdopen close fault changed original, canary or stage residue")
+                    "fdopen close avoidance changed original, canary or stage residue")
 
     # If fdopen fails and its ownership probe also fails, never close an
     # unverified numeric descriptor. The test alone reclaims an owned FD.
