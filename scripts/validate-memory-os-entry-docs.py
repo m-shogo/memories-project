@@ -3581,19 +3581,8 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     if any(len(nodes) != 1 for nodes in functions.values()):
         return False
     body, opener, stage = (ast.unparse(functions[name][0]) for name in names)
-    # Inode equality is not FD ownership: reject any close of the ambiguous
-    # numeric descriptor in the failed fdopen handoff handler.
-    handoff_failures = [node for node in ast.walk(functions["atomic_write_bytes"][0])
-                        if isinstance(node, ast.ExceptHandler) and node.name == "fdopen_exc"]
-    if len(handoff_failures) != 1 or any(
-        isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-        and isinstance(node.func.value, ast.Name) and node.func.value.id == "os"
-        and node.func.attr == "close"
-        and len(node.args) == 1 and isinstance(node.args[0], ast.Name)
-        and node.args[0].id == "descriptor"
-        for node in ast.walk(handoff_failures[0])
-    ):
-        return False
+    handoff_failures = [n for n in ast.walk(functions["atomic_write_bytes"][0]) if isinstance(n, ast.ExceptHandler) and n.name == "fdopen_exc"]
+    if len(handoff_failures) != 1 or any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id == "os" and n.func.attr == "close" and len(n.args) == 1 and isinstance(n.args[0], ast.Name) and n.args[0].id == "descriptor" for n in ast.walk(handoff_failures[0])): return False
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)", "os.O_DIRECTORY | os.O_NOFOLLOW",
         "expected_parent.st_dev", "expected_parent.st_ino", "expected_parent.st_mode", "expected_parent.st_ctime_ns",
