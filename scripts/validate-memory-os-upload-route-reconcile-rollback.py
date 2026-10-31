@@ -1190,7 +1190,7 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                             module.os.dup2(probe, descriptor)
                             original_close(probe)
                         recycled[0] = descriptor
-                    raise OSError("synthetic parent traversal close failure")
+                    raise OSError("synthetic ancestor handoff close fault")
                 return original_close(descriptor)
 
             module.os.open = capture_traversal_open

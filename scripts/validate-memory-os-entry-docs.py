@@ -3583,7 +3583,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)", "os.O_DIRECTORY | os.O_NOFOLLOW",
         "expected_parent.st_dev", "expected_parent.st_ino", "expected_parent.st_mode", "expected_parent.st_ctime_ns",
-        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns", "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)", "os.close(next_fd)",
+        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns", "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "closing_fd, fd = (fd, None)", "os.close(closing_fd)", "os.close(next_fd)",
     )):
         return False
     if not all(fragment in stage for fragment in (
@@ -3797,7 +3797,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("os.close(staging_guard_fd)", "pass"),
             ("os.close(untransferred_stage_fd)", "pass"), ("original_failure = sys.exception()", "original_failure = None"), ("except OSError as cleanup_exc:", "except ValueError as cleanup_exc:"), ("except OSError as unlink_exc:", "except ValueError as unlink_exc:"), ("except OSError as parent_close_exc:", "except ValueError as parent_close_exc:"), ("except OSError as guard_close_exc:", "except ValueError as guard_close_exc:"), ("except OSError as stage_close_exc:", "except ValueError as stage_close_exc:"), ("except OSError as prestage_close_exc:", "except ValueError as prestage_close_exc:"),
             ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
-            ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"), ("os.close(next_fd)", "pass"),
+            ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"), ("closing_fd, fd = fd, None", "closing_fd, fd = fd, fd"), ("os.close(next_fd)", "pass"),
             ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("for _ in range(8):", "for _ in range(0):"),
             ("os.urandom(16).hex()", "'fixed-stage-name'"),
