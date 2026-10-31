@@ -2861,6 +2861,47 @@ def supplemental_history_head_stability_bound(source: str) -> bool:
     )
 
 
+
+def supplemental_history_reflog_bound(source: str) -> bool:
+    """Independently bind the live local reflog witness and ABA rejection."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == "head_reflog_witness"]
+    checks = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name == "check_history"]
+    if len(helpers) != 1 or len(checks) != 1:
+        return False
+    helper = ast.unparse(helpers[0])
+    for needle in (
+        "git(root, 'rev-parse', '--git-path', 'logs/HEAD')",
+        "raw.decode('utf-8')",
+        "observed = path.lstat()",
+        "stat.S_ISREG(observed.st_mode)",
+        "observed.st_nlink != 1",
+        "observed.st_dev, observed.st_ino, observed.st_size",
+        "observed.st_mtime_ns, observed.st_ctime_ns",
+    ):
+        if needle not in helper:
+            return False
+    body = checks[0].body
+    captured = [node for node in body if isinstance(node, ast.Assign)
+                and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id == "head_witness"
+                and ast.unparse(node.value) == "head_reflog_witness(root)"]
+    rejected = [node for node in body if isinstance(node, ast.If)
+                and ast.unparse(node.test) ==
+                    "head_reflog_witness(root) != head_witness"
+                and len(node.body) == 1
+                and ast.unparse(node.body[0]) ==
+                    "raise GuardFailure('supplemental history HEAD reflog changed during audit')"]
+    return len(captured) == 1 and len(rejected) == 1 and (
+        body.index(captured[0]) < body.index(rejected[0]) < len(body) - 2
+    )
+
+
 def supplemental_history_git_transport_bound(source: str) -> bool:
     """Independently bind exact successful-Git OID transport checks."""
     try:
@@ -3007,6 +3048,9 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     if not supplemental_history_head_stability_bound(guard_source):
         failures.append("supplemental history HEAD stability proof drift")
         return
+    if not supplemental_history_reflog_bound(guard_source):
+        failures.append("supplemental history HEAD reflog witness proof drift")
+        return
     if not supplemental_history_git_transport_bound(guard_source):
         failures.append("supplemental history Git oid transport proof drift")
     if not supplemental_history_enumeration_bound(guard_source):
@@ -3014,6 +3058,16 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     if not supplemental_history_diff_confirmation_bound(guard_source):
         failures.append("supplemental history diff confirmation proof drift")
         return
+    for original, altered in (
+        ("observed = path.lstat()", "observed = path.stat()"),
+        ("observed.st_nlink != 1", "observed.st_nlink == 1"),
+        ("head_reflog_witness(root) != head_witness",
+         "head_reflog_witness(root) == head_witness"),
+    ):
+        weakened = guard_source.replace(original, altered, 1)
+        if weakened == guard_source or supplemental_history_reflog_bound(weakened):
+            failures.append("supplemental history HEAD reflog witness mutation accepted")
+            return
     for needle in (
         r'rb"[0-9a-f]{40}\n"',
         r'rb"(?:[0-9a-f]{40}\n)*"',

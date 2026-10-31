@@ -6,6 +6,7 @@ import argparse
 import ast
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -88,6 +89,30 @@ def reject_local_grafts(root: Path) -> None:
 
 
 
+
+def head_reflog_witness(root: Path) -> tuple[int, int, int, int, int]:
+    """Bounded local HEAD-reflog witness, not atomic ref CAS."""
+    raw = git(root, "rev-parse", "--git-path", "logs/HEAD").stdout
+    try:
+        location = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise GuardFailure("supplemental HEAD reflog unavailable") from None
+    if (not location.endswith("\n") or location.count("\n") != 1
+            or not location[:-1] or "\0" in location):
+        raise GuardFailure("supplemental HEAD reflog unavailable")
+    path = Path(location[:-1])
+    if not path.is_absolute():
+        path = root / path
+    try:
+        observed = path.lstat()
+    except OSError:
+        raise GuardFailure("supplemental HEAD reflog unavailable") from None
+    if not stat.S_ISREG(observed.st_mode) or observed.st_nlink != 1:
+        raise GuardFailure("supplemental HEAD reflog unavailable")
+    return (observed.st_dev, observed.st_ino, observed.st_size,
+            observed.st_mtime_ns, observed.st_ctime_ns)
+
+
 def check_history(root: Path, baseline: str) -> None:
     if not re.fullmatch(r"[0-9a-f]{40}", baseline):
         raise GuardFailure("invalid immutable history baseline")
@@ -96,6 +121,7 @@ def check_history(root: Path, baseline: str) -> None:
     head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
     if not re.fullmatch(r"[0-9a-f]{40}", head):
         raise GuardFailure("invalid checked-out commit")
+    head_witness = head_reflog_witness(root)
     ancestry = git(root, "merge-base", "--is-ancestor", baseline, head,
                    allow_failure=True)
     if ancestry.returncode == 1 and not ancestry.stderr:
@@ -166,6 +192,8 @@ def check_history(root: Path, baseline: str) -> None:
         final = git(root, "ls-tree", "-z", head, "--", os.fsdecode(path)).stdout
         if final != b"100644 blob " + blob + b"\t" + path + b"\0":
             raise GuardFailure("supplemental history lost an added record")
+    if head_reflog_witness(root) != head_witness:
+        raise GuardFailure("supplemental history HEAD reflog changed during audit")
     # The traversal is bound to a captured commit, not an automatically
     # stable branch ref. A concurrent HEAD move must invalidate the proof.
     final_head = git(root, "rev-parse", "--verify", "HEAD^{commit}").stdout.strip().decode("ascii")
@@ -424,6 +452,45 @@ def self_test() -> None:
         if not moved or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != bad_head:
             raise GuardFailure("supplemental moving-HEAD negative control ineffective")
         git(root, "update-ref", "HEAD", safe_head)
+        check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+
+    # HEAD A -> B -> A evades an OID-only before/after check. This is a
+    # bounded local reflog witness, not a remote or tamper-proof ref lease.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        safe_head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        old = root / SCOPES[0] / "original.md"
+        old.write_text("mutated\n", encoding="utf-8")
+        git(root, "commit", "-qam", "concurrent ABA mutation")
+        bad_head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        git(root, "update-ref", "HEAD", safe_head)
+        witness_before = head_reflog_witness(root)
+        original_git = git
+        moved = False
+
+        def move_head_aba(path: Path, *args: str, **kwargs):
+            nonlocal moved
+            result = original_git(path, *args, **kwargs)
+            if path == root and args[:2] == ("rev-list", "--reverse") and not moved:
+                original_git(root, "update-ref", "HEAD", bad_head)
+                original_git(root, "update-ref", "HEAD", safe_head)
+                moved = True
+            return result
+
+        with patch(__name__ + ".git", side_effect=move_head_aba):
+            expect_guard_failure(
+                lambda: check_history(root, baseline),
+                "supplemental history HEAD reflog changed during audit",
+                "head-aba-reflog-witness",
+            )
+        if (not moved
+                or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != safe_head
+                or head_reflog_witness(root) == witness_before):
+            raise GuardFailure("supplemental HEAD ABA negative control ineffective")
         check_history(root, baseline)
     finally:
         temp.cleanup()
