@@ -1241,6 +1241,97 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                     "traversal close modified an authority or independent canary")
 
 
+    # Cleanup of the newly opened child can also fail before or after its
+    # syscall effect; neither error may mask the original ancestor close.
+    for child_cleanup_case in ("before-child-cleanup-close", "after-child-cleanup-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-child-close-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "owned"
+            parent.mkdir()
+            target = parent / "authority.txt"
+            target.write_bytes(b"original-owned")
+            canary = root / "child-close-canary.txt"
+            canary.write_bytes(b"independent-child-canary")
+            original_open = module.os.open
+            original_close = module.os.close
+            ancestor_fd = [None]
+            child_fd = [None]
+            recycled_fd = [None]
+            tripped: list[str] = []
+
+            def capture_child_open(*args, **kwargs):
+                descriptor = original_open(*args, **kwargs)
+                if kwargs.get("dir_fd") is None:
+                    ancestor_fd[0] = descriptor
+                elif child_fd[0] is None:
+                    child_fd[0] = descriptor
+                return descriptor
+
+            def fail_child_cleanup_close(descriptor):
+                if descriptor == ancestor_fd[0] and not tripped:
+                    tripped.append("ancestor")
+                    raise OSError("synthetic ancestor handoff primary fault")
+                if descriptor == child_fd[0] and tripped == ["ancestor"]:
+                    tripped.append("child")
+                    if child_cleanup_case == "after-child-cleanup-close":
+                        original_close(descriptor)
+                        probe = original_open(canary, module.os.O_RDONLY)
+                        if probe != descriptor:
+                            module.os.dup2(probe, descriptor)
+                            original_close(probe)
+                        recycled_fd[0] = descriptor
+                    raise OSError("synthetic child cleanup close fault")
+                return original_close(descriptor)
+
+            module.os.open = capture_child_open
+            module.os.close = fail_child_cleanup_close
+            try:
+                try:
+                    module.open_pinned_parent(target, parent.lstat())
+                except module.ReconcileFailure as exc:
+                    require("concurrent publication parent drift" in str(exc),
+                            f"child cleanup fault rejected for unrelated reason: {exc}")
+                    notes = getattr(exc, "__notes__", [])
+                    require(any("ancestor pinned parent descriptor close status unknown" in note
+                                for note in notes)
+                            and any("next pinned parent descriptor close status unknown" in note
+                                    for note in notes),
+                            "child cleanup fault lost primary or secondary uncertainty note")
+                else:
+                    raise Fail("child cleanup close failure was accepted")
+            finally:
+                module.os.open = original_open
+                module.os.close = original_close
+
+            require(tripped == ["ancestor", "child"]
+                    and ancestor_fd[0] is not None and child_fd[0] is not None,
+                    "child cleanup close fault missed actual ancestor handoff")
+            try:
+                require(stat.S_ISDIR(os.fstat(ancestor_fd[0]).st_mode),
+                        "child cleanup fault unexpectedly consumed ancestor descriptor")
+            finally:
+                original_close(ancestor_fd[0])
+            try:
+                child_stat = os.fstat(child_fd[0])
+            except OSError as exc:
+                raise Fail(f"child cleanup close retried uncertain descriptor: {exc}") from exc
+            try:
+                if child_cleanup_case == "after-child-cleanup-close":
+                    require(recycled_fd[0] == child_fd[0]
+                            and stat.S_ISREG(child_stat.st_mode)
+                            and (child_stat.st_dev, child_stat.st_ino)
+                            == (canary.stat().st_dev, canary.stat().st_ino),
+                            "child cleanup close consumed recycled canary descriptor")
+                else:
+                    require(stat.S_ISDIR(child_stat.st_mode),
+                            "child cleanup pre-effect fault lost owned descriptor")
+            finally:
+                original_close(child_fd[0])
+            require(target.read_bytes() == b"original-owned"
+                    and canary.read_bytes() == b"independent-child-canary",
+                    "child cleanup close changed original or independent authority")
+
+
     # A renamed ancestor must not be followed through an external symlink.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ancestor-") as temp_dir:
         root = Path(temp_dir)
