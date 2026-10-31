@@ -1501,15 +1501,17 @@ def prove_atomic_prestage_parent_swap(module) -> None:
             module.open_pinned_parent = original_parent
         require(injected[0] and len(opened) >= 2,
                 "parent traversal close fault did not acquire both descriptors")
-        for fd in opened:
+        require(len(opened) == 2, "parent traversal close acquired unexpected descriptors")
+        for index, fd in enumerate(opened):
             try:
-                os.fstat(fd)
+                observed = os.fstat(fd)
             except OSError as exc:
-                require(exc.errno == errno.EBADF,
-                        "parent traversal close fault left a live descriptor")
+                require(index == 1 and exc.errno == errno.EBADF,
+                        "parent traversal child close did not release its descriptor")
             else:
-                os.close(fd)
-                raise Fail("parent traversal close failure leaked a descriptor")
+                require(index == 0 and stat.S_ISDIR(observed.st_mode),
+                        "parent traversal close did not preserve uncertain ancestor descriptor")
+                original_close(fd)  # Test-only cleanup after restoring the fault hook.
         require(target.read_bytes() == b"original-owned"
                 and not list(parent.glob(".authority.txt.*.tmp")),
                 "parent traversal close failure altered authority or staged residue")
