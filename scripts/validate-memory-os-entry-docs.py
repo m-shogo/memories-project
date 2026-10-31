@@ -3355,9 +3355,29 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '                raise ReconcileFailure(f"concurrent rollback parent drift: {path}") from None'),
             ("observed.st_ctime_ns)", "observed.st_mtime_ns)"),
         ):
-            if (reader_source.count(original) not in (1, 2)
-                    or has_upload_route_published_identity_binding(
-                        reader_source.replace(original, replacement, 1))):
+            # Publication now also uses dirfd stat. Mutate the rollback
+            # authority itself rather than an unrelated first occurrence.
+            if original == "os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)":
+                marker = "def rollback_authority_files()"
+                start = reader_source.find(marker)
+                end = reader_source.find("\ndef validate_canonical_authorities", start)
+                if (start < 0 or end < 0
+                        or reader_source.count(marker) != 1):
+                    failures.append("upload-route rollback mutation scope drift")
+                    return
+                scoped = reader_source[start:end]
+                if scoped.count(original) != 1:
+                    failures.append("upload-route rollback stat fixture drift")
+                    return
+                mutated = (reader_source[:start]
+                           + scoped.replace(original, replacement, 1)
+                           + reader_source[end:])
+            else:
+                if reader_source.count(original) not in (1, 2):
+                    failures.append("upload-route published identity fixture drift")
+                    return
+                mutated = reader_source.replace(original, replacement, 1)
+            if has_upload_route_published_identity_binding(mutated):
                 failures.append("upload-route published identity mutation accepted: " + original)
                 return
         for original, replacement in (
