@@ -3781,21 +3781,15 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             failures.append("upload-route pinned publication binding missing")
             return
         for original, replacement in (
-            ("os.replace(temporary.name, path.name,\n                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
-             "os.replace(temporary, path)"),
+            ("os.replace(temporary.name, path.name,\n                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)", "os.replace(temporary, path)"),
             ("os.unlink(temporary.name, dir_fd=parent_fd)",
              "temporary.unlink()"),
             ("if not published and staged_identity is not None:", "if True:"),
-            ("and (cleanup_stat.st_dev, cleanup_stat.st_ino)",
-             "and (cleanup_stat.st_dev, -1)"),
-            ("staged_initial = os.fstat(descriptor)",
-             "staged_initial = path.stat()"),
-            ("if not published and staged_identity is None and untransferred_stage_fd is not None:",
-             "if False:"),
-            ("recovery_stat = os.fstat(untransferred_stage_fd)",
-             "recovery_stat = path.stat()"),
-            ("staging_guard_fd = os.dup(descriptor)",
-             "staging_guard_fd = None"),
+            ("and (cleanup_stat.st_dev, cleanup_stat.st_ino)", "and (cleanup_stat.st_dev, -1)"),
+            ("staged_initial = os.fstat(descriptor)", "staged_initial = path.stat()"),
+            ("if not published and staged_identity is None and untransferred_stage_fd is not None:", "if False:"),
+            ("recovery_stat = os.fstat(untransferred_stage_fd)", "recovery_stat = path.stat()"),
+            ("staging_guard_fd = os.dup(descriptor)", "staging_guard_fd = None"),
             ("os.close(staging_guard_fd)", "pass"),
             ("os.close(untransferred_stage_fd)", "pass"),
             ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
@@ -3807,8 +3801,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("staged_live.st_nlink == 1", "staged_live.st_nlink >= 1"), ("recovery_stat.st_nlink == 1", "recovery_stat.st_nlink >= 1"),
             ("and (pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode)", "and (pinned_parent.st_dev, pinned_parent.st_ino, -1)"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
-            ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
-             "os.O_WRONLY | os.O_CREAT"),
+            ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW", "os.O_WRONLY | os.O_CREAT"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
@@ -3816,13 +3809,10 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
                 failures.append("upload-route pinned publication mutation accepted")
                 return
         for original, replacement in (
-            ("published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)",
-             "published_identity(path) != ROLLBACK_PUBLISHED_IDENTITIES.get(path)"),
-            ("ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)",
-             "ROLLBACK_PUBLISHED_IDENTITIES[path] = (0, 0, 0, 0)"),
+            ("published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)", "published_identity(path) != ROLLBACK_PUBLISHED_IDENTITIES.get(path)"),
+            ("ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)", "ROLLBACK_PUBLISHED_IDENTITIES[path] = (0, 0, 0, 0)"),
             ("os.unlink(path.name, dir_fd=parent_fd)", "path.unlink()"),
-            ("os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)",
-             "path.stat()"),
+            ("os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)", "path.stat()"),
             ('getattr(os, "O_DIRECTORY", None)',
              'getattr(os, "O_DIRECTORY", 1)'),
             ('            except OSError:\n'
