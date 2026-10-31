@@ -1332,6 +1332,83 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                     "child cleanup close changed original or independent authority")
 
 
+    # A failed child-component open must retain its original error even
+    # when the outer ancestor cleanup close fails before or after its effect.
+    for child_open_close_case in ("before-child-open-cleanup", "after-child-open-cleanup"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-open-close-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "owned"
+            parent.mkdir()
+            target = parent / "authority.txt"
+            target.write_bytes(b"original-owned")
+            canary = root / "open-cleanup-canary.txt"
+            canary.write_bytes(b"independent-open-canary")
+            original_open = module.os.open
+            original_close = module.os.close
+            root_fd = [None]
+            recycled_fd = [None]
+            failed = [False]
+
+            def reject_child_component_open(name, flags, mode=0o777, *, dir_fd=None):
+                if dir_fd is None:
+                    descriptor = original_open(name, flags, mode)
+                    root_fd[0] = descriptor
+                    return descriptor
+                failed[0] = True
+                raise OSError("synthetic child component open failure")
+
+            def fail_ancestor_cleanup_close(descriptor):
+                if descriptor == root_fd[0]:
+                    if child_open_close_case == "after-child-open-cleanup":
+                        original_close(descriptor)
+                        probe = original_open(canary, module.os.O_RDONLY)
+                        if probe != descriptor:
+                            module.os.dup2(probe, descriptor)
+                            original_close(probe)
+                        recycled_fd[0] = descriptor
+                    raise OSError("synthetic outer ancestor cleanup close fault")
+                return original_close(descriptor)
+
+            module.os.open = reject_child_component_open
+            module.os.close = fail_ancestor_cleanup_close
+            try:
+                try:
+                    module.open_pinned_parent(target, parent.lstat())
+                except module.ReconcileFailure as exc:
+                    require("concurrent publication parent drift" in str(exc),
+                            f"child open cleanup rejected for unrelated reason: {exc}")
+                    require(any("pinned ancestor cleanup descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "child open cleanup lost primary failure diagnostic")
+                else:
+                    raise Fail("child component open failure was accepted")
+            finally:
+                module.os.open = original_open
+                module.os.close = original_close
+
+            require(failed[0] and root_fd[0] is not None,
+                    "child component open fault missed the ancestor descriptor")
+            try:
+                observed = os.fstat(root_fd[0])
+            except OSError as exc:
+                raise Fail(f"child open cleanup retried uncertain descriptor: {exc}") from exc
+            try:
+                if child_open_close_case == "after-child-open-cleanup":
+                    require(recycled_fd[0] == root_fd[0]
+                            and stat.S_ISREG(observed.st_mode)
+                            and (observed.st_dev, observed.st_ino)
+                            == (canary.stat().st_dev, canary.stat().st_ino),
+                            "child open cleanup consumed recycled canary descriptor")
+                else:
+                    require(stat.S_ISDIR(observed.st_mode),
+                            "child open cleanup lost pre-effect ancestor descriptor")
+            finally:
+                original_close(root_fd[0])
+            require(target.read_bytes() == b"original-owned"
+                    and canary.read_bytes() == b"independent-open-canary",
+                    "child open cleanup changed original or independent authority")
+
+
     # A renamed ancestor must not be followed through an external symlink.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ancestor-") as temp_dir:
         root = Path(temp_dir)
