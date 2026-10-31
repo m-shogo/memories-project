@@ -3456,7 +3456,23 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
     if (type(result.returncode) is not int or result.returncode != 0
             or result.stdout != expected or type(result.stderr) is not str
             or result.stderr):
-        failures.append("upload-route learning scan guard missing verified PASS")
+        # Fixed, allowlisted failure labels aid safe negative-suite triage.
+        # Never forward captured subprocess output or exception paths.
+        known = (
+            ("failed publication changed original authority bytes", "failed-replace-original"),
+            ("failed publication stage reuse not injected", "failed-replace-injection"),
+            ("failed publication cleanup deleted an independent stage-name owner", "failed-replace-independent-owner"),
+            ("synthetic failed publication with reused stage name", "failed-replace-exception"),
+            ("atomic writer left temporary residue", "atomic-temporary-residue"),
+            ("UPLOAD ROUTE RECONCILE ROLLBACK NEGATIVE FAILED:", "negative-proof-failure"),
+            ("ReconcileFailure:", "unhandled-reconcile-failure"),
+            ("OSError:", "unhandled-os-error"),
+        )
+        captured = ((result.stdout if type(result.stdout) is str else "")
+                    + (result.stderr if type(result.stderr) is str else ""))
+        label = next((label for marker, label in known if marker in captured),
+                     "unclassified")
+        failures.append("upload-route learning scan guard missing verified PASS: " + label)
     else:
         print("upload-route append-only scan and symlink negatives verified")
 
