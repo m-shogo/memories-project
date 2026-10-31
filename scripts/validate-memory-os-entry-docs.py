@@ -3061,6 +3061,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
     for original, altered in (
         ("observed = path.lstat()", "observed = path.stat()"),
         ("observed.st_nlink != 1", "observed.st_nlink == 1"),
+        ("observed.st_mtime_ns, observed.st_ctime_ns",
+         "observed.st_mtime_ns, 0"),
         ("head_reflog_witness(root) != head_witness",
          "head_reflog_witness(root) == head_witness"),
     ):

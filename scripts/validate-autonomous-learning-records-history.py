@@ -444,11 +444,13 @@ def self_test() -> None:
                 moved = True
             return result
 
-        with patch(__name__ + ".git", side_effect=move_head_after_snapshot):
-            expect_guard_failure(
-                lambda: check_history(root, baseline),
-                "supplemental history HEAD moved during audit", "moving-head-ref",
-            )
+        # Isolate the OID mismatch fallback from the independent reflog witness.
+        with patch(__name__ + ".head_reflog_witness", return_value=(0, 0, 0, 0, 0)):
+            with patch(__name__ + ".git", side_effect=move_head_after_snapshot):
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental history HEAD moved during audit", "moving-head-ref",
+                )
         if not moved or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != bad_head:
             raise GuardFailure("supplemental moving-HEAD negative control ineffective")
         git(root, "update-ref", "HEAD", safe_head)
@@ -491,6 +493,35 @@ def self_test() -> None:
                 or git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip() != safe_head
                 or head_reflog_witness(root) == witness_before):
             raise GuardFailure("supplemental HEAD ABA negative control ineffective")
+        check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+
+    # Missing or aliased local HEAD reflog cannot certify a stable audit.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        raw = git(root, "rev-parse", "--git-path", "logs/HEAD").stdout
+        location = Path(raw.decode("utf-8").strip())
+        reflog = location if location.is_absolute() else root / location
+        backup = reflog.with_name("HEAD.reflog-fixture-backup")
+        reflog.rename(backup)
+        try:
+            expect_guard_failure(
+                lambda: check_history(root, baseline),
+                "supplemental HEAD reflog unavailable", "missing-head-reflog",
+            )
+            reflog.symlink_to(backup)
+            try:
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental HEAD reflog unavailable", "aliased-head-reflog",
+                )
+            finally:
+                reflog.unlink()
+        finally:
+            backup.rename(reflog)
         check_history(root, baseline)
     finally:
         temp.cleanup()
