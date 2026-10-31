@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import errno
 import importlib.util
 import stat
 import tempfile
@@ -321,6 +322,58 @@ def prove_atomic_mode_failure_cleanup(module) -> None:
                     f"atomic writer left temporary residue after {operation} failure")
 
 
+
+def prove_atomic_fdopen_failure_cleanup(module) -> None:
+    """Failed stream acquisition must not leak the staged file descriptor."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fdopen-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original")
+        target.chmod(0o755)
+        before = {item.name for item in root.glob(".authority.txt.*.tmp")}
+        opened: list[int] = []
+        original_mkstemp = module.tempfile.mkstemp
+        original_fdopen = module.os.fdopen
+
+        def capture_mkstemp(*args, **kwargs):
+            descriptor, name = original_mkstemp(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor, name
+
+        def reject_fdopen(*_args, **_kwargs):
+            raise OSError("synthetic fdopen failure")
+
+        module.tempfile.mkstemp = capture_mkstemp
+        module.os.fdopen = reject_fdopen
+        try:
+            try:
+                module.atomic_write_bytes(target, b"partial")
+            except OSError as exc:
+                require(str(exc) == "synthetic fdopen failure",
+                        f"fdopen failure rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic writer accepted fdopen acquisition failure")
+        finally:
+            module.tempfile.mkstemp = original_mkstemp
+            module.os.fdopen = original_fdopen
+        require(len(opened) == 1, "atomic writer did not stage exactly one descriptor")
+        try:
+            module.os.fstat(opened[0])
+        except OSError as exc:
+            require(exc.errno == errno.EBADF,
+                    f"descriptor verification failed for unrelated reason: {exc}")
+        else:
+            module.os.close(opened[0])
+            raise Fail("atomic writer leaked a descriptor after fdopen failure")
+        require(target.read_bytes() == b"original",
+                "atomic writer changed original bytes after fdopen failure")
+        require(stat.S_IMODE(target.stat().st_mode) == 0o755,
+                "atomic writer changed original mode after fdopen failure")
+        after = {item.name for item in root.glob(".authority.txt.*.tmp")}
+        require(after == before,
+                "atomic writer left temporary residue after fdopen failure")
+
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -393,6 +446,7 @@ def main() -> int:
     prove_atomic_replace_failure(module)
     prove_atomic_mode_preservation(module)
     prove_atomic_mode_failure_cleanup(module)
+    prove_atomic_fdopen_failure_cleanup(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

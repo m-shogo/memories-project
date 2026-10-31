@@ -173,7 +173,17 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     )
     temporary = Path(temporary_name)
     try:
-        with os.fdopen(descriptor, "wb") as handle:
+        # fdopen owns the descriptor only after it returns successfully.
+        # Close an untransferred descriptor if stream construction fails.
+        try:
+            handle = os.fdopen(descriptor, "wb")
+        except BaseException:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass  # fdopen may have closed it before raising.
+            raise
+        with handle:
             handle.write(payload)
             handle.flush()
             if original_mode is not None:
