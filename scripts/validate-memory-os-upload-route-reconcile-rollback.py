@@ -799,6 +799,79 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 "prestage parent mode drift left temporary residue")
 
 
+    # Bounded name collisions must preserve an independent same-name file.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-collision-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original-owned")
+        collision = root / (".authority.txt." + "00" * 16 + ".tmp")
+        collision.write_bytes(b"independent-collision-canary")
+        original_random = module.os.urandom
+        module.os.urandom = lambda count: b"\\x00" * count
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except module.ReconcileFailure as exc:
+                require("exhausted pinned temporary authority names" in str(exc),
+                        f"stage collision rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("bounded stage collision unexpectedly published")
+        finally:
+            module.os.urandom = original_random
+        require(target.read_bytes() == b"original-owned"
+                and collision.read_bytes() == b"independent-collision-canary",
+                "stage collision changed an independent authority")
+        require(sorted(item.name for item in root.glob(".authority.txt.*.tmp"))
+                == [collision.name], "stage collision left an unowned temporary file")
+
+    # A failing stage open must close the already pinned parent capability.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-open-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original-owned")
+        original_open = module.os.open
+        original_parent = module.open_pinned_parent
+        opened: list[int] = []
+
+        def capture_parent(path, expected):
+            fd = original_parent(path, expected)
+            opened.append(fd)
+            return fd
+
+        def reject_stage_open(name, flags, mode=0o777, *, dir_fd=None):
+            if dir_fd is not None and flags & module.os.O_CREAT:
+                raise OSError("synthetic pinned stage open rejection")
+            if dir_fd is None:
+                return original_open(name, flags, mode)
+            return original_open(name, flags, mode, dir_fd=dir_fd)
+
+        module.open_pinned_parent = capture_parent
+        module.os.open = reject_stage_open
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except OSError as exc:
+                require(str(exc) == "synthetic pinned stage open rejection",
+                        f"stage open fault rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("stage open failure unexpectedly published")
+        finally:
+            module.os.open = original_open
+            module.open_pinned_parent = original_parent
+        require(len(opened) == 1, "stage open failure did not pin exactly one parent")
+        try:
+            os.fstat(opened[0])
+        except OSError as exc:
+            require(exc.errno == errno.EBADF,
+                    f"stage parent fd close rejected for unrelated reason: {exc}")
+        else:
+            os.close(opened[0])
+            raise Fail("stage open failure leaked the parent descriptor")
+        require(target.read_bytes() == b"original-owned"
+                and not list(root.glob(".authority.txt.*.tmp")),
+                "stage open failure changed authority or left temporary residue")
+
+
 def prove_atomic_poststage_drift_rejection(module) -> None:
     """Staged writes must not replace independent edits made during fsync."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-poststage-") as temp_dir:
