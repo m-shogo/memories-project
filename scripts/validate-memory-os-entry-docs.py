@@ -3563,54 +3563,40 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     except SyntaxError:
         return False
     names = ("atomic_write_bytes", "open_pinned_parent", "create_pinned_stage")
-    functions = {
-        name: [node for node in tree.body
-               if isinstance(node, ast.FunctionDef) and node.name == name]
-        for name in names
-    }
+    functions = {name: [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                        and node.name == name] for name in names}
     if any(len(nodes) != 1 for nodes in functions.values()):
         return False
-    body = ast.unparse(functions["atomic_write_bytes"][0])
-    opener = ast.unparse(functions["open_pinned_parent"][0])
-    stage = ast.unparse(functions["create_pinned_stage"][0])
+    body, opener, stage = (ast.unparse(functions[name][0]) for name in names)
     if not all(fragment in opener for fragment in (
-        "os.open(path.anchor, flags)",
-        "os.open(part, flags, dir_fd=fd)",
+        "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)",
         "os.O_DIRECTORY | os.O_NOFOLLOW",
         "expected_parent.st_dev", "expected_parent.st_ino",
-        "pinned.st_dev", "pinned.st_ino",
-        "live.st_dev", "live.st_ino", "os.close(fd)",
+        "pinned.st_dev", "pinned.st_ino", "live.st_dev", "live.st_ino", "os.close(fd)",
     )):
         return False
     if not all(fragment in stage for fragment in (
-        "os.urandom(16).hex()", "for _ in range(8)",
-        "os.O_CREAT", "os.O_EXCL", "os.O_NOFOLLOW",
-        "dir_fd=parent_fd", "except FileExistsError:",
+        "os.urandom(16).hex()", "for _ in range(8)", "os.O_CREAT",
+        "os.O_EXCL", "os.O_NOFOLLOW", "dir_fd=parent_fd", "except FileExistsError:",
     )):
         return False
     return all(fragment in body for fragment in (
         "getattr(os, 'O_DIRECTORY', None)",
-        "initial_parent = path.parent.lstat()",
-        "open_pinned_parent(path, initial_parent)",
+        "initial_parent = path.parent.lstat()", "open_pinned_parent(path, initial_parent)",
         "create_pinned_stage(parent_fd, path.name)",
         "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
         "os.unlink(temporary.name, dir_fd=parent_fd)",
         "staged_initial = os.fstat(descriptor)",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)",
-        "staging_guard_fd = os.dup(descriptor)",
-        "if staging_guard_fd is not None:",
-        "os.close(staging_guard_fd)",
-        "untransferred_stage_fd: int | None = descriptor",
-        "if untransferred_stage_fd is not None:",
-        "os.close(untransferred_stage_fd)",
+        "staging_guard_fd = os.dup(descriptor)", "if staging_guard_fd is not None:",
+        "os.close(staging_guard_fd)", "untransferred_stage_fd: int | None = descriptor",
+        "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)",
         "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity",
-        "published = True",
-        "if not published and staged_identity is not None:",
+        "published = True", "if not published and staged_identity is not None:",
         "pinned_parent.st_dev", "pinned_parent.st_ino",
         "live_parent.st_dev", "live_parent.st_ino",
-        "concurrent publication parent drift",
-        "os.close(parent_fd)",
+        "concurrent publication parent drift", "os.close(parent_fd)",
     ))
 
 
