@@ -3801,6 +3801,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"),
             ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("for _ in range(8):", "for _ in range(0):"),
+            ("os.urandom(16).hex()", "'fixed-stage-name'"),
             ("0o600, dir_fd=parent_fd)", "0o600)"),
             ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
              "os.O_WRONLY | os.O_CREAT"),
