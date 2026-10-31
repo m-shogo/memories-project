@@ -379,29 +379,27 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         staged_identity = (staged_initial.st_dev, staged_initial.st_ino)
         staging_guard_fd = os.dup(descriptor)
         # fdopen owns the descriptor only after it returns successfully.
-        # Close an untransferred descriptor if stream construction fails.
+        # A failed acquisition has ambiguous ownership. Even a matching inode
+        # cannot prove this numeric FD was not independently reopened or duped.
         try:
             handle = os.fdopen(descriptor, "wb")
         except BaseException as fdopen_exc:
-            # fdopen may have consumed this numeric descriptor before raising.
-            # Inspect the still-pinned stage identity before a bounded close;
-            # this is not an atomic FD CAS against concurrent descriptor reuse.
             try:
                 current_fd = os.fstat(descriptor)
             except OSError as probe_exc:
                 fdopen_exc.add_note(
-                    f"fdopen stage descriptor ownership unverified ({type(probe_exc).__name__})")
+                    f"fdopen stage descriptor ownership unverified ({type(probe_exc).__name__}); close skipped")
             else:
                 if (stat.S_ISREG(current_fd.st_mode)
                         and (current_fd.st_dev, current_fd.st_ino) == staged_identity):
-                    try:
-                        os.close(descriptor)
-                    except OSError as close_exc:
-                        fdopen_exc.add_note(
-                            f"fdopen stage descriptor close status unknown ({type(close_exc).__name__})")
+                    fdopen_exc.add_note(
+                        "fdopen stage descriptor ownership ambiguous despite inode match; close skipped")
                 else:
                     fdopen_exc.add_note(
                         "fdopen stage descriptor ownership changed; close skipped")
+            # Do not close an uncertain numeric FD in the outer finally either.
+            # A pre-effect fdopen failure may leak an unlinked FD; this is
+            # preferable to closing an unrelated, concurrently reused FD.
             untransferred_stage_fd = None
             raise
         untransferred_stage_fd = None
