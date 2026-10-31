@@ -584,7 +584,8 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
 
     # If fdopen fails and its ownership probe also fails, never close an
     # unverified numeric descriptor. The test alone reclaims an owned FD.
-    for fdopen_probe_case in ("owned-probe-fault", "reused-probe-fault"):
+    for fdopen_probe_case in ("owned-probe-fault", "reused-probe-fault",
+                              "owned-probe-value-error", "reused-probe-value-error"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fdopen-probe-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -610,7 +611,7 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             def reject_probe_fdopen(descriptor, *_args, **_kwargs):
                 require(len(opened) == 1 and descriptor == opened[0],
                         "fdopen probe fault did not target owned stage")
-                if fdopen_probe_case == "reused-probe-fault":
+                if fdopen_probe_case.startswith("reused-probe-"):
                     original_close(descriptor)
                     probe = original_open(canary, module.os.O_RDONLY)
                     if probe != descriptor:
@@ -622,6 +623,8 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
 
             def fail_fdopen_ownership_probe(descriptor):
                 if acquisition_failed[0] and opened and descriptor == opened[0]:
+                    if fdopen_probe_case.endswith("value-error"):
+                        raise ValueError("synthetic fdopen ownership probe ValueError")
                     raise OSError("synthetic fdopen ownership probe failure")
                 return original_fstat(descriptor)
 
@@ -655,7 +658,7 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
                     "fdopen probe failure closed an unverified descriptor")
             observed = original_fstat(opened[0])
             try:
-                if fdopen_probe_case == "reused-probe-fault":
+                if fdopen_probe_case.startswith("reused-probe-"):
                     expected = canary.stat()
                     require(recycled[0] == opened[0]
                             and stat.S_ISREG(observed.st_mode)
