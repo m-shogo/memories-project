@@ -55,7 +55,7 @@ def check_history(root: Path, baseline: str) -> None:
                       parent, commit, "--", *SCOPES).stdout
             if not raw:
                 continue
-            fields = raw.split(b"\\0")
+            fields = raw.split(b"\0")
             if fields[-1] != b"" or (len(fields) - 1) % 2:
                 raise GuardFailure("ambiguous supplemental history diff")
             for i in range(0, len(fields) - 1, 2):
@@ -65,9 +65,9 @@ def check_history(root: Path, baseline: str) -> None:
                 ):
                     raise GuardFailure("supplemental history is not append-only")
                 tree = git(root, "ls-tree", "-z", commit, "--", os.fsdecode(path)).stdout
-                if not tree.startswith(b"100644 blob ") or tree.count(b"\\0") != 1:
+                if not tree.startswith(b"100644 blob ") or tree.count(b"\0") != 1:
                     raise GuardFailure("supplemental history added nonregular authority")
-                metadata, separator, found = tree[:-1].partition(b"\\t")
+                metadata, separator, found = tree[:-1].partition(b"\t")
                 if not separator or found != path or not re.fullmatch(
                     rb"100644 blob [0-9a-f]{40}", metadata
                 ):
@@ -78,7 +78,7 @@ def check_history(root: Path, baseline: str) -> None:
                 seen[path] = blob
     for path, blob in seen.items():
         final = git(root, "ls-tree", "-z", head, "--", os.fsdecode(path)).stdout
-        if final != b"100644 blob " + blob + b"\\t" + path + b"\\0":
+        if final != b"100644 blob " + blob + b"\t" + path + b"\0":
             raise GuardFailure("supplemental history lost an added record")
 
 
