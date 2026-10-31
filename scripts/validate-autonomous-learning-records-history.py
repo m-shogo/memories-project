@@ -123,6 +123,22 @@ def check_history(root: Path, baseline: str) -> None:
         for parent in parents[1:]:
             raw = git(root, "diff-tree", "-r", "--no-renames", "--name-status", "-z",
                       parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES)).stdout
+            # A syntactically valid empty name-status stream is not proof
+            # that the two immutable trees have no scoped changes.
+            confirmation = git(
+                root, "diff", "--quiet", "--no-ext-diff", "--no-textconv",
+                parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES),
+                allow_failure=True,
+            )
+            if (type(confirmation.returncode) is not int
+                    or confirmation.returncode not in (0, 1)
+                    or type(confirmation.stdout) is not bytes
+                    or confirmation.stdout != b""
+                    or type(confirmation.stderr) is not bytes
+                    or confirmation.stderr):
+                raise GuardFailure("supplemental history diff confirmation unavailable")
+            if (confirmation.returncode == 0) != (raw == b""):
+                raise GuardFailure("supplemental history diff enumeration incomplete")
             if not raw:
                 continue
             fields = raw.split(b"\0")
@@ -450,6 +466,39 @@ def self_test() -> None:
                     lambda: check_history(root, baseline), expected, label,
                 )
         check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+    # A corrupted empty diff-tree stream must not conceal a real record
+    # mutation. Independent quiet-diff output must be typed and consistent.
+    root, baseline, temp = fixture("modify", SCOPES[0])
+    try:
+        original_git = git
+        for label, command, replacement, expected in (
+            ("empty-diff-tree", "diff-tree", (0, b"", b""),
+             "supplemental history diff enumeration incomplete"),
+            ("false-quiet", "diff", (0, b"", b""),
+             "supplemental history diff enumeration incomplete"),
+            ("failed-quiet", "diff", (2, b"", b""),
+             "supplemental history diff confirmation unavailable"),
+            ("noisy-quiet", "diff", (1, b"unexpected", b""),
+             "supplemental history diff confirmation unavailable"),
+            ("stderr-quiet", "diff", (1, b"", b"warning"),
+             "supplemental history diff confirmation unavailable"),
+        ):
+            def tampered_diff(path: Path, *args: str, **kwargs):
+                result = original_git(path, *args, **kwargs)
+                if path == root and args and args[0] == command:
+                    code, output, diagnostic = replacement
+                    return subprocess.CompletedProcess(
+                        result.args, code, output, diagnostic,
+                    )
+                return result
+
+            with patch(__name__ + ".git", side_effect=tampered_diff):
+                expect_guard_failure(lambda: check_history(root, baseline),
+                                     expected, label)
     finally:
         temp.cleanup()
 

@@ -2952,6 +2952,43 @@ if (expected_count != len(commits) or len(set(commits)) != len(commits)
                for i in range(len(actual) - len(expected) + 1)) == 1
 
 
+def supplemental_history_diff_confirmation_bound(source: str) -> bool:
+    """Pin independent quiet-diff confirmation inside each parent edge."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    checks = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+              and node.name == "check_history"]
+    if len(checks) != 1:
+        return False
+    loops = [node for node in ast.walk(checks[0]) if isinstance(node, ast.For)
+             and ast.unparse(node.target) == "parent"
+             and ast.unparse(node.iter) == "parents[1:]"]
+    if len(loops) != 1:
+        return False
+    reviewed = '''confirmation = git(
+    root, "diff", "--quiet", "--no-ext-diff", "--no-textconv",
+    parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES),
+    allow_failure=True,
+)
+if (type(confirmation.returncode) is not int
+        or confirmation.returncode not in (0, 1)
+        or type(confirmation.stdout) is not bytes
+        or confirmation.stdout != b""
+        or type(confirmation.stderr) is not bytes
+        or confirmation.stderr):
+    raise GuardFailure("supplemental history diff confirmation unavailable")
+if (confirmation.returncode == 0) != (raw == b""):
+    raise GuardFailure("supplemental history diff enumeration incomplete")
+'''
+    expected = [ast.dump(node, include_attributes=False)
+                for node in ast.parse(reviewed).body]
+    actual = [ast.dump(node, include_attributes=False)
+              for node in loops[0].body]
+    return actual[1:1 + len(expected)] == expected
+
+
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -2974,6 +3011,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental history Git oid transport proof drift")
     if not supplemental_history_enumeration_bound(guard_source):
         failures.append("supplemental history complete enumeration proof drift")
+    if not supplemental_history_diff_confirmation_bound(guard_source):
+        failures.append("supplemental history diff confirmation proof drift")
         return
     for needle in (
         r'rb"[0-9a-f]{40}\n"',
@@ -3010,6 +3049,17 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         weakened = guard_source.replace(original, altered, 1)
         if weakened == guard_source or supplemental_history_enumeration_bound(weakened):
             failures.append("supplemental history enumeration mutation accepted")
+            return
+    for original, altered in (
+        ('"diff", "--quiet"', '"diff", "--stat"'),
+        ('confirmation.returncode == 0', 'confirmation.returncode != 0'),
+        ('raw == b""', 'raw != b""'),
+        ('confirmation.returncode not in (0, 1)',
+         'confirmation.returncode not in (0, 2)'),
+    ):
+        weakened = guard_source.replace(original, altered, 1)
+        if weakened == guard_source or supplemental_history_diff_confirmation_bound(weakened):
+            failures.append("supplemental history diff confirmation mutation accepted")
             return
     # A reversed comparison must not be mistaken for the fail-closed guard.
     weakened = guard_source.replace("if final_head != head:", "if final_head == head:", 1)
