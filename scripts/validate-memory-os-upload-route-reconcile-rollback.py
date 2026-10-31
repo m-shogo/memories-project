@@ -188,9 +188,47 @@ def prove_validator_delegation(module) -> None:
         module.subprocess.run = original_run
 
 
+
+def prove_learning_scan_boundary(module) -> None:
+    """A broad route-label reconcile must never rewrite append-only learning."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-learning-") as temp_dir:
+        root = Path(temp_dir)
+        protected = (
+            "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
+            "docs/operations/autonomous-learning-records/old.md",
+            "docs/operations/autonomous-learning-addenda/old.md",
+            "docs/operations/learning/old.md",
+        )
+        for relative in protected:
+            candidate = root / relative
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            candidate.write_text(module.OLD_LABEL + chr(10), encoding="utf-8")
+        ordinary = root / "docs/operations/route-guide.md"
+        ordinary.write_text(module.OLD_LABEL + chr(10), encoding="utf-8")
+        previous_root = module.ROOT
+        try:
+            module.ROOT = root
+            scanned = set(module.current_authority_files())
+            require(ordinary in scanned, "route-label scan omitted an ordinary authority")
+            for relative in protected:
+                require(root / relative not in scanned,
+                        f"append-only learning entered route-label rewrite scan: {relative}")
+            alias = root / "docs/operations/learning-alias.md"
+            alias.symlink_to(root / protected[0])
+            try:
+                module.current_authority_files()
+            except module.ReconcileFailure as exc:
+                require("symlink authority candidate" in str(exc),
+                        f"route-label scan rejected alias for unrelated reason: {exc}")
+            else:
+                raise Fail("route-label scan followed a symlink to append-only learning")
+        finally:
+            module.ROOT = previous_root
+
 def main() -> int:
     module = load_module()
     prove_atomic_replace_failure(module)
+    prove_learning_scan_boundary(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-rollback-") as temp_dir:
         root = Path(temp_dir)

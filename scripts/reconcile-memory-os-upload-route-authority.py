@@ -193,17 +193,30 @@ def replace_once(value: str, old: str, new: str, label: str) -> tuple[str, bool]
 def current_authority_files() -> list[Path]:
     roots = [ROOT / "contracts", ROOT / "scripts", ROOT / "services/import-api", ROOT / ".github/workflows", ROOT / "docs"]
     allowed_suffixes = {".go", ".json", ".py", ".yml", ".yaml", ".md"}
+    protected_learning = Path("docs/operations/AUTONOMOUS-OPS-LEARNING.md")
+    protected_learning_scopes = {
+        ("docs", "operations", "autonomous-learning-records"),
+        ("docs", "operations", "autonomous-learning-addenda"),
+        ("docs", "operations", "learning"),
+    }
     files: list[Path] = []
     for root in roots:
         if not root.exists():
             continue
         for path in root.rglob("*"):
-            if not path.is_file() or path.suffix not in allowed_suffixes:
+            if path.suffix not in allowed_suffixes:
                 continue
             relative = path.relative_to(ROOT)
-            if relative.parts[:2] == ("docs", "fixtures") or relative.parts[:2] == ("docs", "evidence"):
+            if relative.parts[:2] in (("docs", "fixtures"), ("docs", "evidence")):
                 continue
-            if path == Path(__file__).resolve():
+            # Operational learning is append-only, never a route-label rewrite target.
+            if relative == protected_learning or relative.parts[:3] in protected_learning_scopes:
+                continue
+            # A candidate symlink could redirect an otherwise scoped replacement
+            # into protected learning or another authority outside the scan.
+            if path.is_symlink():
+                raise ReconcileFailure(f"symlink authority candidate: {relative}")
+            if not path.is_file() or path == Path(__file__).resolve():
                 continue
             files.append(path)
     return files
