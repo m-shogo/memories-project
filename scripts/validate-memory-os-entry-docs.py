@@ -2896,6 +2896,24 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
         node for node in ast.walk(guarded) if isinstance(node, ast.If)
         and "type(raw) is not bytes" in ast.unparse(node.test)
     ]
+    history = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+               and node.name == "check_history"]
+    if len(history) != 1:
+        return False
+    commands = [
+        ast.unparse(node) for node in ast.walk(history[0])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == "git"
+    ]
+    # A correct wrapper cannot protect an altered caller that bypasses its
+    # exact argument shape. Bind all live OID-producing call sites.
+    required = {
+        "git(root, 'rev-parse', '--verify', 'HEAD^{commit}')": 2,
+        "git(root, 'rev-list', '--reverse', f'{baseline}..{head}')": 1,
+        "git(root, 'rev-list', '--parents', '-n', '1', commit)": 1,
+    }
+    if any(commands.count(command) != count for command, count in required.items()):
+        return False
     return (len(patterns) == 3 and set(patterns) == {
                 rb"[0-9a-f]{40}\n", rb"(?:[0-9a-f]{40}\n)*",
                 rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"}
@@ -2938,6 +2956,18 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
             failures.append("supplemental history Git oid transport mutation accepted")
+            return
+    for original, altered in (
+        ('git(root, "rev-parse", "--verify", "HEAD^{commit}")',
+         'git(root, "rev-parse", "HEAD")'),
+        ('git(root, "rev-list", "--reverse", f"{baseline}..{head}")',
+         'git(root, "rev-list", "--topo-order", f"{baseline}..{head}")'),
+        ('git(root, "rev-list", "--parents", "-n", "1", commit)',
+         'git(root, "rev-list", "--parents", "-n", "1", head)'),
+    ):
+        weakened = guard_source.replace(original, altered, 1)
+        if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
+            failures.append("supplemental history Git OID call-site mutation accepted")
             return
     # A reversed comparison must not be mistaken for the fail-closed guard.
     weakened = guard_source.replace("if final_head != head:", "if final_head == head:", 1)
