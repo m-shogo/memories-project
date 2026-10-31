@@ -519,6 +519,74 @@ def prove_atomic_short_write_rejection(module) -> None:
                     f"{label} stream left temporary residue")
 
 
+def prove_pinned_pathname_swap_rejection(module) -> None:
+    """A stable descriptor must not certify a replaced live pathname."""
+    for scenario in ("same-content-leaf-swap", "parent-symlink-swap"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-path-swap-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "authority"
+            parent.mkdir()
+            target = parent / "record.txt"
+            target.write_bytes(b"original")
+            replacement = root / "replacement.txt"
+            replacement.write_bytes(b"original")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "record.txt").write_bytes(b"original")
+            original_inode = target.stat().st_ino
+            original_read = module.os.read
+            original_fstat = module.os.fstat
+            frozen = [None]
+            swapped = [False]
+
+            def frozen_fstat(fd):
+                actual = original_fstat(fd)
+                if frozen[0] is None:
+                    frozen[0] = actual
+                return frozen[0]
+
+            def swap_after_read(fd, count):
+                chunk = original_read(fd, count)
+                if chunk and not swapped[0]:
+                    if scenario == "same-content-leaf-swap":
+                        replacement.replace(target)
+                    else:
+                        parent.rename(root / "original-parent")
+                        parent.symlink_to(outside, target_is_directory=True)
+                    swapped[0] = True
+                return chunk
+
+            # Freeze descriptor metadata to isolate the pathname identity
+            # check: ctime-only descriptor checking cannot be the proof here.
+            module.os.fstat = frozen_fstat
+            module.os.read = swap_after_read
+            try:
+                try:
+                    module.read_regular_bytes(target)
+                except module.ReconcileFailure as exc:
+                    expected = ("symlink rollback/write path" if scenario == "parent-symlink-swap"
+                                else "concurrent authority drift during read")
+                    require(expected in str(exc),
+                            f"{scenario} rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail(f"pinned reader accepted replaced live path: {scenario}")
+            finally:
+                module.os.read = original_read
+                module.os.fstat = original_fstat
+            require(swapped[0] and frozen[0] is not None,
+                    f"{scenario} did not exercise the pinned descriptor")
+            require(target.read_bytes() == b"original",
+                    f"{scenario} changed the independent live authority bytes")
+            if scenario == "same-content-leaf-swap":
+                require(target.stat().st_ino != original_inode,
+                        "same-content leaf swap did not change pathname identity")
+            else:
+                require(parent.is_symlink()
+                        and (root / "original-parent/record.txt").read_bytes() == b"original"
+                        and (outside / "record.txt").read_bytes() == b"original",
+                        "parent alias swap did not preserve both independent authorities")
+
+
 def prove_nonblocking_special_file_reads(module) -> None:
     """FIFO and leaf-alias inputs cannot stall snapshot, write or rollback."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-fifo-") as temp_dir:
@@ -695,6 +763,7 @@ def main() -> int:
     prove_atomic_fdopen_failure_cleanup(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)
+    prove_pinned_pathname_swap_rejection(module)
     prove_nonblocking_special_file_reads(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
