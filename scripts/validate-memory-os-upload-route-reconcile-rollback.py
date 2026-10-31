@@ -96,6 +96,8 @@ def prove_execution_authority(module) -> None:
         ("read_regular_bytes", lambda _path: None, "pinned regular reader execution authority drift"),
         ("published_identity", lambda _path: (), "published identity guard execution authority drift"),
         ("atomic_write_bytes", lambda *_args: None, "atomic byte writer execution authority drift"),
+        ("open_pinned_parent", lambda *_args: -1, "pinned parent transport execution authority drift"),
+        ("create_pinned_stage", lambda *_args: (-1, ""), "pinned stage transport execution authority drift"),
         ("atomic_write_text", lambda *_args: None, "atomic text writer execution authority drift"),
         ("write_if_changed", lambda *_args: False, "conditional writer execution authority drift"),
         ("replace_once", lambda value, *_args: (value, False), "replacement helper execution authority drift"),
@@ -403,18 +405,18 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
         target.chmod(0o755)
         before = {item.name for item in root.glob(".authority.txt.*.tmp")}
         opened: list[int] = []
-        original_mkstemp = module.tempfile.mkstemp
+        original_stage = module.create_pinned_stage
         original_fdopen = module.os.fdopen
 
-        def capture_mkstemp(*args, **kwargs):
-            descriptor, name = original_mkstemp(*args, **kwargs)
+        def capture_stage(parent_fd, leaf):
+            descriptor, name = original_stage(parent_fd, leaf)
             opened.append(descriptor)
             return descriptor, name
 
         def reject_fdopen(*_args, **_kwargs):
             raise OSError("synthetic fdopen failure")
 
-        module.tempfile.mkstemp = capture_mkstemp
+        module.create_pinned_stage = capture_stage
         module.os.fdopen = reject_fdopen
         try:
             try:
@@ -425,7 +427,7 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
             else:
                 raise Fail("atomic writer accepted fdopen acquisition failure")
         finally:
-            module.tempfile.mkstemp = original_mkstemp
+            module.create_pinned_stage = original_stage
             module.os.fdopen = original_fdopen
         require(len(opened) == 1, "atomic writer did not stage exactly one descriptor")
         try:
@@ -456,11 +458,11 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
         before = {item.name for item in root.glob(".authority.txt.*.tmp")}
         opened: list[int] = []
         duplicated: list[int] = []
-        original_mkstemp = module.tempfile.mkstemp
+        original_stage = module.create_pinned_stage
         original_dup = module.os.dup
 
-        def capture_mkstemp(*args, **kwargs):
-            descriptor, name = original_mkstemp(*args, **kwargs)
+        def capture_stage(parent_fd, leaf):
+            descriptor, name = original_stage(parent_fd, leaf)
             opened.append(descriptor)
             return descriptor, name
 
@@ -470,7 +472,7 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
             duplicated.append(fd)
             raise OSError("synthetic staging dup failure")
 
-        module.tempfile.mkstemp = capture_mkstemp
+        module.create_pinned_stage = capture_stage
         module.os.dup = reject_dup
         try:
             try:
@@ -481,7 +483,7 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
             else:
                 raise Fail("atomic writer accepted a failed staging descriptor duplication")
         finally:
-            module.tempfile.mkstemp = original_mkstemp
+            module.create_pinned_stage = original_stage
             module.os.dup = original_dup
         require(len(opened) == 1 and duplicated == opened,
                 "staging dup failure did not reach the reviewed descriptor")
@@ -658,6 +660,74 @@ def prove_atomic_parent_publication_capability(module) -> None:
             module.os.O_DIRECTORY = original_directory_flag
         require(safe_target.read_bytes() == b"untouched",
                 "unsupported publication changed an existing authority")
+
+
+def prove_atomic_prestage_parent_swap(module) -> None:
+    """Pre-stage aliases cannot create files in an independent external tree."""
+    for scenario in ("symlink-before-open", "directory-before-open", "symlink-before-stage"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-prestage-") as temp_dir:
+            root = Path(temp_dir)
+            parent = root / "owned"
+            moved = root / "moved-owned"
+            outside = root / "outside"
+            parent.mkdir()
+            outside.mkdir()
+            target = parent / "authority.txt"
+            target.write_bytes(b"original-owned")
+            canary = outside / "authority.txt"
+            canary.write_bytes(b"external-canary")
+            original_open_parent = module.open_pinned_parent
+            original_stage = module.create_pinned_stage
+            swapped = [False]
+
+            def perform_swap():
+                require(not swapped[0], "prestage parent race injected twice")
+                parent.rename(moved)
+                if scenario == "directory-before-open":
+                    parent.mkdir()
+                    (parent / "authority.txt").write_bytes(b"independent-parent")
+                else:
+                    parent.symlink_to(outside, target_is_directory=True)
+                swapped[0] = True
+
+            def swap_before_open(path, expected):
+                perform_swap()
+                return original_open_parent(path, expected)
+
+            def swap_before_stage(parent_fd, leaf):
+                perform_swap()
+                return original_stage(parent_fd, leaf)
+
+            if scenario == "symlink-before-stage":
+                module.create_pinned_stage = swap_before_stage
+            else:
+                module.open_pinned_parent = swap_before_open
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"must-not-publish")
+                except module.ReconcileFailure as exc:
+                    expected_reason = ("symlink rollback/write path"
+                                       if scenario == "symlink-before-stage"
+                                       else "concurrent publication parent drift")
+                    require(expected_reason in str(exc),
+                            f"{scenario} rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail(f"prestage parent replacement accepted: {scenario}")
+            finally:
+                module.open_pinned_parent = original_open_parent
+                module.create_pinned_stage = original_stage
+            require(swapped[0], f"prestage swap was not injected: {scenario}")
+            require(canary.read_bytes() == b"external-canary",
+                    f"prestage swap changed external canary: {scenario}")
+            require(sorted(item.name for item in outside.iterdir()) == ["authority.txt"],
+                    f"prestage swap staged a temporary file outside: {scenario}")
+            require((moved / "authority.txt").read_bytes() == b"original-owned",
+                    f"prestage swap modified original authority: {scenario}")
+            require(not list(moved.glob(".authority.txt.*.tmp")),
+                    f"prestage swap left a temporary file in pinned parent: {scenario}")
+            if scenario == "directory-before-open":
+                require((parent / "authority.txt").read_bytes() == b"independent-parent",
+                        "prestage real-directory replacement was modified")
 
 
 def prove_atomic_poststage_drift_rejection(module) -> None:
@@ -1319,6 +1389,7 @@ def main() -> int:
     prove_postpublication_temp_reuse_preserved(module)
     prove_failed_publication_temp_reuse_preserved(module)
     prove_atomic_parent_publication_capability(module)
+    prove_atomic_prestage_parent_swap(module)
     prove_atomic_poststage_drift_rejection(module)
     prove_atomic_short_write_rejection(module)
     prove_pinned_pathname_swap_rejection(module)

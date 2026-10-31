@@ -14,7 +14,6 @@ import re
 import stat
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -245,6 +244,48 @@ def published_identity(path: Path) -> tuple[int, int, int, int]:
             observed.st_ctime_ns)
 
 
+def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
+    """Traverse every parent component without following aliases, before staging."""
+    require(path.is_absolute(), f"nonabsolute publication path: {path}")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(path.anchor, flags)
+        for part in path.parent.parts[1:]:
+            next_fd = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        pinned = os.fstat(fd)
+        live = path.parent.lstat()
+        require(
+            stat.S_ISDIR(pinned.st_mode) and stat.S_ISDIR(live.st_mode)
+            and (pinned.st_dev, pinned.st_ino)
+            == (expected_parent.st_dev, expected_parent.st_ino)
+            == (live.st_dev, live.st_ino),
+            f"concurrent publication parent drift: {path}",
+        )
+        return fd
+    except BaseException as exc:
+        if fd is not None:
+            os.close(fd)
+        if isinstance(exc, OSError):
+            raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
+        raise
+
+
+def create_pinned_stage(parent_fd: int, leaf: str) -> tuple[int, str]:
+    """Create a private unpredictable stage only inside the pinned directory."""
+    for _ in range(8):
+        name = f".{leaf}.{os.urandom(16).hex()}.tmp"
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=parent_fd)
+        except FileExistsError:
+            continue
+        return fd, name
+    raise ReconcileFailure("exhausted pinned temporary authority names")
+
+
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
     directory_flags = (getattr(os, 'O_DIRECTORY', None),
                        getattr(os, 'O_NOFOLLOW', None))
@@ -274,12 +315,19 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 f"nonregular rollback/write path: {path}")
     initial_bytes = read_regular_bytes(path)
     original_mode = stat.S_IMODE(initial_stat.st_mode) if initial_stat is not None else None
-    path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
+    try:
+        initial_parent = path.parent.lstat()
+    except OSError:
+        raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
+    require(stat.S_ISDIR(initial_parent.st_mode),
+            f"concurrent publication parent drift: {path}")
+    parent_fd = open_pinned_parent(path, initial_parent)
+    try:
+        descriptor, temporary_name = create_pinned_stage(parent_fd, path.name)
+    except BaseException:
+        os.close(parent_fd)
+        raise
     temporary = Path(temporary_name)
-    parent_fd: int | None = None
     published = False
     staged_identity: tuple[int, int] | None = None
     staging_guard_fd: int | None = None
@@ -338,7 +386,6 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         # A pinned directory confines publication if its pathname is swapped
         # at the syscall. The leaf comparison remains bounded, not a CAS.
         try:
-            parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
             pinned_parent = os.fstat(parent_fd)
             live_parent = path.parent.lstat()
             require(
@@ -391,40 +438,21 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)
     finally:
         try:
-            if parent_fd is None:
-                # No pinned parent is available. Never follow a redirected parent
-                # or delete a different inode that reused the temporary name.
-                if (staged_identity is not None
-                        and all(not ancestor.is_symlink()
-                                for ancestor in (path.parent, *path.parent.parents))):
+            try:
+                if not published and staged_identity is not None:
                     try:
-                        cleanup_stat = temporary.lstat()
+                        cleanup_stat = os.stat(
+                            temporary.name, dir_fd=parent_fd,
+                            follow_symlinks=False)
                     except FileNotFoundError:
                         pass
                     else:
-                        if ((cleanup_stat.st_dev, cleanup_stat.st_ino)
+                        if (stat.S_ISREG(cleanup_stat.st_mode)
+                                and (cleanup_stat.st_dev, cleanup_stat.st_ino)
                                 == staged_identity):
-                            temporary.unlink(missing_ok=True)
-            else:
-                try:
-                    # A failed publication may also lose ownership of its staged
-                    # name. Check the pinned directory's current inode before
-                    # unlinking; this is a bounded check, not atomic leaf CAS.
-                    if not published and staged_identity is not None:
-                        try:
-                            cleanup_stat = os.stat(
-                                temporary.name, dir_fd=parent_fd,
-                                follow_symlinks=False)
-                        except FileNotFoundError:
-                            pass
-                        else:
-                            if (stat.S_ISREG(cleanup_stat.st_mode)
-                                    and (cleanup_stat.st_dev, cleanup_stat.st_ino)
-                                    == staged_identity):
-                                os.unlink(temporary.name, dir_fd=parent_fd)
-                finally:
-                    os.close(parent_fd)
-
+                            os.unlink(temporary.name, dir_fd=parent_fd)
+            finally:
+                os.close(parent_fd)
         finally:
             try:
                 if staging_guard_fd is not None:
@@ -616,7 +644,8 @@ _CANONICAL_ROLLBACK_AUTHORITY_FILES = rollback_authority_files
 _CANONICAL_VALIDATE_AUTHORITIES = validate_canonical_authorities
 _CANONICAL_SUBPROCESS_RUN = subprocess.run
 _CANONICAL_OS_REPLACE = os.replace
-_CANONICAL_MKSTEMP = tempfile.mkstemp
+_CANONICAL_OPEN_PINNED_PARENT = open_pinned_parent
+_CANONICAL_CREATE_PINNED_STAGE = create_pinned_stage
 
 
 def enforce_execution_authorities() -> None:
@@ -665,7 +694,8 @@ def enforce_execution_authorities() -> None:
         (validate_canonical_authorities, _CANONICAL_VALIDATE_AUTHORITIES, "validator chain"),
         (subprocess.run, _CANONICAL_SUBPROCESS_RUN, "subprocess transport"),
         (os.replace, _CANONICAL_OS_REPLACE, "atomic replace transport"),
-        (tempfile.mkstemp, _CANONICAL_MKSTEMP, "temporary file transport"),
+        (open_pinned_parent, _CANONICAL_OPEN_PINNED_PARENT, "pinned parent transport"),
+        (create_pinned_stage, _CANONICAL_CREATE_PINNED_STAGE, "pinned stage transport"),
     )
     for current, canonical, label in helpers:
         if current is not canonical:

@@ -3171,6 +3171,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_postpublication_temp_reuse_preserved",
              "prove_failed_publication_temp_reuse_preserved",
              "prove_atomic_parent_publication_capability",
+             "prove_atomic_prestage_parent_swap",
              "prove_atomic_poststage_drift_rejection",
              "prove_atomic_short_write_rejection",
              "prove_pinned_pathname_swap_rejection",
@@ -3213,6 +3214,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                         "prove_postpublication_temp_reuse_preserved",
                         "prove_failed_publication_temp_reuse_preserved",
                         "prove_atomic_parent_publication_capability",
+                        "prove_atomic_prestage_parent_swap",
                         "prove_atomic_poststage_drift_rejection",
                         "prove_atomic_short_write_rejection",
                         "prove_nonblocking_special_file_reads")
@@ -3560,16 +3562,37 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         tree = ast.parse(source)
     except SyntaxError:
         return False
-    functions = [
-        node for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "atomic_write_bytes"
-    ]
-    if len(functions) != 1:
+    names = ("atomic_write_bytes", "open_pinned_parent", "create_pinned_stage")
+    functions = {
+        name: [node for node in tree.body
+               if isinstance(node, ast.FunctionDef) and node.name == name]
+        for name in names
+    }
+    if any(len(nodes) != 1 for nodes in functions.values()):
         return False
-    body = ast.unparse(functions[0])
+    body = ast.unparse(functions["atomic_write_bytes"][0])
+    opener = ast.unparse(functions["open_pinned_parent"][0])
+    stage = ast.unparse(functions["create_pinned_stage"][0])
+    if not all(fragment in opener for fragment in (
+        "os.open(path.anchor, flags)",
+        "os.open(part, flags, dir_fd=fd)",
+        "os.O_DIRECTORY | os.O_NOFOLLOW",
+        "expected_parent.st_dev", "expected_parent.st_ino",
+        "pinned.st_dev", "pinned.st_ino",
+        "live.st_dev", "live.st_ino", "os.close(fd)",
+    )):
+        return False
+    if not all(fragment in stage for fragment in (
+        "os.urandom(16).hex()", "for _ in range(8)",
+        "os.O_CREAT", "os.O_EXCL", "os.O_NOFOLLOW",
+        "dir_fd=parent_fd", "except FileExistsError:",
+    )):
+        return False
     return all(fragment in body for fragment in (
         "getattr(os, 'O_DIRECTORY', None)",
-        "os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)",
+        "initial_parent = path.parent.lstat()",
+        "open_pinned_parent(path, initial_parent)",
+        "create_pinned_stage(parent_fd, path.name)",
         "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
         "os.unlink(temporary.name, dir_fd=parent_fd)",
@@ -3787,6 +3810,11 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "staging_guard_fd = None"),
             ("os.close(staging_guard_fd)", "pass"),
             ("os.close(untransferred_stage_fd)", "pass"),
+            ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
+            ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"),
+            ("0o600, dir_fd=parent_fd)", "0o600)"),
+            ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW",
+             "os.O_WRONLY | os.O_CREAT"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
