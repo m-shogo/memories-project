@@ -507,7 +507,7 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
 
 def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
     """Recover only a descriptor-owned stage; never delete a reused name."""
-    for reuse in (False, True):
+    for scenario in ("recover", "reused-unlinked", "reused-linked"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-initial-fstat-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -526,8 +526,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_initial_stage_fstat(fd):
                 if captured and fd == captured[0][0] and not tripped:
                     tripped.append(True)
-                    if reuse:
+                    if scenario != "recover":
                         independent = root / captured[0][1]
+                        if scenario == "reused-linked":
+                            os.link(independent, root / "retained-stage-alias.txt")
                         independent.unlink()
                         independent.write_bytes(b"independent-initial-fstat-canary")
                     raise OSError("synthetic initial staged fstat failure")
@@ -561,9 +563,12 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             require(stat.S_IMODE(target.stat().st_mode) == 0o755,
                     "initial staged fstat failure changed original authority mode")
             staged = root / captured[0][1]
-            if reuse:
+            if scenario != "recover":
                 require(staged.read_bytes() == b"independent-initial-fstat-canary",
                         "initial staged fstat cleanup deleted independent name owner")
+                if scenario == "reused-linked":
+                    require((root / "retained-stage-alias.txt").read_bytes() == b"",
+                            "initial staged fstat cleanup changed retained original inode")
             else:
                 require(not staged.exists(),
                         "initial staged fstat cleanup left recoverable owned stage")
