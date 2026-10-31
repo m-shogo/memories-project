@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import re
 import subprocess
@@ -16,7 +17,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (21 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (23 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -82,7 +83,35 @@ def check_history(root: Path, baseline: str) -> None:
             raise GuardFailure("supplemental history lost an added record")
 
 
+
+def prove_delimiter_literals(source: str) -> None:
+    """Require parsed NUL/tab bytes, not doubly escaped source spellings."""
+    tree = ast.parse(source)
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name == "check_history"]
+    if len(functions) != 1:
+        raise GuardFailure("supplemental history delimiter function missing")
+    values = [node.value for node in ast.walk(functions[0])
+              if isinstance(node, ast.Constant) and isinstance(node.value, bytes)]
+    if values.count(bytes([0])) != 3 or values.count(bytes([9])) != 2:
+        raise GuardFailure("supplemental history delimiter literal drift")
+
+
 def self_test() -> None:
+    source = Path(__file__).read_text(encoding="utf-8")
+    prove_delimiter_literals(source)
+    for digit in ("0", "t"):
+        slash = chr(92)
+        original = 'b"' + slash + digit + '"'
+        doubled = 'b"' + slash + slash + digit + '"'
+        if original not in source:
+            raise GuardFailure("supplemental history literal negative fixture missing")
+        try:
+            prove_delimiter_literals(source.replace(original, doubled, 1))
+        except GuardFailure:
+            pass
+        else:
+            raise GuardFailure("supplemental history double-escape accepted")
     def fixture(change: str, scope: str) -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="supplemental-history-negative-")
         root = Path(temp.name)
