@@ -486,7 +486,15 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                         if (stat.S_ISREG(cleanup_stat.st_mode)
                                 and (cleanup_stat.st_dev, cleanup_stat.st_ino)
                                 == staged_identity):
-                            os.unlink(temporary.name, dir_fd=parent_fd)
+                            try:
+                                os.unlink(temporary.name, dir_fd=parent_fd)
+                            except OSError as unlink_exc:
+                                # The syscall may have removed the name before failing.
+                                if original_failure is None:
+                                    raise
+                                original_failure.add_note(
+                                    f"private staged unlink status unknown in pinned parent: "
+                                    f"{temporary.name} ({type(unlink_exc).__name__})")
             finally:
                 os.close(parent_fd)
         finally:

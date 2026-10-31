@@ -653,6 +653,71 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
         require((root / staged_names[0]).read_bytes() == b"unpublished",
                 "cleanup stat failure removed an unverified private stage")
 
+    # An unlink syscall can fail before or after removing its own name.
+    # Preserve the primary publication error without claiming cleanup succeeded.
+    for scenario in ("before-unlink", "after-unlink"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-unlink-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            target.chmod(0o755)
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent")
+            original_replace = module.os.replace
+            original_unlink = module.os.unlink
+            original_stage = module.create_pinned_stage
+            staged_names: list[str] = []
+            replace_failed = [False]
+
+            def capture_unlink_stage(parent_fd, leaf):
+                fd, name = original_stage(parent_fd, leaf)
+                staged_names.append(name)
+                return fd, name
+
+            def fail_primary_replace(*args, **kwargs):
+                replace_failed[0] = True
+                raise OSError("synthetic primary publication failure")
+
+            def fail_cleanup_unlink(candidate, *args, **kwargs):
+                if (replace_failed[0] and staged_names and candidate == staged_names[0]
+                        and kwargs.get("dir_fd") is not None):
+                    if scenario == "after-unlink":
+                        original_unlink(candidate, *args, **kwargs)
+                    raise PermissionError("synthetic private cleanup unlink failure")
+                return original_unlink(candidate, *args, **kwargs)
+
+            module.create_pinned_stage = capture_unlink_stage
+            module.os.replace = fail_primary_replace
+            module.os.unlink = fail_cleanup_unlink
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary publication failure",
+                            f"cleanup unlink masked primary publication error: {exc}")
+                    require(any("private staged unlink status unknown in pinned parent" in note
+                                and "PermissionError" in note for note in getattr(exc, "__notes__", [])),
+                            "cleanup unlink failure lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("cleanup unlink failure unexpectedly published")
+            finally:
+                module.create_pinned_stage = original_stage
+                module.os.replace = original_replace
+                module.os.unlink = original_unlink
+            require(replace_failed[0] and len(staged_names) == 1,
+                    "cleanup unlink fault did not reach actual publication failure")
+            require(target.read_bytes() == b"original"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o755
+                    and canary.read_bytes() == b"independent",
+                    "cleanup unlink failure changed original or external authority")
+            staged = root / staged_names[0]
+            if scenario == "before-unlink":
+                require(staged.read_bytes() == b"unpublished",
+                        "pre-unlink fault removed the retained stage")
+            else:
+                require(not staged.exists(),
+                        "post-unlink fault left a stage despite actual removal")
+
 
 def prove_postpublication_temp_reuse_preserved(module) -> None:
     """A completed rename must not delete an independent reused temp name."""
