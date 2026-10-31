@@ -386,7 +386,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         except BaseException as fdopen_exc:
             try:
                 current_fd = os.fstat(descriptor)
-            except OSError as probe_exc:
+            except Exception as probe_exc:
                 fdopen_exc.add_note(
                     f"fdopen stage descriptor ownership unverified ({type(probe_exc).__name__}); close skipped")
             else:
