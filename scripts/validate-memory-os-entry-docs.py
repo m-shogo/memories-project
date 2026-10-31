@@ -2929,7 +2929,10 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
             if ("module.os.unlink = swap_parent_at_unlink" not in ownership_source
                     or "module.os.unlink = original_unlink" not in ownership_source
                     or "parent.symlink_to(outside, target_is_directory=True)" not in ownership_source
-                    or "canary.read_bytes() == b'external-canary'" not in ownership_source):
+                    or "canary.read_bytes() == b'external-canary'" not in ownership_source
+                    or "module.os.open = redirect_before_parent_open" not in ownership_source
+                    or "guarded_canary.read_bytes() == b'guarded-external'" not in ownership_source
+                    or "module.os.O_DIRECTORY = None" not in ownership_source):
                 return False
             scenario_loops = [
                 node for node in ast.walk(proof)
@@ -3102,7 +3105,14 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
     check = "published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)"
     # Owned-new-file deletion must use a pinned, no-follow parent directory
     # descriptor, not Path.unlink on a potentially redirected live pathname.
+    fixed_parent_open_errors = [
+        node for node in ast.walk(functions["rollback_authority_files"][0])
+        if isinstance(node, ast.ExceptHandler)
+        and isinstance(node.type, ast.Name) and node.type.id == "OSError"
+        and any(isinstance(child, ast.Raise) for child in node.body)
+    ]
     confined_unlink = all(fragment in rollback for fragment in (
+        "getattr(os, 'O_DIRECTORY', None)",
         "os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)",
         "os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.unlink(path.name, dir_fd=parent_fd)",
@@ -3110,7 +3120,7 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
         "live_parent.st_dev", "live_parent.st_ino",
     ))
     return (
-        confined_unlink
+        confined_unlink and len(fixed_parent_open_errors) >= 3
         and writer.count(check) == 1 and rollback.count(check) == 1
         and writer.count(
             "ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)") == 1
@@ -3138,6 +3148,10 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '"same-content-leaf-swap", "parent-alias-removed"'),
             ("module.os.unlink = swap_parent_at_unlink",
              "module.os.unlink = original_unlink"),
+            ("module.os.open = redirect_before_parent_open",
+             "module.os.open = original_open"),
+            ("module.os.O_DIRECTORY = None",
+             "module.os.O_DIRECTORY = original_directory_flag"),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
             ("observed.st_ctime_ns != baseline.st_ctime_ns",
@@ -3183,6 +3197,12 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("os.unlink(path.name, dir_fd=parent_fd)", "path.unlink()"),
             ("os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)",
              "path.stat()"),
+            ('getattr(os, "O_DIRECTORY", None)',
+             'getattr(os, "O_DIRECTORY", 1)'),
+            ('            except OSError:\n'
+             '                raise ReconcileFailure(f"concurrent rollback parent drift: {path}") from None',
+             '            except ValueError:\n'
+             '                raise ReconcileFailure(f"concurrent rollback parent drift: {path}") from None'),
             ("observed.st_ctime_ns)", "observed.st_mtime_ns)"),
         ):
             if (reader_source.count(original) not in (1, 2)
