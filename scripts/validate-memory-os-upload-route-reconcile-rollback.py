@@ -601,6 +601,15 @@ def prove_nonblocking_special_file_reads(module) -> None:
         alias.symlink_to(canary)
         require(module.read_regular_bytes(regular) == b"regular",
                 "pinned regular reader rejected an ordinary file")
+        require(module.read(regular) == "regular",
+                "pinned text reader rejected an ordinary UTF-8 authority")
+        try:
+            module.read(root / "missing.txt")
+        except module.ReconcileFailure as exc:
+            require("missing file:" in str(exc),
+                    f"pinned text reader rejected missing file for unrelated reason: {exc}")
+        else:
+            raise Fail("pinned text reader accepted missing authority")
         # A same-length in-place rewrite can restore mtime and retain inode.
         # The pinned descriptor must still detect the changed ctime.
         original_read = module.os.read
@@ -643,6 +652,24 @@ def prove_nonblocking_special_file_reads(module) -> None:
                         f"pinned regular reader rejected {unsafe.name} for unrelated reason: {exc}")
             else:
                 raise Fail(f"pinned regular reader accepted special path: {unsafe.name}")
+            try:
+                module.read(unsafe)
+            except module.ReconcileFailure as exc:
+                require(("nonregular rollback/write path" in str(exc)
+                         or "symlink rollback/write path" in str(exc)),
+                        f"pinned text reader rejected {unsafe.name} for unrelated reason: {exc}")
+            else:
+                raise Fail(f"pinned text reader accepted special path: {unsafe.name}")
+
+        invalid = root / "invalid-utf8.txt"
+        invalid.write_bytes(b"\xff")
+        try:
+            module.read(invalid)
+        except module.ReconcileFailure as exc:
+            require("invalid UTF-8 authority" in str(exc),
+                    f"pinned text reader rejected invalid UTF-8 for unrelated reason: {exc}")
+        else:
+            raise Fail("pinned text reader accepted invalid UTF-8 authority")
 
         module.ROLLBACK_SNAPSHOT = {fifo: b"snapshot"}
         module.ROLLBACK_WRITTEN.clear()
