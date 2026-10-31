@@ -3472,6 +3472,29 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
                     + (result.stderr if type(result.stderr) is str else ""))
         label = next((label for marker, label in known if marker in captured),
                      "unclassified")
+        if label == "unclassified":
+            # Classify only fixed exception types and reviewed function names;
+            # never interpolate exception messages, paths or captured bytes.
+            exception_types = ("FileNotFoundError", "TypeError", "ValueError",
+                               "AttributeError", "NameError", "UnboundLocalError",
+                               "RuntimeError", "AssertionError", "KeyError")
+            exception = next((name for name in exception_types
+                              if name + ":" in (result.stderr or "")), "unknown")
+            reviewed_functions = ("prove_failed_publication_temp_reuse_preserved",
+                                  "prove_atomic_replace_failure",
+                                  "prove_atomic_parent_publication_capability",
+                                  "prove_atomic_fdopen_failure_cleanup",
+                                  "prove_atomic_mode_failure_cleanup",
+                                  "prove_atomic_poststage_drift_rejection",
+                                  "prove_rollback_write_ownership",
+                                  "atomic_write_bytes")
+            function = next((name for name in reviewed_functions
+                             if "in " + name + chr(10) in (result.stderr or "")),
+                            "unknown")
+            label = ("rc=" + str(result.returncode)
+                     + ";exception=" + exception + ";function=" + function
+                     + ";stdout=" + ("present" if result.stdout else "empty")
+                     + ";stderr=" + ("present" if result.stderr else "empty"))
         failures.append("upload-route learning scan guard missing verified PASS: " + label)
     else:
         print("upload-route append-only scan and symlink negatives verified")
