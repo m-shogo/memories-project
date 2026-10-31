@@ -283,17 +283,14 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     published = False
     staged_identity: tuple[int, int] | None = None
     staging_guard_fd: int | None = None
+    untransferred_stage_fd: int | None = descriptor
     try:
-        # Pin the staging inode across fdopen close, rename and cleanup.
-        # Without an open descriptor, unlink + immediate name reuse can
-        # recycle the same inode and defeat a device/inode-only cleanup guard.
-        try:
-            staged_initial = os.fstat(descriptor)
-            staging_guard_fd = os.dup(descriptor)
-        except BaseException:
-            os.close(descriptor)
-            raise
+        # Hold the original staged descriptor until either fdopen owns it
+        # or cleanup finishes. If dup fails, the original still pins the
+        # inode and prevents name-reuse misidentification during cleanup.
+        staged_initial = os.fstat(descriptor)
         staged_identity = (staged_initial.st_dev, staged_initial.st_ino)
+        staging_guard_fd = os.dup(descriptor)
         # fdopen owns the descriptor only after it returns successfully.
         # Close an untransferred descriptor if stream construction fails.
         try:
@@ -303,7 +300,9 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 os.close(descriptor)
             except OSError:
                 pass  # fdopen may have closed it before raising.
+            untransferred_stage_fd = None
             raise
+        untransferred_stage_fd = None
         with handle:
             written = handle.write(payload)
             require(type(written) is int and written == len(payload),
@@ -427,8 +426,12 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                     os.close(parent_fd)
 
         finally:
-            if staging_guard_fd is not None:
-                os.close(staging_guard_fd)
+            try:
+                if staging_guard_fd is not None:
+                    os.close(staging_guard_fd)
+            finally:
+                if untransferred_stage_fd is not None:
+                    os.close(untransferred_stage_fd)
 
 def atomic_write_text(path: Path, value: str) -> None:
     atomic_write_bytes(path, value.encode("utf-8"))

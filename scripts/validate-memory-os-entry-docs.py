@@ -2880,6 +2880,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
              "prove_rollback_write_ownership", "prove_atomic_mode_preservation",
              "prove_atomic_mode_failure_cleanup",
              "prove_atomic_fdopen_failure_cleanup",
+             "prove_atomic_dup_failure_cleanup",
              "prove_postpublication_temp_reuse_preserved",
              "prove_failed_publication_temp_reuse_preserved",
              "prove_atomic_parent_publication_capability",
@@ -2921,6 +2922,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     {"atomic_write_bytes"} if name in (
                         "prove_atomic_mode_preservation", "prove_atomic_mode_failure_cleanup",
                         "prove_atomic_fdopen_failure_cleanup",
+                        "prove_atomic_dup_failure_cleanup",
                         "prove_postpublication_temp_reuse_preserved",
                         "prove_failed_publication_temp_reuse_preserved",
                         "prove_atomic_parent_publication_capability",
@@ -2933,6 +2935,17 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_atomic_dup_failure_cleanup":
+            proof_source = ast.unparse(proof)
+            if not all(fragment in proof_source for fragment in (
+                "module.os.dup = reject_dup",
+                "module.os.dup = original_dup",
+                "synthetic staging dup failure",
+                "opened[0]",
+                "exc.errno == errno.EBADF",
+                "after == before",
+            )):
+                return False
         if name == "prove_postpublication_temp_reuse_preserved":
             proof_source = ast.unparse(proof)
             if not all(fragment in proof_source for fragment in (
@@ -3267,6 +3280,9 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "staging_guard_fd = os.dup(descriptor)",
         "if staging_guard_fd is not None:",
         "os.close(staging_guard_fd)",
+        "untransferred_stage_fd: int | None = descriptor",
+        "if untransferred_stage_fd is not None:",
+        "os.close(untransferred_stage_fd)",
         "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity",
         "published = True",
         "if not published and staged_identity is not None:",
@@ -3331,6 +3347,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("module.os.replace = reuse_before_failed_replace",
              "module.os.replace = original_replace"),
             ("module.os.dup = capture_stage_pin",
+             "module.os.dup = original_dup"),
+            ("module.os.dup = reject_dup",
              "module.os.dup = original_dup"),
             ("module.os.open = redirect_leaf_before_open",
              "module.os.open = original_open"),
@@ -3451,6 +3469,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("staging_guard_fd = os.dup(descriptor)",
              "staging_guard_fd = None"),
             ("os.close(staging_guard_fd)", "pass"),
+            ("os.close(untransferred_stage_fd)", "pass"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(

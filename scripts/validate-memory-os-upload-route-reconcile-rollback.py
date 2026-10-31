@@ -437,6 +437,62 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
 
 
 
+def prove_atomic_dup_failure_cleanup(module) -> None:
+    """A failed stage-descriptor duplication must not leak or leave residue."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-dup-fault-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        target.write_bytes(b"original")
+        target.chmod(0o755)
+        before = {item.name for item in root.glob(".authority.txt.*.tmp")}
+        opened: list[int] = []
+        duplicated: list[int] = []
+        original_mkstemp = module.tempfile.mkstemp
+        original_dup = module.os.dup
+
+        def capture_mkstemp(*args, **kwargs):
+            descriptor, name = original_mkstemp(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor, name
+
+        def reject_dup(fd):
+            require(len(opened) == 1 and fd == opened[0],
+                    "dup failure was not injected on the staged descriptor")
+            duplicated.append(fd)
+            raise OSError("synthetic staging dup failure")
+
+        module.tempfile.mkstemp = capture_mkstemp
+        module.os.dup = reject_dup
+        try:
+            try:
+                module.atomic_write_bytes(target, b"unpublished")
+            except OSError as exc:
+                require(str(exc) == "synthetic staging dup failure",
+                        f"dup failure rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic writer accepted a failed staging descriptor duplication")
+        finally:
+            module.tempfile.mkstemp = original_mkstemp
+            module.os.dup = original_dup
+        require(len(opened) == 1 and duplicated == opened,
+                "staging dup failure did not reach the reviewed descriptor")
+        try:
+            os.fstat(opened[0])
+        except OSError as exc:
+            require(exc.errno == errno.EBADF,
+                    f"failed-dup descriptor closed for unrelated reason: {exc}")
+        else:
+            os.close(opened[0])
+            raise Fail("atomic writer leaked a staged descriptor after dup failure")
+        require(target.read_bytes() == b"original",
+                "failed staging dup changed original authority bytes")
+        require(stat.S_IMODE(target.stat().st_mode) == 0o755,
+                "failed staging dup changed original authority mode")
+        after = {item.name for item in root.glob(".authority.txt.*.tmp")}
+        require(after == before,
+                "failed staging dup left temporary residue")
+
+
 def prove_postpublication_temp_reuse_preserved(module) -> None:
     """A completed rename must not delete an independent reused temp name."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-temp-reuse-") as temp_dir:
@@ -1250,6 +1306,7 @@ def main() -> int:
     prove_atomic_mode_preservation(module)
     prove_atomic_mode_failure_cleanup(module)
     prove_atomic_fdopen_failure_cleanup(module)
+    prove_atomic_dup_failure_cleanup(module)
     prove_postpublication_temp_reuse_preserved(module)
     prove_failed_publication_temp_reuse_preserved(module)
     prove_atomic_parent_publication_capability(module)
