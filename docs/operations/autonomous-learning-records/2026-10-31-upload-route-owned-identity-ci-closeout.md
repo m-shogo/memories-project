@@ -1,0 +1,39 @@
+# Supplemental OPS learning — owned rollback identity and CI reachability (2026-10-31)
+
+Append-only operational learning under `contracts/operations/autonomous-learning-system.json`. This record is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, recovery objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review, final-candidate or human promotion evidence.
+
+## Material failure A — byte-identical independent replacement could be rolled back
+
+- **symptom:** An owned Upload Route write was tracked only by its bytes. An independent writer could replace the file with a different inode containing identical bytes, or change only its mode, and the rollback preflight would still consider the path owned. This was a source-verified latent lost-update/ownership hazard, not an observed production overwrite.
+- **evidence:** At parent `e6626f91898028510f9a8c2955dde8f2e8ce060f`, `ROLLBACK_WRITTEN` contained bytes alone and `rollback_authority_files` checked `read_regular_bytes(path) == expected` before restoration. The new disposable negative explicitly replaces an owned inode with identical bytes and separately changes its mode without changing bytes.
+- **rootCauseOrUnknown:** Verified missing publication identity binding in the rollback ownership ledger. The remaining pathname-check-to-`os.replace` race is explicitly unresolved.
+- **failedApproach:** Equating byte equality with ownership after a successful atomic rename.
+- **correction:** [`ebb1c6dc`](https://github.com/m-shogo/memories-project/commit/ebb1c6dc0952884abba0e4d79a8ec37e32f0a0c9) adds `ROLLBACK_PUBLISHED_IDENTITIES` (device, inode, mode, ctime), verifies it before subsequent owned writes and rollback, and removes entries when restoration completes. The identity helper is included in the existing execution-authority binding.
+- **recurrenceGuard:** Two deterministic same-byte inode/mode negatives require rejection both before rollback and before another owned write, with original independent bytes/inode preserved. [`902686c0`](https://github.com/m-shogo/memories-project/commit/902686c093d1253c20f8c088b40ff555cc58566e) binds both scenario labels and the actual writer/rollback identity checks to the existing CI-reachable entrypoint, with source mutation negatives.
+- **retryCondition:** Re-evaluate if the rollback ownership ledger, atomic writer, filesystem metadata semantics, or CI entrypoint changes. Do not claim complete directory-fd/locking race protection from these bounded identity checks.
+
+## Material failure B — source-patch tuple boundary caused valid-Python runtime failure
+
+- **symptom:** The first entrypoint guard commit `902686c0` caused `ValueError: too many values to unpack (expected 2)` while iterating negative source mutations.
+- **evidence:** [Reconcile Observability Access Policy #41184369415](https://github.com/m-shogo/memories-project/actions/runs/41184369415) failed at `validate-memory-os-entry-docs.py` line 3116. Inspection showed adjacent string literals in the existing `same-content-leaf-swap` tuple without the separating comma, silently concatenating into a three-element tuple.
+- **rootCauseOrUnknown:** Verified: a source replacement inserted a new tuple case but dropped the existing first element's comma. Python syntax remained valid; runtime unpacking failed.
+- **failedApproach:** Relying on uniquely matched source text without validating the surrounding tuple's two-field structure after replacement.
+- **correction:** [`b1882e86`](https://github.com/m-shogo/memories-project/commit/b1882e8608ceb31f31b5f3556834802a645212cc) restores the comma. A concurrent Metrics diagnostic commit advanced `so` during the first attempted fix; that attempt aborted without a branch write. The fix was rebuilt against the newly read head and published with a non-force expected-head CAS.
+- **recurrenceGuard:** The existing entrypoint is executed, not merely compiled, in exact-source CI; the same malformed tuple fails the real invocation. Future tuple mutations should additionally check the complete AST pair shape before creating a commit, not only the source match count.
+- **retryCondition:** Revisit if negative mutation table topology or source patching changes. Do not rerun the known-broken `902686c0` as evidence of a fix.
+
+## Material success — executable rollback identity proof
+
+- **outcome:** The owned rollback identity guard and two new filesystem negatives are committed on `so`; the entrypoint source mutation checks are CI-reachable and the malformed-tuple regression was corrected.
+- **evidence:** [Autonomous Learning Guard #41184481149](https://github.com/m-shogo/memories-project/actions/runs/41184481149) completed **SUCCESS** at exact source `b1882e86`: canonical append-only and contract checks PASS, 601 canonical fail-closed negatives PASS, supplemental all-parent history and 39 fixtures PASS, the actual Upload Route negative invocation PASS, 52 workflow / 63 Python-command / 204 reachability fixtures PASS, 195 fanout synthetics PASS, 1,186 helper-ancestor mutations PASS, and clean/read-only checks PASS. [Operability Contracts #41184481145](https://github.com/m-shogo/memories-project/actions/runs/41184481145) also completed SUCCESS at that source.
+- **whySafe:** The autonomous changes touched only the existing Upload Route Python reconciler, its disposable negative harness and the existing read-only CI entrypoint. No production reconciler, real recovery/drill, credentials, traffic, readiness, promotion, workflow YAML or protected authority was changed. An independent Metrics diagnostic commit is not counted as an autonomous code change.
+- **reusableMechanism:** Pair a byte-level ownership ledger with publication inode/mode/ctime identity; prove same-byte adversarial replacements in real disposable filesystem tests and independently enforce both the test scenarios and the live source checks through a CI-reachable entrypoint.
+- **protectedAuthorityCheck:** All ten protected Git blob SHAs were unchanged across the autonomous code commits: canonical learning `b809c69d`, mandatory contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, and generation/objective/drill-request/recovery-evidence/non-resurrection/promotion registries `bfd1b045`, `f4d74f33`, `acebcd02`, `ae7e57ef`, `26bb1cc7`, `99cb895f`.
+
+## Scoped blockers and next safe target
+
+[Reconcile Upload Route Authority #41184277050](https://github.com/m-shogo/memories-project/actions/runs/41184277050) failed before focused Go/HTTP tests at the known Quay MinIO image-manifest HTTP 401. No focused Go/HTTP success is claimed. Supplemental-only Push/PR learning append-only trigger coverage and workflow write permission remain unresolved. These unchanged blockers were not manually retried.
+
+`productionDecision=NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED` with registered/semantically eligible generations 0/0, no current human-approved recovery objective, executable reviewed request, request-bound recovery evidence, complete typed eight-domain non-resurrection coverage, independent review, final candidate or separate human promotion. Preflight still requires unsuperseded semantically eligible generations from distinct environments plus an explicitly human-approved current recovery objective. Reviewed drill requests are planning authority only. Learning and synthetic CI never satisfy any production gate.
+
+Next safe target: reviewed directory-fd/no-follow publication and owned-new-file rollback path-swap protection with deterministic negatives, and a separate pre-MinIO focused Go route when workflow authority permits. This learning-only commit is not claimed to have its own exact-source Full Production Admission Chain SUCCESS.
