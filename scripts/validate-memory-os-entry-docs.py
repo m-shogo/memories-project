@@ -2877,7 +2877,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
     except SyntaxError:
         return False
     names = ("main", "prove_rollback_symlink_boundaries",
-             "prove_rollback_write_ownership")
+             "prove_rollback_write_ownership", "prove_atomic_mode_preservation")
     definitions = {
         name: [node for node in tree.body
                if isinstance(node, ast.FunctionDef) and node.name == name]
@@ -2900,9 +2900,9 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "module"
         }
-        if len(direct) != 1 or not {
-                "rollback_authority_files", "atomic_write_bytes"
-        }.issubset(transports):
+        required = ({"atomic_write_bytes"} if name == "prove_atomic_mode_preservation"
+                    else {"rollback_authority_files", "atomic_write_bytes"})
+        if len(direct) != 1 or not required.issubset(transports):
             return False
     return True
 

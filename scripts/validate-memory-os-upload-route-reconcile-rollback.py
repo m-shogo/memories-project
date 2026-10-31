@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import stat
 import tempfile
 from pathlib import Path
 
@@ -266,6 +267,25 @@ def prove_rollback_symlink_boundaries(module) -> None:
         module.ROLLBACK_SNAPSHOT = None
 
 
+def prove_atomic_mode_preservation(module) -> None:
+    """Atomic replacement must not silently change an existing file mode."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-mode-") as temp_dir:
+        root = Path(temp_dir)
+        target = root / "authority.txt"
+        for mode in (0o644, 0o755):
+            target.write_bytes(b"original")
+            target.chmod(mode)
+            module.atomic_write_bytes(target, b"reconciled")
+            require(target.read_bytes() == b"reconciled",
+                    "atomic mode fixture lost expected payload")
+            require(stat.S_IMODE(target.stat().st_mode) == mode,
+                    f"atomic writer changed existing authority mode {mode:o}")
+        new_file = root / "new-authority.txt"
+        module.atomic_write_bytes(new_file, b"new")
+        require(stat.S_IMODE(new_file.stat().st_mode) == 0o600,
+                "new atomic file did not retain private default mode")
+
+
 def prove_rollback_write_ownership(module) -> None:
     """Rollback only owned writes; reject both prewrite and rollback-time drift."""
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
@@ -336,6 +356,7 @@ def prove_rollback_write_ownership(module) -> None:
 def main() -> int:
     module = load_module()
     prove_atomic_replace_failure(module)
+    prove_atomic_mode_preservation(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
     prove_rollback_write_ownership(module)

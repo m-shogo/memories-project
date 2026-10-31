@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -164,6 +165,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         expected = ROLLBACK_WRITTEN.get(path, ROLLBACK_SNAPSHOT[path])
         current = path.read_bytes() if path.exists() else None
         require(current == expected, f"concurrent authority drift before write: {path}")
+    # mkstemp defaults to 0600; retain the reviewed mode of existing files.
+    original_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -173,6 +176,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
             handle.flush()
+            if original_mode is not None:
+                os.fchmod(handle.fileno(), original_mode)
             os.fsync(handle.fileno())
         os.replace(temporary, path)
         if ROLLBACK_SNAPSHOT is not None:
