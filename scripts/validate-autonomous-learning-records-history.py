@@ -18,7 +18,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning all-parent append-only history PASS (38 fixtures)"
+PASS = "Supplemental learning all-parent append-only history PASS (39 fixtures)"
 
 
 class GuardFailure(RuntimeError):
@@ -452,6 +452,30 @@ def self_test() -> None:
             lambda: check_history(root, baseline),
             "shallow supplemental history is not complete", "shallow-side-mutation",
         )
+        # GIT_SHALLOW_FILE can make an unsanitized Git invocation report a
+        # full history even when the real repository has a shallow boundary.
+        # The trusted Git wrapper must discard that inherited override.
+        previous = os.environ.get("GIT_SHALLOW_FILE")
+        try:
+            os.environ["GIT_SHALLOW_FILE"] = str(root / "absent-shallow-override")
+            untrusted = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "--is-shallow-repository"],
+                env=dict(os.environ), capture_output=True, timeout=20, check=False,
+            )
+            if (untrusted.returncode != 0 or untrusted.stderr
+                    or untrusted.stdout != b"false\n"):
+                raise GuardFailure("shallow environment override negative control ineffective")
+            expect_guard_failure(
+                lambda: check_history(root, baseline),
+                "shallow supplemental history is not complete",
+                "shallow-env-override",
+            )
+        finally:
+            if previous is None:
+                os.environ.pop("GIT_SHALLOW_FILE", None)
+            else:
+                os.environ["GIT_SHALLOW_FILE"] = previous
+
 
 
     # A local refs/replace graft can rewrite apparent commit parentage.
