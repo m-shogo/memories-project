@@ -399,8 +399,35 @@ def rollback_authority_files() -> None:
         if path not in ROLLBACK_WRITTEN:
             continue
         if original is None:
-            if path.exists():
-                path.unlink()
+            # Pin the parent directory before removing an owned new file.
+            # A parent rename/symlink swap after preflight must never redirect
+            # unlink into a different authority tree. This is not a leaf CAS:
+            # an uncooperative writer can still swap the leaf after fstatat.
+            directory_flags = (getattr(os, "O_DIRECTORY", None),
+                               getattr(os, "O_NOFOLLOW", None))
+            require(all(type(flag) is int and flag > 0 for flag in directory_flags),
+                    f"unsupported safe rollback directory flags: {path}")
+            parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                pinned_parent = os.fstat(parent_fd)
+                live_parent = path.parent.lstat()
+                require(
+                    stat.S_ISDIR(pinned_parent.st_mode)
+                    and stat.S_ISDIR(live_parent.st_mode)
+                    and (pinned_parent.st_dev, pinned_parent.st_ino)
+                    == (live_parent.st_dev, live_parent.st_ino),
+                    f"concurrent rollback parent drift: {path}",
+                )
+                leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+                require(
+                    stat.S_ISREG(leaf.st_mode) and leaf.st_nlink == 1
+                    and (leaf.st_dev, leaf.st_ino, leaf.st_mode, leaf.st_ctime_ns)
+                    == ROLLBACK_PUBLISHED_IDENTITIES.get(path),
+                    f"concurrent authority identity drift before rollback: {path}",
+                )
+                os.unlink(path.name, dir_fd=parent_fd)
+            finally:
+                os.close(parent_fd)
             ROLLBACK_WRITTEN.pop(path, None)
             ROLLBACK_PUBLISHED_IDENTITIES.pop(path, None)
             continue

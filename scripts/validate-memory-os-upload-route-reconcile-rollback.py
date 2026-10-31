@@ -886,6 +886,43 @@ def prove_rollback_write_ownership(module) -> None:
         else:
             raise Fail("atomic writer accepted a path missing from the snapshot")
         require(not created.exists(), "untracked atomic write created a file")
+        # Force a parent-directory rename/symlink swap at the unlink syscall.
+        # The pinned dir_fd must remove only our original inode, not a file
+        # reached through the newly redirected live pathname.
+        parent = root / "owned-parent"
+        parent.mkdir()
+        created_under_parent = parent / "created.txt"
+        outside = root / "outside-parent"
+        outside.mkdir()
+        canary = outside / "created.txt"
+        canary.write_bytes(b"external-canary")
+        module.ROLLBACK_SNAPSHOT = {created_under_parent: None}
+        module.ROLLBACK_WRITTEN.clear()
+        module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
+        module.atomic_write_bytes(created_under_parent, b"owned-new-file")
+        original_unlink = module.os.unlink
+        swapped = [False]
+
+        def swap_parent_at_unlink(candidate, *args, **kwargs):
+            if candidate == "created.txt" and kwargs.get("dir_fd") is not None:
+                parent.rename(root / "renamed-owned-parent")
+                parent.symlink_to(outside, target_is_directory=True)
+                swapped[0] = True
+            return original_unlink(candidate, *args, **kwargs)
+
+        module.os.unlink = swap_parent_at_unlink
+        try:
+            module.rollback_authority_files()
+        finally:
+            module.os.unlink = original_unlink
+        require(swapped[0], "rollback did not use a pinned directory-fd unlink")
+        require(canary.read_bytes() == b"external-canary",
+                "parent-swap rollback removed or changed an external canary")
+        require(not (root / "renamed-owned-parent/created.txt").exists(),
+                "parent-swap rollback retained its owned new file")
+        require(parent.is_symlink() and parent.resolve() == outside,
+                "parent-swap fixture did not redirect the live pathname")
+
         module.ROLLBACK_SNAPSHOT = None
         module.ROLLBACK_WRITTEN.clear()
         module.ROLLBACK_PUBLISHED_IDENTITIES.clear()
