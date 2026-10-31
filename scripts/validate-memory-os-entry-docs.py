@@ -2730,6 +2730,56 @@ def supplemental_history_baseline_bound(source: str) -> bool:
             or type(assignments[0].value.value) is not str
             or assignments[0].value.value != SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE):
         return False
+    # An immutable literal is not enough if a later statement can delete or
+    # indirectly rebind the epoch or the live history checker. This is a
+    # conservative source guard, not a claim of complete Python alias closure.
+    guarded_names = {"BASELINE", "check_history"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id in guarded_names and isinstance(
+                node.ctx, (ast.Store, ast.Del)):
+            if node is not assignments[0].targets[0]:
+                return False
+        if isinstance(node, ast.ExceptHandler) and node.name in guarded_names:
+            return False
+        if isinstance(node, ast.arg) and node.arg in guarded_names:
+            return False
+        if isinstance(node, ast.ClassDef) and node.name in guarded_names:
+            return False
+        if (isinstance(node, ast.Subscript)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and isinstance(node.slice, ast.Constant)
+                and node.slice.value in guarded_names):
+            return False
+        if (isinstance(node, ast.Attribute)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and node.attr in guarded_names):
+            return False
+        if isinstance(node, ast.Call):
+            if (isinstance(node.func, ast.Name)
+                    and node.func.id in {"globals", "vars", "locals", "exec", "eval",
+                                         "setattr", "delattr", "__import__"}):
+                return False
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"__setitem__", "__delitem__", "exec",
+                                           "eval", "setattr", "delattr",
+                                           "__import__", "import_module", "run_path"}):
+                return False
+            if (isinstance(node.func, ast.Subscript)
+                    and ((isinstance(node.func.value, ast.Name)
+                          and node.func.value.id == "__builtins__")
+                         or (isinstance(node.func.value, ast.Attribute)
+                             and node.func.value.attr == "__dict__"))):
+                return False
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if any(alias.asname in guarded_names
+                   or alias.name.split(".")[-1] in guarded_names
+                   for alias in node.names):
+                return False
+    checkers = [node for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "check_history"]
+    if len(checkers) != 1 or checkers[0] not in tree.body:
+        return False
     mains = [node for node in tree.body if isinstance(node, ast.FunctionDef)
              and node.name == "main"]
     if len(mains) != 1:
@@ -2752,6 +2802,8 @@ def supplemental_history_baseline_bound(source: str) -> bool:
 def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
     """Reject baseline reset, shadow and a dead or redirected history call."""
     good = ('BASELINE = "' + SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE + '"\n'
+            'def check_history(root, baseline):\n'
+            '    return None\n'
             'def main():\n'
             '    try:\n'
             '        check_history(args.repo_root, BASELINE)\n'
@@ -2767,6 +2819,15 @@ def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
                                     'check_history(args.repo_root, "0" * 40)')),
         ("unreachable", good.replace("        check_history(args.repo_root, BASELINE)",
                                      "        if False:\n            check_history(args.repo_root, BASELINE)")),
+        ("global-store", good + 'globals()["BASELINE"] = "0" * 40\n'),
+        ("delete-epoch", good + "del BASELINE\n"),
+        ("rebind-checker", good + 'globals()["check_history"] = lambda *args: None\n'),
+        ("dynamic-exec", good + 'exec("BASELINE = 0")\n'),
+        ("duplicate-checker", good + 'def check_history(*args): pass\n'),
+        ("loop-rebind", good + 'for BASELINE in ["0" * 40]: pass\n'),
+        ("attribute-rebind", good + 'module.BASELINE = "0" * 40\n'),
+        ("setattr-rebind", good + 'setattr(module, "BASELINE", "0" * 40)\n'),
+        ("indirect-subscript", good + 'registry["BASELINE"] = "0" * 40\n'),
     )
     for label, candidate in bad:
         if supplemental_history_baseline_bound(candidate):
