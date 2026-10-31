@@ -139,6 +139,7 @@ class ReconcileFailure(RuntimeError):
 
 
 ROLLBACK_SNAPSHOT: dict[Path, bytes | None] | None = None
+ROLLBACK_WRITTEN: dict[Path, bytes] = {}
 
 
 def require(condition: bool, message: str) -> None:
@@ -158,6 +159,11 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     # temporary-file creation outside the reviewed authority scope.
     for ancestor in (path, *path.parents):
         require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
+    if ROLLBACK_SNAPSHOT is not None:
+        require(path in ROLLBACK_SNAPSHOT, f"untracked rollback/write path: {path}")
+        expected = ROLLBACK_WRITTEN.get(path, ROLLBACK_SNAPSHOT[path])
+        current = path.read_bytes() if path.exists() else None
+        require(current == expected, f"concurrent authority drift before write: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -169,6 +175,8 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, path)
+        if ROLLBACK_SNAPSHOT is not None:
+            ROLLBACK_WRITTEN[path] = payload
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -240,12 +248,22 @@ def rollback_authority_files() -> None:
     for path in ROLLBACK_SNAPSHOT:
         for ancestor in (path, *path.parents):
             require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
+    # Refuse a concurrent edit to any file actually written by this run.
+    # Unchanged snapshot entries belong to their current owners, not rollback.
+    for path, expected in ROLLBACK_WRITTEN.items():
+        require(path in ROLLBACK_SNAPSHOT, f"untracked rollback path: {path}")
+        current = path.read_bytes() if path.exists() else None
+        require(current == expected, f"concurrent authority drift before rollback: {path}")
     for path, original in ROLLBACK_SNAPSHOT.items():
+        if path not in ROLLBACK_WRITTEN:
+            continue
         if original is None:
             if path.exists():
                 path.unlink()
+            ROLLBACK_WRITTEN.pop(path, None)
             continue
         atomic_write_bytes(path, original)
+        ROLLBACK_WRITTEN.pop(path, None)
 
 
 def validate_canonical_authorities() -> None:
@@ -344,6 +362,7 @@ def main() -> int:
     if enforce_execution_authorities is not _CANONICAL_ENFORCE_EXECUTION_AUTHORITIES:
         raise ReconcileFailure("upload route execution guard authority drift")
     enforce_execution_authorities()
+    ROLLBACK_WRITTEN.clear()
     snapshot_authority_files()
     changed: list[str] = []
 

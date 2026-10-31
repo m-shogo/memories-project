@@ -266,11 +266,79 @@ def prove_rollback_symlink_boundaries(module) -> None:
         module.ROLLBACK_SNAPSHOT = None
 
 
+def prove_rollback_write_ownership(module) -> None:
+    """Rollback only owned writes; reject both prewrite and rollback-time drift."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-ownership-") as temp_dir:
+        root = Path(temp_dir)
+        owned = root / "owned.txt"
+        independent = root / "independent.txt"
+        created = root / "created.txt"
+        owned.write_bytes(b"baseline")
+        independent.write_bytes(b"baseline")
+
+        module.ROLLBACK_SNAPSHOT = {
+            owned: b"baseline", independent: b"baseline", created: None,
+        }
+        module.ROLLBACK_WRITTEN.clear()
+        module.atomic_write_bytes(owned, b"our-change")
+        module.atomic_write_bytes(created, b"new-file")
+        independent.write_bytes(b"external-change")
+        module.rollback_authority_files()
+        require(owned.read_bytes() == b"baseline",
+                "rollback failed to restore its own change")
+        require(independent.read_bytes() == b"external-change",
+                "rollback overwrote an independent change to an untouched file")
+        require(not created.exists(), "rollback retained an owned new file")
+
+        module.ROLLBACK_SNAPSHOT = {
+            owned: b"baseline", independent: b"external-change",
+        }
+        module.ROLLBACK_WRITTEN.clear()
+        module.atomic_write_bytes(owned, b"our-change")
+        module.atomic_write_bytes(independent, b"our-second-change")
+        owned.write_bytes(b"concurrent-change")
+        try:
+            module.rollback_authority_files()
+        except module.ReconcileFailure as exc:
+            require("concurrent authority drift before rollback" in str(exc),
+                    f"rollback rejected concurrent drift for unrelated reason: {exc}")
+        else:
+            raise Fail("rollback overwrote a concurrent edit to its own target")
+        require(owned.read_bytes() == b"concurrent-change",
+                "rollback clobbered concurrent owned-target change")
+        require(independent.read_bytes() == b"our-second-change",
+                "rollback partially restored before detecting concurrent drift")
+
+        module.ROLLBACK_SNAPSHOT = {owned: b"concurrent-change"}
+        module.ROLLBACK_WRITTEN.clear()
+        owned.write_bytes(b"newer-external-change")
+        try:
+            module.atomic_write_bytes(owned, b"stale-write")
+        except module.ReconcileFailure as exc:
+            require("concurrent authority drift before write" in str(exc),
+                    f"atomic writer rejected stale snapshot for unrelated reason: {exc}")
+        else:
+            raise Fail("atomic writer overwrote an independent prewrite edit")
+        require(owned.read_bytes() == b"newer-external-change",
+                "atomic writer clobbered a prewrite concurrent edit")
+        try:
+            module.atomic_write_bytes(created, b"untracked")
+        except module.ReconcileFailure as exc:
+            require("untracked rollback/write path" in str(exc),
+                    f"atomic writer rejected untracked path for unrelated reason: {exc}")
+        else:
+            raise Fail("atomic writer accepted a path missing from the snapshot")
+        require(not created.exists(), "untracked atomic write created a file")
+        module.ROLLBACK_SNAPSHOT = None
+        module.ROLLBACK_WRITTEN.clear()
+
+
 def main() -> int:
     module = load_module()
     prove_atomic_replace_failure(module)
     prove_learning_scan_boundary(module)
     prove_rollback_symlink_boundaries(module)
+    prove_rollback_write_ownership(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-rollback-") as temp_dir:
         root = Path(temp_dir)
@@ -283,9 +351,10 @@ def main() -> int:
             existing: original,
             created: None,
         }
+        module.ROLLBACK_WRITTEN.clear()
 
-        existing.write_bytes(b"partial-mutation\n")
-        created.write_bytes(b"partial-created-file\n")
+        module.atomic_write_bytes(existing, b"partial-mutation\n")
+        module.atomic_write_bytes(created, b"partial-created-file\n")
         module.rollback_authority_files()
 
         require(existing.read_bytes() == original, "existing authority was not restored byte-for-byte")
