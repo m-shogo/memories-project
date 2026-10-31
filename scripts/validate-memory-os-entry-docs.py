@@ -2923,6 +2923,14 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
         if len(direct) != 1 or not required.issubset(transports):
             return False
         if name == "prove_rollback_write_ownership":
+            # Bind the real parent-swap injection to the live ownership proof.
+            # Merely naming a scenario without patching os.unlink is not proof.
+            ownership_source = ast.unparse(proof)
+            if ("module.os.unlink = swap_parent_at_unlink" not in ownership_source
+                    or "module.os.unlink = original_unlink" not in ownership_source
+                    or "parent.symlink_to(outside, target_is_directory=True)" not in ownership_source
+                    or "canary.read_bytes() == b'external-canary'" not in ownership_source):
+                return False
             scenario_loops = [
                 node for node in ast.walk(proof)
                 if isinstance(node, ast.For)
@@ -3092,8 +3100,18 @@ def has_upload_route_published_identity_binding(source: str) -> bool:
     rollback = ast.unparse(functions["rollback_authority_files"][0])
     main = ast.unparse(functions["main"][0])
     check = "published_identity(path) == ROLLBACK_PUBLISHED_IDENTITIES.get(path)"
+    # Owned-new-file deletion must use a pinned, no-follow parent directory
+    # descriptor, not Path.unlink on a potentially redirected live pathname.
+    confined_unlink = all(fragment in rollback for fragment in (
+        "os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)",
+        "os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)",
+        "os.unlink(path.name, dir_fd=parent_fd)",
+        "pinned_parent.st_dev", "pinned_parent.st_ino",
+        "live_parent.st_dev", "live_parent.st_ino",
+    ))
     return (
-        writer.count(check) == 1 and rollback.count(check) == 1
+        confined_unlink
+        and writer.count(check) == 1 and rollback.count(check) == 1
         and writer.count(
             "ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)") == 1
         and rollback.count("ROLLBACK_PUBLISHED_IDENTITIES.pop(path, None)") == 2
@@ -3118,6 +3136,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              '"identical-inode-swap", "unreviewed-mode-change"'),
             ('"same-content-leaf-swap", "parent-symlink-swap"',
              '"same-content-leaf-swap", "parent-alias-removed"'),
+            ("module.os.unlink = swap_parent_at_unlink",
+             "module.os.unlink = original_unlink"),
             ("observed.st_ctime_ns != previous.st_ctime_ns",
              "observed.st_mtime_ns != previous.st_mtime_ns"),
             ("observed.st_ctime_ns != baseline.st_ctime_ns",
@@ -3160,6 +3180,9 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
              "published_identity(path) != ROLLBACK_PUBLISHED_IDENTITIES.get(path)"),
             ("ROLLBACK_PUBLISHED_IDENTITIES[path] = published_identity(path)",
              "ROLLBACK_PUBLISHED_IDENTITIES[path] = (0, 0, 0, 0)"),
+            ("os.unlink(path.name, dir_fd=parent_fd)", "path.unlink()"),
+            ("os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)",
+             "path.stat()"),
             ("observed.st_ctime_ns)", "observed.st_mtime_ns)"),
         ):
             if (reader_source.count(original) not in (1, 2)
