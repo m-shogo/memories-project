@@ -3209,9 +3209,9 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
         "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
         "os.unlink(temporary.name, dir_fd=parent_fd)",
+        "staged_initial = os.fstat(descriptor)",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)",
-        "cleanup_stat.st_dev, cleanup_stat.st_ino)",
-        "== staged_identity",
+        "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity",
         "published = True",
         "if not published and staged_identity is not None:",
         "pinned_parent.st_dev", "pinned_parent.st_ino",
@@ -3367,6 +3367,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("if not published and staged_identity is not None:", "if True:"),
             ("and (cleanup_stat.st_dev, cleanup_stat.st_ino)",
              "and (cleanup_stat.st_dev, -1)"),
+            ("staged_initial = os.fstat(descriptor)",
+             "staged_initial = path.stat()"),
         ):
             if (reader_source.count(original) != 1
                     or has_upload_route_pinned_publication_binding(
