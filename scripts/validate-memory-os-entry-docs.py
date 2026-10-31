@@ -2906,7 +2906,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "module"
         }
-        required = ({"read_regular_bytes", "atomic_write_bytes",
+        required = ({"read", "read_regular_bytes", "atomic_write_bytes",
                      "rollback_authority_files", "snapshot_authority_files"}
                     if name == "prove_nonblocking_special_file_reads" else
                     {"read_regular_bytes"} if name == "prove_pinned_pathname_swap_rejection" else
@@ -2949,6 +2949,36 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
     return True
 
 
+def has_upload_route_pinned_text_read_binding(source: str) -> bool:
+    """The reconciler's text reader must decode the pinned byte snapshot."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    definitions = [
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "read"
+    ]
+    if len(definitions) != 1:
+        return False
+    calls = [
+        node for node in ast.walk(definitions[0])
+        if isinstance(node, ast.Call)
+    ]
+    pinned = [
+        node for node in calls
+        if isinstance(node.func, ast.Name) and node.func.id == "read_regular_bytes"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name) and node.args[0].id == "path"
+    ]
+    unsafe = [
+        node for node in calls
+        if isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"read_text", "read_bytes", "open"}
+    ]
+    return len(pinned) == 1 and not unsafe
+
+
 def validate_upload_route_learning_scan(failures: list[str]) -> None:
     """Exercise the real route reconciler's append-only exclusion before MinIO."""
     relative = "scripts/validate-memory-os-upload-route-reconcile-rollback.py"
@@ -2978,6 +3008,22 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
                 return
     except OSError:
         failures.append("upload-route symlink rollback negative unavailable")
+        return
+    reconciler = REPO_ROOT / "scripts/reconcile-memory-os-upload-route-authority.py"
+    if reconciler.is_symlink() or not reconciler.is_file():
+        failures.append("upload-route pinned text reader source missing or symlinked")
+        return
+    try:
+        reader_source = reconciler.read_text(encoding="utf-8")
+        marker = "payload = read_regular_bytes(path)"
+        if (not has_upload_route_pinned_text_read_binding(reader_source)
+                or reader_source.count(marker) != 1
+                or has_upload_route_pinned_text_read_binding(
+                    reader_source.replace(marker, "payload = path.read_bytes()", 1))):
+            failures.append("upload-route pinned text reader binding drift")
+            return
+    except OSError:
+        failures.append("upload-route pinned text reader source unavailable")
         return
     try:
         result = subprocess.run(
