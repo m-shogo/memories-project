@@ -335,8 +335,14 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     parent_fd = open_pinned_parent(path, initial_parent)
     try:
         descriptor, temporary_name = create_pinned_stage(parent_fd, path.name)
-    except BaseException:
-        os.close(parent_fd)
+    except BaseException as stage_exc:
+        try:
+            os.close(parent_fd)
+        except OSError as prestage_close_exc:
+            # Do not retry an ambiguously completed close or mask stage failure.
+            stage_exc.add_note(
+                f"prestage pinned parent descriptor close status unknown "
+                f"({type(prestage_close_exc).__name__})")
         raise
     temporary = Path(temporary_name)
     published = False

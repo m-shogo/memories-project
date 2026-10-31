@@ -1298,6 +1298,76 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 and not list(root.glob(".authority.txt.*.tmp")),
                 "stage open failure changed authority or left temporary residue")
 
+    # Stage creation failure must retain its primary error even if closing
+    # the pinned parent fails before or after consuming that descriptor.
+    for prestage_close_scenario in ("before-prestage-close", "after-prestage-close"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-prestage-close-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original-owned")
+            target.chmod(0o755)
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent")
+            original_parent = module.open_pinned_parent
+            original_stage = module.create_pinned_stage
+            original_close = module.os.close
+            captured_parents: list[int] = []
+            close_tripped = [False]
+
+            def capture_prestage_parent(path, expected):
+                fd = original_parent(path, expected)
+                captured_parents.append(fd)
+                return fd
+
+            def fail_stage_creation(parent_fd, leaf):
+                raise OSError("synthetic primary pinned stage creation failure")
+
+            def fail_prestage_parent_close(fd):
+                if captured_parents and fd == captured_parents[0] and not close_tripped[0]:
+                    close_tripped[0] = True
+                    if prestage_close_scenario == "after-prestage-close":
+                        original_close(fd)
+                    raise OSError("synthetic prestage parent close failure")
+                return original_close(fd)
+
+            module.open_pinned_parent = capture_prestage_parent
+            module.create_pinned_stage = fail_stage_creation
+            module.os.close = fail_prestage_parent_close
+            try:
+                try:
+                    module.atomic_write_bytes(target, b"must-not-publish")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary pinned stage creation failure",
+                            f"prestage parent close masked primary error: {exc}")
+                    require(any("prestage pinned parent descriptor close status unknown" in note
+                                for note in getattr(exc, "__notes__", [])),
+                            "prestage parent close lacked bounded uncertainty diagnostic")
+                else:
+                    raise Fail("prestage parent close unexpectedly published")
+            finally:
+                module.open_pinned_parent = original_parent
+                module.create_pinned_stage = original_stage
+                module.os.close = original_close
+            require(close_tripped[0] and len(captured_parents) == 1,
+                    "prestage close fault did not reach pinned descriptor")
+            if prestage_close_scenario == "before-prestage-close":
+                os.fstat(captured_parents[0])
+                original_close(captured_parents[0])
+            else:
+                try:
+                    os.fstat(captured_parents[0])
+                except OSError as exc:
+                    require(exc.errno == errno.EBADF,
+                            "post-prestage-close fault leaked pinned parent descriptor")
+                else:
+                    original_close(captured_parents[0])
+                    raise Fail("post-prestage-close fault leaked pinned parent descriptor")
+            require(target.read_bytes() == b"original-owned"
+                    and stat.S_IMODE(target.stat().st_mode) == 0o755
+                    and canary.read_bytes() == b"independent"
+                    and not list(root.glob(".authority.txt.*.tmp")),
+                    "prestage parent close changed original or external authority")
+
     # An ancestor-close fault must not leak the newly opened child capability.
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-parent-close-") as temp_dir:
         root = Path(temp_dir)
