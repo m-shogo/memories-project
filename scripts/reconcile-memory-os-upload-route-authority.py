@@ -154,6 +154,10 @@ def read(path: Path) -> str:
 
 
 def atomic_write_bytes(path: Path, payload: bytes) -> None:
+    # Reject path aliases before staging bytes; parent symlinks can redirect
+    # temporary-file creation outside the reviewed authority scope.
+    for ancestor in (path, *path.parents):
+        require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
@@ -231,6 +235,11 @@ def snapshot_authority_files() -> None:
 def rollback_authority_files() -> None:
     if ROLLBACK_SNAPSHOT is None:
         return
+    # Validate the entire snapshot before restoring anything, so a symlink
+    # introduced after capture cannot cause a partial unsafe rollback.
+    for path in ROLLBACK_SNAPSHOT:
+        for ancestor in (path, *path.parents):
+            require(not ancestor.is_symlink(), f"symlink rollback/write path: {path}")
     for path, original in ROLLBACK_SNAPSHOT.items():
         if original is None:
             if path.exists():

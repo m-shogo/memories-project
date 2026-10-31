@@ -225,10 +225,52 @@ def prove_learning_scan_boundary(module) -> None:
         finally:
             module.ROOT = previous_root
 
+def prove_rollback_symlink_boundaries(module) -> None:
+    """Reject redirected rollback targets before touching any snapshot entry."""
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-symlink-") as temp_dir:
+        root = Path(temp_dir)
+        victim = root / "protected.txt"
+        victim.write_bytes(b"protected-original\\n")
+        ordinary = root / "ordinary.txt"
+        ordinary.write_bytes(b"ordinary-mutated\\n")
+        alias = root / "alias.txt"
+        alias.symlink_to(victim)
+        parent_alias = root / "linked-dir"
+        parent_alias.symlink_to(root, target_is_directory=True)
+
+        for unsafe in (alias, parent_alias / "protected.txt"):
+            module.ROLLBACK_SNAPSHOT = {
+                ordinary: b"ordinary-original\\n",
+                unsafe: b"snapshot-bytes\\n",
+            }
+            try:
+                module.rollback_authority_files()
+            except module.ReconcileFailure as exc:
+                require("symlink rollback/write path" in str(exc),
+                        f"rollback rejected unsafe target for unrelated reason: {exc}")
+            else:
+                raise Fail("rollback accepted a symlinked snapshot target")
+            require(ordinary.read_bytes() == b"ordinary-mutated\\n",
+                    "rollback wrote a safe file before rejecting an unsafe target")
+            require(victim.read_bytes() == b"protected-original\\n",
+                    "rollback changed a symlink destination")
+            try:
+                module.atomic_write_bytes(unsafe, b"redirected-write\\n")
+            except module.ReconcileFailure as exc:
+                require("symlink rollback/write path" in str(exc),
+                        f"atomic writer rejected unsafe target for unrelated reason: {exc}")
+            else:
+                raise Fail("atomic writer accepted a symlinked destination")
+            require(victim.read_bytes() == b"protected-original\\n",
+                    "atomic writer changed a symlink destination")
+        module.ROLLBACK_SNAPSHOT = None
+
+
 def main() -> int:
     module = load_module()
     prove_atomic_replace_failure(module)
     prove_learning_scan_boundary(module)
+    prove_rollback_symlink_boundaries(module)
 
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-rollback-") as temp_dir:
         root = Path(temp_dir)
