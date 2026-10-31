@@ -16,7 +16,7 @@ SCOPES = (
     "docs/operations/autonomous-learning-addenda/",
     "docs/operations/learning/",
 )
-PASS = "Supplemental learning first-parent append-only history PASS"
+PASS = "Supplemental learning all-parent append-only history PASS"
 
 
 class GuardFailure(RuntimeError):
@@ -44,43 +44,52 @@ def check_history(root: Path, baseline: str) -> None:
         raise GuardFailure("invalid checked-out commit")
     if git(root, "merge-base", "--is-ancestor", baseline, head, allow_failure=True).returncode:
         raise GuardFailure("immutable learning baseline is not an ancestor")
-    commits = git(root, "rev-list", "--first-parent", "--reverse",
-                  f"{baseline}..{head}").stdout.decode("ascii").splitlines()
-    seen: set[bytes] = set()
+    commits = git(root, "rev-list", "--reverse", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
+    seen: dict[bytes, bytes] = {}
     for commit in commits:
-        parent = git(root, "rev-parse", "--verify", f"{commit}^1").stdout.strip().decode("ascii")
-        raw = git(root, "diff-tree", "-r", "--no-renames", "--name-status", "-z",
-                  parent, commit, "--", *SCOPES).stdout
-        if not raw:
-            continue
-        fields = raw.split(b"\0")
-        if fields[-1] != b"" or (len(fields) - 1) % 2:
-            raise GuardFailure("ambiguous supplemental history diff")
-        for i in range(0, len(fields) - 1, 2):
-            status, path = fields[i:i + 2]
-            if status != b"A" or path in seen or not any(
-                path.startswith(prefix.encode("ascii")) for prefix in SCOPES
-            ):
-                raise GuardFailure("supplemental history is not append-only")
-            seen.add(path)
-            tree = git(root, "ls-tree", "-z", commit, "--", os.fsdecode(path)).stdout
-            if not tree.startswith(b"100644 blob ") or tree.count(b"\0") != 1:
-                raise GuardFailure("supplemental history added nonregular authority")
-            metadata, separator, found = tree[:-1].partition(b"\t")
-            if not separator or found != path or not re.fullmatch(
-                rb"100644 blob [0-9a-f]{40}", metadata
-            ):
-                raise GuardFailure("supplemental history added ambiguous authority")
+        parents = git(root, "rev-list", "--parents", "-n", "1", commit).stdout.decode("ascii").split()
+        if not parents or parents[0] != commit or not parents[1:]:
+            raise GuardFailure("ambiguous supplemental history parentage")
+        for parent in parents[1:]:
+            raw = git(root, "diff-tree", "-r", "--no-renames", "--name-status", "-z",
+                      parent, commit, "--", *SCOPES).stdout
+            if not raw:
+                continue
+            fields = raw.split(b"\\0")
+            if fields[-1] != b"" or (len(fields) - 1) % 2:
+                raise GuardFailure("ambiguous supplemental history diff")
+            for i in range(0, len(fields) - 1, 2):
+                status, path = fields[i:i + 2]
+                if status != b"A" or not any(
+                    path.startswith(prefix.encode("ascii")) for prefix in SCOPES
+                ):
+                    raise GuardFailure("supplemental history is not append-only")
+                tree = git(root, "ls-tree", "-z", commit, "--", os.fsdecode(path)).stdout
+                if not tree.startswith(b"100644 blob ") or tree.count(b"\\0") != 1:
+                    raise GuardFailure("supplemental history added nonregular authority")
+                metadata, separator, found = tree[:-1].partition(b"\\t")
+                if not separator or found != path or not re.fullmatch(
+                    rb"100644 blob [0-9a-f]{40}", metadata
+                ):
+                    raise GuardFailure("supplemental history added ambiguous authority")
+                blob = metadata.split(b" ")[-1]
+                if path in seen and seen[path] != blob:
+                    raise GuardFailure("supplemental history changed an added record")
+                seen[path] = blob
+    for path, blob in seen.items():
+        final = git(root, "ls-tree", "-z", head, "--", os.fsdecode(path)).stdout
+        if final != b"100644 blob " + blob + b"\\t" + path + b"\\0":
+            raise GuardFailure("supplemental history lost an added record")
 
 
 def self_test() -> None:
-    def fixture(change: str) -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
+    def fixture(change: str, scope: str) -> tuple[Path, str, tempfile.TemporaryDirectory[str]]:
         temp = tempfile.TemporaryDirectory(prefix="supplemental-history-negative-")
         root = Path(temp.name)
         git(root, "init", "-q")
         git(root, "config", "user.name", "Fixture")
         git(root, "config", "user.email", "fixture@example.invalid")
-        original = root / SCOPES[0] / "original.md"
+        original = root / scope / "original.md"
         original.parent.mkdir(parents=True)
         original.write_text("immutable\n", encoding="utf-8")
         git(root, "add", ".")
@@ -106,10 +115,54 @@ def self_test() -> None:
         git(root, "commit", "-qm", "candidate")
         return root, baseline, temp
 
-    for kind in ("add", "modify", "delete", "rename", "symlink", "add-then-modify"):
-        root, baseline, temp = fixture(kind)
-        try:
-            if kind == "add":
+    for scope in SCOPES:
+        for kind in ("add", "modify", "delete", "rename", "symlink", "add-then-modify"):
+            root, baseline, temp = fixture(kind, scope)
+            try:
+                if kind == "add":
+                    check_history(root, baseline)
+                else:
+                    try:
+                        check_history(root, baseline)
+                    except GuardFailure:
+                        pass
+                    else:
+                        raise GuardFailure("negative history fixture accepted: " + scope + kind)
+            finally:
+                temp.cleanup()
+
+
+    # First-parent-only history would miss a side-branch rewrite that is
+    # restored before merge; inspect every reachable parent edge instead.
+    for kind in ("merge-add", "merge-rewrite-old", "merge-rewrite-new"):
+        with tempfile.TemporaryDirectory(prefix="supplemental-merge-negative-") as temp:
+            root = Path(temp)
+            git(root, "init", "-q")
+            git(root, "config", "user.name", "Fixture")
+            git(root, "config", "user.email", "fixture@example.invalid")
+            old = root / SCOPES[0] / "original.md"
+            old.parent.mkdir(parents=True)
+            old.write_text("immutable\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "baseline")
+            baseline = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+            base_branch = git(root, "branch", "--show-current").stdout.decode("ascii").strip()
+            git(root, "checkout", "-qb", "feature")
+            new = old.parent / "new.md"
+            new.write_text("new\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", "add new record")
+            if kind == "merge-rewrite-old":
+                old.write_text("mutated\n", encoding="utf-8")
+                git(root, "commit", "-qam", "mutate existing")
+                old.write_text("immutable\n", encoding="utf-8")
+                git(root, "commit", "-qam", "restore existing")
+            elif kind == "merge-rewrite-new":
+                new.write_text("mutated\n", encoding="utf-8")
+                git(root, "commit", "-qam", "mutate new")
+            git(root, "checkout", "-q", base_branch)
+            git(root, "merge", "-q", "--no-ff", "-m", "merge feature", "feature")
+            if kind == "merge-add":
                 check_history(root, baseline)
             else:
                 try:
@@ -117,9 +170,8 @@ def self_test() -> None:
                 except GuardFailure:
                     pass
                 else:
-                    raise GuardFailure("negative history fixture accepted: " + kind)
-        finally:
-            temp.cleanup()
+                    raise GuardFailure("merged history negative accepted: " + kind)
+
 
 
 def main() -> int:
