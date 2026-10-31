@@ -3224,6 +3224,7 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                     else {"rollback_authority_files", "atomic_write_bytes"})
         if len(direct) != 1 or not required.issubset(transports):
             return False
+        if name == "prove_atomic_prestage_parent_swap" and "synthetic parent traversal close failure" not in ast.unparse(proof): return False
         if name == "prove_atomic_poststage_drift_rejection" and not all(
                 token in ast.unparse(proof) for token in (
                     "parent-mode-changed", "root.chmod(511)", "staged-hardlink", "os.link(staged[0], stage_alias)", "concurrent publication parent drift",
@@ -3575,7 +3576,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)", "os.O_DIRECTORY | os.O_NOFOLLOW",
         "expected_parent.st_dev", "expected_parent.st_ino", "expected_parent.st_mode", "expected_parent.st_ctime_ns",
-        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns", "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)",
+        "pinned.st_dev", "pinned.st_ino", "pinned.st_mode", "pinned.st_ctime_ns", "live.st_dev", "live.st_ino", "live.st_mode", "live.st_ctime_ns", "os.close(fd)", "os.close(next_fd)",
     )):
         return False
     if not all(fragment in stage for fragment in (
@@ -3585,8 +3586,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
     return all(fragment in body for fragment in (
         "getattr(os, 'O_DIRECTORY', None)", "initial_parent = path.parent.lstat()", "open_pinned_parent(path, initial_parent)",
         "create_pinned_stage(parent_fd, path.name)", "os.stat(temporary.name, dir_fd=parent_fd, follow_symlinks=False)",
-        "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)",
-        "os.unlink(temporary.name, dir_fd=parent_fd)", "staged_initial = os.fstat(descriptor)", "staged_stat.st_nlink == 1", "staged_live.st_nlink == 1",
+        "os.replace(temporary.name, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)", "os.unlink(temporary.name, dir_fd=parent_fd)", "staged_initial = os.fstat(descriptor)", "staged_stat.st_nlink == 1", "staged_live.st_nlink == 1",
         "staged_identity = (staged_initial.st_dev, staged_initial.st_ino)", "staging_guard_fd = os.dup(descriptor)", "if staging_guard_fd is not None:", "os.close(staging_guard_fd)", "untransferred_stage_fd: int | None = descriptor",
         "if untransferred_stage_fd is not None:", "os.close(untransferred_stage_fd)", "and (cleanup_stat.st_dev, cleanup_stat.st_ino) == staged_identity", "published = True", "if not published and staged_identity is not None:",
         "(pinned_parent.st_dev, pinned_parent.st_ino, pinned_parent.st_mode) == (live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
@@ -3659,7 +3659,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ('"docs/operations/learning-alias.txt"',
              '"docs/operations/learning-alias.md"'),
             ('elif scenario == "parent-mode-changed":\n                    root.chmod(0o777)', 'elif scenario == "parent-mode-changed":\n                    pass'),
-            ('os.link(staged[0], stage_alias)', 'pass'),
+            ('os.link(staged[0], stage_alias)', 'pass'), ("synthetic parent traversal close failure", "unreviewed close failure"),
             ("module.os.replace = replace_then_reuse",
              "module.os.replace = original_replace"),
             ("module.os.replace = reuse_before_failed_replace",
@@ -3794,7 +3794,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("os.close(staging_guard_fd)", "pass"),
             ("os.close(untransferred_stage_fd)", "pass"),
             ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
-            ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"),
+            ("os.open(part, flags, dir_fd=fd)", "os.open(part, flags)"), ("os.close(next_fd)", "pass"),
             ("pinned.st_mode, pinned.st_ctime_ns)", "pinned.st_mode, -1)"),
             ("for _ in range(8):", "for _ in range(0):"),
             ("os.urandom(16).hex()", "'fixed-stage-name'"),

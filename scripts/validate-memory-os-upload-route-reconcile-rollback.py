@@ -871,6 +871,68 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 and not list(root.glob(".authority.txt.*.tmp")),
                 "stage open failure changed authority or left temporary residue")
 
+    # An ancestor-close fault must not leak the newly opened child capability.
+    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-parent-close-") as temp_dir:
+        root = Path(temp_dir)
+        parent = root / "top" / "owned"
+        parent.mkdir(parents=True)
+        target = parent / "authority.txt"
+        target.write_bytes(b"original-owned")
+        original_parent = module.open_pinned_parent
+        original_open = module.os.open
+        original_close = module.os.close
+        opened: list[int] = []
+        injected = [False]
+
+        def capture_open(name, flags, mode=0o777, *, dir_fd=None):
+            if dir_fd is None:
+                fd = original_open(name, flags, mode)
+            else:
+                fd = original_open(name, flags, mode, dir_fd=dir_fd)
+            opened.append(fd)
+            return fd
+
+        def reject_first_close(fd):
+            if not injected[0]:
+                injected[0] = True
+                raise OSError("synthetic parent traversal close failure")
+            return original_close(fd)
+
+        def fail_during_parent_traversal(path, expected):
+            module.os.open = capture_open
+            module.os.close = reject_first_close
+            try:
+                return original_parent(path, expected)
+            finally:
+                module.os.open = original_open
+                module.os.close = original_close
+
+        module.open_pinned_parent = fail_during_parent_traversal
+        try:
+            try:
+                module.atomic_write_bytes(target, b"must-not-publish")
+            except module.ReconcileFailure as exc:
+                require("concurrent publication parent drift" in str(exc),
+                        f"parent traversal close rejected for unrelated reason: {exc}")
+            else:
+                raise Fail("parent traversal close failure was accepted")
+        finally:
+            module.open_pinned_parent = original_parent
+        require(injected[0] and len(opened) >= 2,
+                "parent traversal close fault did not acquire both descriptors")
+        for fd in opened:
+            try:
+                os.fstat(fd)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "parent traversal close fault left a live descriptor")
+            else:
+                os.close(fd)
+                raise Fail("parent traversal close failure leaked a descriptor")
+        require(target.read_bytes() == b"original-owned"
+                and not list(parent.glob(".authority.txt.*.tmp")),
+                "parent traversal close failure altered authority or staged residue")
+
 
 def prove_atomic_poststage_drift_rejection(module) -> None:
     """Staged writes must not replace independent edits made during fsync."""

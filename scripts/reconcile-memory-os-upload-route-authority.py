@@ -253,7 +253,14 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
         fd = os.open(path.anchor, flags)
         for part in path.parent.parts[1:]:
             next_fd = os.open(part, flags, dir_fd=fd)
-            os.close(fd)
+            try:
+                os.close(fd)
+            except BaseException:
+                try:
+                    os.close(next_fd)
+                except OSError:
+                    pass
+                raise
             fd = next_fd
         pinned = os.fstat(fd)
         live = path.parent.lstat()
@@ -268,7 +275,10 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
         return fd
     except BaseException as exc:
         if fd is not None:
-            os.close(fd)
+            try:
+                os.close(fd)
+            except OSError:
+                pass
         if isinstance(exc, OSError):
             raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
         raise
