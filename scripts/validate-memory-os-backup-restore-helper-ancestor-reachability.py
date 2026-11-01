@@ -13,6 +13,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# CI uses a reviewed root-owned Git binary; inherited PATH is not authority.
+TRUSTED_GIT = "/usr/bin/git"
 TARGETS = {
     "validate-memory-os-backup-restore-non-resurrection-load-negative.py":
         "typed contract path fixture guard ancestor identity drift",
@@ -3086,9 +3088,29 @@ def prove_ancestor_pr_head_negative(source: str) -> int:
     expected_marker = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
     require(script.count(pr_marker) == 1 and script.count(expected_marker) == 1,
             "ancestor PR runtime SHA binding drift")
-    actual = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-    ).strip()
+    # First prove the inherited PATH would select an attacker-controlled
+    # executable, then read the real HEAD while that decoy remains first.
+    # The positive PR-head shell below must use this pinned source identity.
+    with tempfile.TemporaryDirectory(prefix=".ancestor-git-path-", dir=ROOT) as temp:
+        decoy = Path(temp) / "git"
+        decoy.write_text("#!/bin/sh\nprintf '" + ("0" * 40) + "\\n'\n", encoding="utf-8")
+        decoy.chmod(0o755)
+        prior_path = os.environ.get("PATH")
+        try:
+            os.environ["PATH"] = temp + os.pathsep + (prior_path or "")
+            naive = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+            ).strip()
+            require(naive == "0" * 40, "ancestor Git PATH decoy ineffective")
+            actual = subprocess.check_output(
+                [TRUSTED_GIT, "rev-parse", "HEAD"], cwd=ROOT, text=True
+            ).strip()
+        finally:
+            if prior_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = prior_path
+    require(actual != naive, "ancestor Git executable identity redirected")
     require(re.fullmatch(r"[0-9a-f]{40}", actual) is not None,
             "ancestor PR runtime positive SHA invalid")
     for malformed in ("", "f" * 39, "g" * 40, "f" * 41):
