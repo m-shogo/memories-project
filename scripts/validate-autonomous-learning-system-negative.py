@@ -787,6 +787,36 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         real_close = os.close
         canary = Path(tmp) / "external-canary"
         canary.write_bytes(b"external")
+        # Path metadata and descriptor acquisition can raise non-OSError
+        # interface faults. They must be controlled fail-closed diagnostics,
+        # with no raw descriptor opened and an external canary untouched.
+        real_lstat = Path.lstat
+        for fault_point in ("preflight", "open"):
+            for error_type in (ValueError, TypeError):
+                guard_fd = real_open(canary, os.O_RDONLY)
+                def fault_lstat(path):
+                    if path == target:
+                        raise error_type("synthetic canonical path preflight fault")
+                    return real_lstat(path)
+                def fault_open(path, flags):
+                    if Path(path) == target:
+                        raise error_type("synthetic canonical open fault")
+                    return real_open(path, flags)
+                try:
+                    if fault_point == "preflight":
+                        with mock.patch.object(module.Path, "lstat", new=fault_lstat):
+                            reject(f"{fault_point} {error_type.__name__}",
+                                   f"unreadable authority: {target}")
+                    else:
+                        with mock.patch.object(module.os, "open", side_effect=fault_open):
+                            reject(f"{fault_point} {error_type.__name__}",
+                                   f"unreadable authority: {target}")
+                    if os.read(guard_fd, 8) != b"external":
+                        raise RuntimeError("canonical path-fault corrupted external canary")
+                finally:
+                    real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical path-fault recovery corrupted authority")
         # Malformed stream interfaces are ordinary acquisition/read faults,
         # not unhandled tracebacks or authority bytes. Keep the external FD.
         for label, fault in (
