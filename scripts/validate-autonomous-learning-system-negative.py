@@ -817,6 +817,28 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                     real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical path-fault recovery corrupted authority")
+        # Invalid os.open results confer no raw descriptor ownership. In
+        # particular bool is an int subclass and must not alias fd 0 or 1.
+        for invalid_fd in (None, True, -1, 1.5, "3"):
+            guard_fd = real_open(canary, os.O_RDONLY)
+            def invalid_open(path, flags):
+                if Path(path) == target:
+                    return invalid_fd
+                return real_open(path, flags)
+            def forbidden_fd_operation(*_args, **_kwargs):
+                raise RuntimeError("canonical malformed fd was used or closed")
+            try:
+                with mock.patch.object(module.os, "open", side_effect=invalid_open), \
+                     mock.patch.object(module.os, "fdopen", side_effect=forbidden_fd_operation), \
+                     mock.patch.object(module.os, "close", side_effect=forbidden_fd_operation):
+                    reject(f"invalid acquired fd {invalid_fd!r}",
+                           f"unreadable authority: {target}")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical invalid-fd corrupted external canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical invalid-fd recovery corrupted authority")
         # Malformed stream interfaces are ordinary acquisition/read faults,
         # not unhandled tracebacks or authority bytes. Keep the external FD.
         for label, fault in (
