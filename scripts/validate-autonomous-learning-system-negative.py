@@ -1239,6 +1239,12 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         for malformed in (None, object()):
             parent_reads = 0
             guard_fd = real_open(canary, os.O_RDONLY)
+            owned_fds: list[int] = []
+            def capture_nested_open(path, flags):
+                descriptor = real_open(path, flags)
+                if Path(path) == nested:
+                    owned_fds.append(descriptor)
+                return descriptor
             def corrupt_postread_parent(path):
                 nonlocal parent_reads
                 if path == parent:
@@ -1247,7 +1253,8 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                         return malformed
                 return real_lstat(path)
             try:
-                with mock.patch.object(module.Path, "lstat", new=corrupt_postread_parent):
+                with mock.patch.object(module.Path, "lstat", new=corrupt_postread_parent), \
+                     mock.patch.object(module.os, "open", side_effect=capture_nested_open):
                     try:
                         module.read_canonical_authority_bytes(
                             nested, 10, too_large="reviewed source oversized")
@@ -1256,8 +1263,16 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                             raise RuntimeError("canonical postread metadata wrong diagnostic") from exc
                     else:
                         raise RuntimeError("canonical malformed postread parent accepted")
-                if parent_reads != 2:
-                    raise RuntimeError("canonical postread parent lstat reachability drift")
+                if parent_reads != 2 or len(owned_fds) != 1:
+                    raise RuntimeError("canonical postread metadata reachability drift")
+                try:
+                    os.fstat(owned_fds[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical postread metadata wrong FD state") from exc
+                else:
+                    real_close(owned_fds[0])
+                    raise RuntimeError("canonical postread metadata leaked owned FD")
                 if os.read(guard_fd, 8) != b"external":
                     raise RuntimeError("canonical postread metadata corrupted external canary")
             finally:
