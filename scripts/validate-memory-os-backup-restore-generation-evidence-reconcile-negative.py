@@ -393,6 +393,54 @@ def prove_atomic_cleanup_failure_precedence(reconciler: object) -> None:
     print("PASS boundary: generation-evidence primary atomic failure survives secondary cleanup exception")
 
 
+def prove_pre_fdopen_fault_releases_retained_descriptor(reconciler: object) -> None:
+    canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-fd-ownership-", parent=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "generation-evidence-fd-ownership.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        before_bytes, before_mode = target.read_bytes(), mode(target)
+        for operation in ("fchmod", "fdopen"):
+            original_operation = getattr(reconciler.os, operation)
+            captured = []
+
+            def reject(fd, *_args, **kwargs):
+                if operation == "fdopen":
+                    require(kwargs.get("closefd") is False,
+                            "generation-evidence fdopen must retain explicit raw-FD ownership")
+                captured.append(fd)
+                raise OSError("synthetic generation-evidence " + operation + " rejection")
+
+            setattr(reconciler.os, operation, reject)
+            try:
+                try:
+                    reconciler.write_text(target, before_bytes.decode("utf-8") + " ")
+                except reconciler.Fail as exc:
+                    require("cannot atomically write" in str(exc),
+                            f"generation-evidence {operation} failure wrong class: {exc}")
+                else:
+                    raise Fail(f"generation-evidence {operation} failure unexpectedly accepted")
+            finally:
+                setattr(reconciler.os, operation, original_operation)
+
+            require(len(captured) == 1, f"generation-evidence {operation} injection not reached")
+            try:
+                os.fstat(captured[0])
+            except OSError:
+                pass
+            else:
+                os.close(captured[0])
+                raise Fail(f"generation-evidence {operation} failure leaked raw descriptor")
+            require(target.read_bytes() == before_bytes and mode(target) == before_mode,
+                    f"generation-evidence {operation} failure mutated fixture")
+            require(not list(target.parent.glob(f".{target.name}.*.tmp")),
+                    f"generation-evidence {operation} failure left temp residue")
+    for path, (expected_bytes, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected_bytes and mode(path) == expected_mode,
+                f"generation-evidence fd ownership negative changed canonical authority: {path.name}")
+    print("PASS boundary: generation-evidence fchmod/fdopen faults close retained raw descriptors")
+
+
 def prove_mode_preserving_write(reconciler: object) -> None:
     with guarded_temporary_directory(prefix=".tmp-generation-evidence-mode-", parent=TMP_PARENT) as tmpdir:
         target = Path(tmpdir) / "mode-preservation.json"
@@ -564,6 +612,7 @@ def main() -> int:
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)
     prove_atomic_cleanup_failure_precedence(reconciler)
+    prove_pre_fdopen_fault_releases_retained_descriptor(reconciler)
     prove_mode_preserving_write(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
 

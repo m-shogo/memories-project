@@ -120,6 +120,7 @@ def write_text(path: Path, text: str) -> None:
     require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
     existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
     temp_name: str | None = None
+    fd: int | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
@@ -129,15 +130,26 @@ def write_text(path: Path, text: str) -> None:
         )
         if existing_mode is not None:
             os.fchmod(fd, existing_mode)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+        # Retain raw-FD ownership across stream use, including fdopen failure.
+        with os.fdopen(fd, "w", encoding="utf-8", newline="", closefd=False) as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
+        owned_fd = fd
+        fd = None  # Do not retry a possibly post-effect numeric close.
+        os.close(owned_fd)
         os.replace(temp_name, path)
         temp_name = None
     except OSError as exc:
         raise Fail(f"cannot atomically write {relative}: {exc}") from exc
     finally:
+        if fd is not None:
+            owned_fd = fd
+            fd = None
+            try:
+                os.close(owned_fd)
+            except OSError:
+                pass  # Preserve the primary failure without a second close.
         if temp_name is not None:
             # A cleanup exception must not override the primary write failure.
             primary_failure = sys.exc_info()[0] is not None
