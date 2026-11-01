@@ -659,6 +659,20 @@ def prove_reconciler_strict_json_loader(reconciler: Any) -> None:
         authority.write_bytes(b'{"safe":true}')
         require(reconciler.load(authority) == {"safe": True},
                 "binding strict JSON positive control rejected")
+        exact_source = b'{  "safe" : true }\n'
+        authority.write_bytes(exact_source)
+        parsed, snapshot = reconciler.load(authority, include_raw=True)
+        require(parsed == {"safe": True} and snapshot == exact_source,
+                "binding rollback snapshot lost exact validated source bytes")
+        authority.write_bytes(b'{"safe":true}')
+        try:
+            reconciler.load(authority, include_raw=1)
+        except reconciler.Fail as exc:
+            require(str(exc) == "drill generation binding JSON raw snapshot option invalid",
+                    f"binding raw snapshot flag rejected at wrong boundary: {exc}")
+        else:
+            raise Fail("binding raw snapshot accepted nonboolean flag")
+
         cases = (
             ("duplicate", b'{"safe":true,"safe":false}',
              "drill generation binding JSON duplicate key refused"),

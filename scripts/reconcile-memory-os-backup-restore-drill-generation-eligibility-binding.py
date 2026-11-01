@@ -69,7 +69,7 @@ def enforce_runtime_authorities() -> None:
 MAX_BINDING_AUTHORITY_BYTES = 1024 * 1024
 
 
-def load(path: Path) -> dict[str, Any]:
+def load(path: Path, *, include_raw: bool = False) -> dict[str, Any] | tuple[dict[str, Any], bytes]:
     """Reject ambiguous or oversized planning authority before reconciliation."""
 
     def pinned_read() -> bytes:
@@ -169,7 +169,8 @@ def load(path: Path) -> dict[str, Any]:
             OverflowError, RecursionError):
         raise Fail("drill generation binding JSON unreadable or invalid") from None
     require(isinstance(value, dict), "drill generation binding JSON root must be object")
-    return value
+    require(type(include_raw) is bool, "drill generation binding JSON raw snapshot option invalid")
+    return (value, raw) if include_raw else value
 
 
 def load_module(path: Path, expected_relative: Path, name: str, field: str):
@@ -353,11 +354,8 @@ def enforce_execution_identity(
 
 
 def _reconcile() -> int:
-    try:
-        original_contract_text = CONTRACT.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {CONTRACT.relative_to(ROOT)}: {exc}") from exc
-    contract = load(CONTRACT)
+    contract, original_contract_raw = load(CONTRACT, include_raw=True)
+    original_contract_text = original_contract_raw.decode("utf-8")
     registry = load(DRILL_REGISTRY)
     writer = load_module(
         DRILL_WRITER,
