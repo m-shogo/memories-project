@@ -941,7 +941,6 @@ def source_negative_reachability_issues(relative: str, source: str, script_exist
 
 EXPECTED_SOURCE_NEGATIVE_FIXTURE_COUNT = 204
 
-
 def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None:
     """Reject shadowed dictionary keys before Python silently overwrites them."""
     try:
@@ -970,11 +969,9 @@ def source_negative_fixture_literal_names(source: str) -> tuple[str, ...] | None
     names = tuple(key.value for key in keys)
     return names if len(names) == len(set(names)) else None
 
-
 def exact_source_negative_diagnostic(expected: str, issues: list[str]) -> bool:
     """Only a complete intended issue is proof; substrings are not evidence."""
     return expected in issues
-
 
 def prove_source_negative_diagnostic_classifier(failures: list[str]) -> None:
     expected = "intended source-negative guard"
@@ -991,7 +988,6 @@ def prove_source_negative_diagnostic_classifier(failures: list[str]) -> None:
     for name, issues, accepted in cases:
         if exact_source_negative_diagnostic(expected, issues) is not accepted:
             failures.append(f"source-negative exact diagnostic classifier misclassified: {name}")
-
 
 def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
     """Positive control plus independent mutations; no digest-only success."""
@@ -2258,7 +2254,6 @@ def prove_source_negative_reachability_negatives(failures: list[str]) -> None:
             f"source-negative diagnostic-bound fixture inventory drift: {diagnostic_bound}"
         )
 
-
 def validate_source_negative_ci_reachability(failures: list[str]) -> None:
     """Independent inventory and live CI command checks, not production evidence."""
     workflows = REPO_ROOT / ".github/workflows"
@@ -2303,7 +2298,6 @@ def validate_source_negative_ci_reachability(failures: list[str]) -> None:
 # Bind that reviewed execution path separately so its guard cannot disappear.
 LEARNING_WORKFLOW_SOURCE = REPO_ROOT / ".github/workflows/autonomous-learning-guard.yml"
 LEARNING_WORKFLOW_REVIEWED_BLOB = "732d664fb157cbe2d25309d2030906d6386cc97c"
-
 
 def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -> None:
     """Require the reviewed read-only learning/append-only CI path."""
@@ -2383,7 +2377,6 @@ def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -
         ).hexdigest()
         if digest != LEARNING_WORKFLOW_REVIEWED_BLOB:
             raise ValueError("learning workflow complete reviewed source drift")
-
 
 def validate_learning_workflow_reachability(failures: list[str]) -> None:
     """Exercise distinct semantic negatives before accepting the reviewed blob."""
@@ -2489,7 +2482,6 @@ UPLOAD_ROUTE_RATE_LIMIT_DIRECT_INPUTS = (
     "services/import-api/internal/obslog/codes.go",
 )
 
-
 def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str | None:
     """Allow a reviewed narrowing, but fail on newly coupled rate-limit scripts."""
     path_rows = [
@@ -2518,7 +2510,6 @@ def upload_route_rate_limit_scope_issue(source: str, matches: set[str]) -> str |
         if not matches.issubset(UPLOAD_ROUTE_REVIEWED_WILDCARD_MATCHES):
             return "upload-route new wildcard-coupled rate-limit source"
     return None
-
 
 def validate_upload_route_rate_limit_trigger_scope(failures: list[str]) -> None:
     """Bound known CI over-trigger without treating MinIO failure as readiness."""
@@ -2611,7 +2602,6 @@ UPLOAD_ROUTE_REVIEWED_CONTRACT_MATCHES = frozenset((
     "contracts/operations/rate-limit-policy-contract.v1.json",
 ))
 
-
 def upload_route_rate_limit_contract_scope_issue(source: str, matches: set[str]) -> str | None:
     rows = [row for row in source.splitlines() if row.startswith("      - ")]
     contract_rows = [
@@ -2636,7 +2626,6 @@ def upload_route_rate_limit_contract_scope_issue(source: str, matches: set[str])
         if not matches.issubset(UPLOAD_ROUTE_REVIEWED_CONTRACT_MATCHES):
             return "upload-route new wildcard-coupled rate-limit contract"
     return None
-
 
 def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None:
     directory = REPO_ROOT / "contracts/operations"
@@ -2696,7 +2685,6 @@ def validate_upload_route_rate_limit_contract_scope(failures: list[str]) -> None
 
 
 SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE = "1a2eeab517d8744df42de984fca921aebd747ff8"
-
 
 def supplemental_history_baseline_bound(source: str) -> bool:
     """Independently pin the history epoch and live main-call binding."""
@@ -2791,7 +2779,6 @@ def supplemental_history_baseline_bound(source: str) -> bool:
             and isinstance(first.value, ast.Name) and first.value.id == "args"
             and isinstance(second, ast.Name) and second.id == "BASELINE")
 
-
 def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
     """Reject baseline reset, shadow and a dead or redirected history call."""
     good = ('BASELINE = "' + SUPPLEMENTAL_HISTORY_IMMUTABLE_BASELINE + '"\n'
@@ -2827,7 +2814,6 @@ def prove_supplemental_history_baseline_negatives(failures: list[str]) -> None:
         if supplemental_history_baseline_bound(candidate):
             failures.append("supplemental history baseline negative accepted: " + label)
 
-
 def supplemental_history_head_stability_bound(source: str) -> bool:
     """Bind the live history proof to a stable Git HEAD, not an old snapshot."""
     try:
@@ -2852,8 +2838,6 @@ def supplemental_history_head_stability_bound(source: str) -> bool:
         and ast.unparse(rejection.body[0]) ==
             "raise GuardFailure('supplemental history HEAD moved during audit')"
     )
-
-
 
 def supplemental_history_reflog_bound(source: str) -> bool:
     """Independently bind the live local reflog witness and ABA rejection."""
@@ -2907,7 +2891,6 @@ def supplemental_history_reflog_bound(source: str) -> bool:
         < body.index(traversals[0]) < body.index(rejected[0]) < len(body) - 2
     )
 
-
 def supplemental_history_git_transport_bound(source: str) -> bool:
     """Independently bind exact successful-Git OID transport checks."""
     try:
@@ -2958,19 +2941,21 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
         "git(root, 'rev-parse', '--verify', 'HEAD^{commit}')": 2,
         "git(root, 'rev-list', '--reverse', f'{baseline}..{head}')": 1,
         "git(root, 'rev-list', '--topo-order', f'{baseline}..{head}')": 1,
+        "git(root, 'rev-list', '--parents', '--topo-order', f'{baseline}..{head}')": 1,
         "git(root, 'rev-list', '--parents', '-n', '1', commit)": 1,
     }
     if any(commands.count(command) != count for command, count in required.items()):
         return False
-    return (len(patterns) == 3 and set(patterns) == {
+    return (len(patterns) == 4 and set(patterns) == {
                 rb"[0-9a-f]{40}\n", rb"(?:[0-9a-f]{40}\n)*",
-                rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"}
-            and len(reasons) == 3 and set(reasons) == {
+                rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n",
+                rb"(?:[0-9a-f]{40}(?: [0-9a-f]{40})+\n)*"}
+            and len(reasons) == 4 and set(reasons) == {
                 "malformed supplemental HEAD oid",
                 "malformed supplemental commit enumeration",
-                "malformed supplemental parent enumeration"}
-            and len(type_checks) == 3)
-
+                "malformed supplemental parent enumeration",
+                "malformed supplemental parent inventory"}
+            and len(type_checks) == 4)
 
 def supplemental_history_enumeration_bound(source: str) -> bool:
     """Independently bind complete-range count and terminal HEAD proof."""
@@ -2994,14 +2979,29 @@ if (expected_count != len(commits) or len(set(commits)) != len(commits)
 independent = git(root, "rev-list", "--topo-order", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
 if len(independent) != len(commits) or set(independent) != set(commits):
     raise GuardFailure("supplemental history enumeration incomplete")
+parent_raw = git(root, "rev-list", "--parents", "--topo-order", f"{baseline}..{head}").stdout
+if (type(parent_raw) is not bytes or re.fullmatch(
+        rb"(?:[0-9a-f]{40}(?: [0-9a-f]{40})+\n)*", parent_raw) is None):
+    raise GuardFailure("malformed supplemental parent inventory")
+parent_inventory = {
+    fields[0]: fields
+    for fields in (line.split() for line in parent_raw.decode("ascii").splitlines())
+}
+if len(parent_inventory) != len(commits) or set(parent_inventory) != set(commits):
+    raise GuardFailure("supplemental history parent inventory incomplete")
 '''
     expected = [ast.dump(node, include_attributes=False)
                 for node in ast.parse(reviewed).body]
     actual = [ast.dump(node, include_attributes=False)
               for node in checks[0].body]
-    return sum(actual[i:i + len(expected)] == expected
-               for i in range(len(actual) - len(expected) + 1)) == 1
-
+    parent_guard = ast.dump(ast.parse(
+        "if parents != parent_inventory[commit]:\n"
+        "    raise GuardFailure('supplemental history parent enumeration incomplete')\n"
+    ).body[0], include_attributes=False)
+    return (sum(actual[i:i + len(expected)] == expected
+                for i in range(len(actual) - len(expected) + 1)) == 1
+            and sum(ast.dump(node, include_attributes=False) == parent_guard
+                    for node in ast.walk(checks[0])) == 1)
 
 def supplemental_history_diff_confirmation_bound(source: str) -> bool:
     """Pin independent quiet-diff confirmation inside each parent edge."""
@@ -3038,7 +3038,6 @@ if confirmation.stdout != raw:
     actual = [ast.dump(node, include_attributes=False)
               for node in loops[0].body]
     return actual[1:1 + len(expected)] == expected
-
 
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
@@ -3113,6 +3112,9 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         ('set(independent) != set(commits)', 'set(independent) == set(commits)'),
         ('git(root, "rev-list", "--topo-order", f"{baseline}..{head}")',
          'git(root, "rev-list", "--reverse", f"{baseline}..{head}")'),
+        ('git(root, "rev-list", "--parents", "--topo-order", f"{baseline}..{head}")',
+         'git(root, "rev-list", "--parents", "-n", "1", head)'),
+        ('parents != parent_inventory[commit]', 'parents == parent_inventory[commit]'),
         ('commits[-1] != head', 'commits[-1] == head'),
         (r'rb"(?:0|[1-9][0-9]{0,18})\n"',
          r'rb"[0-9]+\n"'),
@@ -3154,8 +3156,6 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         failures.append("supplemental learning history guard missing verified PASS")
     else:
         print("supplemental learning all-parent history and 39 scoped/merge/octopus/shallow/literal/Git-environment/ancestry/diagnostic/wrong-reason negatives verified")
-
-
 
 def has_upload_route_symlink_negative_binding(source: str) -> bool:
     """Require live direct calls to both symlink and ownership negatives."""

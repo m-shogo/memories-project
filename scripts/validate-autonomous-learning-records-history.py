@@ -52,6 +52,10 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
         elif len(args) == 3 and args[:2] in (("rev-list", "--reverse"), ("rev-list", "--topo-order")):
             if type(raw) is not bytes or re.fullmatch(rb"(?:[0-9a-f]{40}\n)*", raw) is None:
                 raise GuardFailure("malformed supplemental commit enumeration")
+        elif len(args) == 4 and args[:3] == ("rev-list", "--parents", "--topo-order"):
+            if (type(raw) is not bytes or re.fullmatch(
+                    rb"(?:[0-9a-f]{40}(?: [0-9a-f]{40})+\n)*", raw) is None):
+                raise GuardFailure("malformed supplemental parent inventory")
         elif len(args) == 5 and args[:4] == ("rev-list", "--parents", "-n", "1"):
             if (type(raw) is not bytes or re.fullmatch(
                     rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n", raw) is None):
@@ -146,11 +150,25 @@ def check_history(root: Path, baseline: str) -> None:
     independent = git(root, "rev-list", "--topo-order", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
     if len(independent) != len(commits) or set(independent) != set(commits):
         raise GuardFailure("supplemental history enumeration incomplete")
+    # Independently inventory every immutable commit's actual parent OIDs.
+    # A forged but valid alternative parent can conceal a protected edit.
+    parent_raw = git(root, "rev-list", "--parents", "--topo-order", f"{baseline}..{head}").stdout
+    if (type(parent_raw) is not bytes or re.fullmatch(
+            rb"(?:[0-9a-f]{40}(?: [0-9a-f]{40})+\n)*", parent_raw) is None):
+        raise GuardFailure("malformed supplemental parent inventory")
+    parent_inventory = {
+        fields[0]: fields
+        for fields in (line.split() for line in parent_raw.decode("ascii").splitlines())
+    }
+    if len(parent_inventory) != len(commits) or set(parent_inventory) != set(commits):
+        raise GuardFailure("supplemental history parent inventory incomplete")
     seen: dict[bytes, bytes] = {}
     for commit in commits:
         parents = git(root, "rev-list", "--parents", "-n", "1", commit).stdout.decode("ascii").split()
         if not parents or parents[0] != commit or not parents[1:]:
             raise GuardFailure("ambiguous supplemental history parentage")
+        if parents != parent_inventory[commit]:
+            raise GuardFailure("supplemental history parent enumeration incomplete")
         for parent in parents[1:]:
             raw = git(root, "diff-tree", "-r", "--no-renames", "--name-status", "-z",
                       parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES)).stdout
@@ -288,6 +306,11 @@ def self_test() -> None:
         (("rev-list", "--topo-order", "base..head"), oid + b"\n",
          (oid + b" \n", oid + b"\r\n", oid, b"z" * 40 + b"\n"),
          "malformed supplemental commit enumeration"),
+        (("rev-list", "--parents", "--topo-order", "base..head"),
+         oid + b" " + oid + b"\n",
+         (oid + b"\n", oid + b" " + oid + b" \n", oid + b" " + oid,
+          oid.decode("ascii") + " " + oid.decode("ascii") + "\n"),
+         "malformed supplemental parent inventory"),
         (("rev-list", "--parents", "-n", "1", "head"), oid + b" " + oid + b"\n",
          (oid + b"\n", oid + b"\t" + oid + b"\n",
           oid + b" " + oid + b"\n\n", oid + b" " + oid,
@@ -604,6 +627,47 @@ def self_test() -> None:
                     lambda: check_history(root, baseline),
                     "supplemental history enumeration incomplete",
                     "same-count-middle-substitution-" + selector,
+                )
+        check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+    # A valid but false parent OID can turn a two-addition history into a
+    # misleading all-addition diff against the baseline; parentage must agree
+    # with the independent whole-range inventory, not just be syntactically valid.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        (root / SCOPES[0] / "second.md").write_text("second\n", encoding="utf-8")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "second addition")
+        head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        original_git = git
+        genuine_inventory = original_git(
+            root, "rev-list", "--parents", "--topo-order", f"{baseline}..{head}"
+        ).stdout
+        forged_parent = (head + " " + baseline + "\n").encode("ascii")
+        for selector in ("single-parent", "whole-range"):
+            def forge_parent(path: Path, *args: str, **kwargs):
+                result = original_git(path, *args, **kwargs)
+                if path == root and selector == "single-parent" and args == (
+                        "rev-list", "--parents", "-n", "1", head):
+                    return subprocess.CompletedProcess(result.args, 0, forged_parent, b"")
+                if path == root and selector == "whole-range" and args[:3] == (
+                        "rev-list", "--parents", "--topo-order"):
+                    rows = genuine_inventory.splitlines()
+                    rewritten = b"\n".join(
+                        forged_parent.rstrip(b"\n") if row.startswith(head.encode("ascii") + b" ")
+                        else row for row in rows
+                    ) + b"\n"
+                    return subprocess.CompletedProcess(result.args, 0, rewritten, b"")
+                return result
+
+            with patch(__name__ + ".git", side_effect=forge_parent):
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental history parent enumeration incomplete",
+                    "false-parent-" + selector,
                 )
         check_history(root, baseline)
     finally:
