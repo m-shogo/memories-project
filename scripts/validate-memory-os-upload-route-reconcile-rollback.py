@@ -32,37 +32,49 @@ def load_module():
 
 
 def prove_atomic_replace_failure(module) -> None:
-    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
-        target = Path(temp_dir) / "authority.txt"
-        original = b"exact-original-bytes\n"
-        target.write_bytes(original)
-        original_replace = module.os.replace
-        pattern = f".{target.name}.*.tmp"
-        before = {item.name for item in target.parent.glob(pattern)}
+    for replace_scenario in ("before-effect", "after-effect"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
+            target = Path(temp_dir) / "authority.txt"
+            original = b"exact-original-bytes\n"
+            target.write_bytes(original)
+            canary = Path(temp_dir) / "external-replace-canary.txt"
+            canary.write_bytes(b"independent-replace-canary")
+            original_replace = module.os.replace
+            pattern = f".{target.name}.*.tmp"
+            before = {item.name for item in target.parent.glob(pattern)}
 
-        def reject_replace(source, destination, *args, **kwargs) -> None:
-            if Path(destination) == target or (
-                destination == target.name and kwargs.get("dst_dir_fd") is not None
-            ):
-                raise OSError("synthetic atomic replace rejection")
-            original_replace(source, destination, *args, **kwargs)
+            def reject_replace(source, destination, *args, **kwargs) -> None:
+                if Path(destination) == target or (
+                    destination == target.name and kwargs.get("dst_dir_fd") is not None
+                ):
+                    if replace_scenario == "after-effect":
+                        original_replace(source, destination, *args, **kwargs)
+                    raise OSError("synthetic atomic replace rejection")
+                original_replace(source, destination, *args, **kwargs)
 
-        module.os.replace = reject_replace
-        try:
+            module.os.replace = reject_replace
             try:
-                module.atomic_write_bytes(target, b"partial-mutation\n")
-            except OSError as exc:
-                require("synthetic atomic replace rejection" in str(exc),
-                        "atomic replacement failed for unrelated reason")
-            else:
-                raise Fail("upload-route atomic writer accepted replacement failure")
-            require(target.read_bytes() == original,
-                    "upload-route canonical bytes changed after failed atomic replacement")
-            after = {item.name for item in target.parent.glob(pattern)}
-            require(after == before,
-                    f"upload-route atomic writer left temporary residue: {sorted(after - before)}")
-        finally:
-            module.os.replace = original_replace
+                try:
+                    module.atomic_write_bytes(target, b"partial-mutation\n")
+                except OSError as exc:
+                    require("synthetic atomic replace rejection" in str(exc),
+                            "atomic replacement failed for unrelated reason")
+                    if replace_scenario == "after-effect":
+                        require(any("atomic replace outcome unknown; staged inode visible after error" in note
+                                    for note in getattr(exc, "__notes__", [])),
+                                "post-effect replace lacked explicit uncertain publication diagnostic")
+                else:
+                    raise Fail("upload-route atomic writer accepted replacement failure")
+                expected = original if replace_scenario == "before-effect" else b"partial-mutation\n"
+                require(target.read_bytes() == expected,
+                        "upload-route replace effect was misclassified as no-write")
+                require(canary.read_bytes() == b"independent-replace-canary",
+                        "replace fault changed external canary")
+                after = {item.name for item in target.parent.glob(pattern)}
+                require(after == before,
+                        f"upload-route atomic writer left temporary residue: {sorted(after - before)}")
+            finally:
+                module.os.replace = original_replace
 
 
 def expect_guard_rejection(module, attribute: str, substitute, expected: str) -> None:
