@@ -952,12 +952,50 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
             rejected(candidate, "drill request reconcile authority read invalid or unavailable", "raced open")
         finally:
             reconciler.os.open = original_open
+        # The primary UTF-8 rejection must survive a secondary close fault;
+        # a close fault after a successful read remains a hard failure.
+        original_open = reconciler.os.open
+        original_close = reconciler.os.close
+        owned = []
+        marker = "synthetic-secret-drill-reconcile-close"
+        def track_open(candidate_path, flags, *args, **kwargs):
+            descriptor = original_open(candidate_path, flags, *args, **kwargs)
+            if Path(candidate_path) == candidate:
+                owned.append(descriptor)
+            return descriptor
+        def fail_after_close(descriptor):
+            original_close(descriptor)
+            if descriptor in owned:
+                raise OSError(errno.EIO, marker)
+        try:
+            reconciler.os.open = track_open
+            reconciler.os.close = fail_after_close
+            candidate.write_bytes(b"{\\xff}")
+            rejected(candidate, "drill request reconcile authority read invalid or unavailable",
+                     "primary UTF-8 rejection survives secondary close fault")
+            candidate.write_bytes(positive)
+            rejected(candidate, "drill request reconcile authority descriptor cleanup failed",
+                     "standalone descriptor cleanup fault")
+        finally:
+            reconciler.os.open = original_open
+            reconciler.os.close = original_close
+        require(len(owned) == 2, "drill reconcile reader close fault controls not exercised")
+        for descriptor in owned:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "drill reconcile reader close fault unexpected descriptor error")
+            else:
+                raise Fail("drill reconcile reader close fault leaked descriptor")
+        require(reconciler.read_text(candidate) == positive.decode("utf-8"),
+                "drill reconcile reader post-close-fault positive control failed")
         require(reconciler.read_text(candidate) == positive.decode("utf-8"),
                 "drill reconcile reader post-race positive control failed")
         require(candidate.read_bytes() == positive, "drill reconcile reader mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected) == before,
             "drill reconcile reader mutated protected authorities")
-    print("PASS: drill reconcile reader positive, oversized, UTF-8, symlink, FIFO, directory and raced-open negatives")
+    print("PASS: drill reconcile reader positive, oversized, UTF-8, symlink, FIFO, directory, raced-open and double-close-fault negatives")
 
 
 def prove_reconciler_strict_json(reconciler) -> None:

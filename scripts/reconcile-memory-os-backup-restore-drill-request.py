@@ -134,11 +134,15 @@ def read_text(path: Path) -> str:
     except (OSError, UnicodeDecodeError):
         raise Fail("drill request reconcile authority read invalid or unavailable") from None
     finally:
+        # Keep the original read/decoding failure authoritative if closing
+        # its owned descriptor also fails. Standalone cleanup still rejects.
+        primary_failure = sys.exc_info()[0] is not None
         if fd is not None:
             try:
                 os.close(fd)
             except OSError:
-                raise Fail("drill request reconcile authority descriptor cleanup failed") from None
+                if not primary_failure:
+                    raise Fail("drill request reconcile authority descriptor cleanup failed") from None
 
 
 def write_text(path: Path, text: str) -> None:
