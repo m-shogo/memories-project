@@ -466,7 +466,19 @@ def prove_post_validator_transport(reconciler) -> None:
         env_patch.stop()
     require(seen == [0, 1, False, None] * 3,
             "generation post-validator positive and negative controls incomplete")
-    print("PASS: generation evidence post-validators use isolated bounded private transport")
+    # Self-consistent repository paths are not sufficient execution authority.
+    # Neither an unknown label nor a known label paired with an unreviewed file
+    # may reach subprocess, even when the file is a valid canonical authority.
+    with patch.object(reconciler.subprocess, "run", side_effect=Fail("unreviewed child process executed")):
+        for label in ("synthetic unreviewed validator", "generation evidence validator"):
+            try:
+                reconciler.run_post_validator(reconciler.CONTRACT, reconciler.CONTRACT_REL, label)
+            except reconciler.Fail as exc:
+                require(str(exc) == "unreviewed generation evidence post-validator",
+                        "generation post-validator unreviewed target rejected at wrong boundary")
+            else:
+                raise Fail("generation post-validator unreviewed repository target accepted")
+    print("PASS: generation evidence post-validators use isolated bounded private transport and closed targets")
 
 
 def main() -> int:

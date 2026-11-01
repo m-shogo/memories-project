@@ -195,6 +195,13 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
+    reviewed = {
+        "generation binding validator": (BINDING_VALIDATOR, BINDING_VALIDATOR_REL),
+        "generation evidence validator": (VALIDATOR, VALIDATOR_REL),
+        "operability validator": (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL),
+    }
+    require(reviewed.get(label) == (path, expected_relative),
+            "unreviewed generation evidence post-validator")
     require_exact_repo_file(path, expected_relative, label)
     child_env = {
         key: value for key, value in os.environ.items()
