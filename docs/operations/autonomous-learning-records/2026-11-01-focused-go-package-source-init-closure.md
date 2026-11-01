@@ -1,0 +1,25 @@
+# Supplemental OPS learning — direct Go package init closure (2026-11-01)
+
+Append-only execution learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, approved objective, executable reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human promotion.
+
+## Material failure
+
+- **symptom:** The first Go package `init()` admission guard scanned only `*_test.go`. A new or modified non-test package `.go` file could define `func init() { os.Exit(0) }` and exit the test binary successfully before any reviewed Go tests run, without being examined by that guard.
+- **evidence:** Source inspection of `services/import-api/internal/httpserver` found 24 package test files and three non-test Go files (`server.go`, `ratelimit.go`, `observability.go`); the non-test files had no `init` tokens. A standalone Go 1.23.2 synthetic package with `server.go` defining `func init() { os.Exit(0) }` and a deliberately failing `server_test.go` returned `go test` success with the failing test unrun. This is synthetic execution evidence, not a repository package test or production defect.
+- **rootCauseOrUnknown:** Verified source-inventory scope defect: Go runs initializers from ordinary package compilation inputs as well as test files, but the earlier source admission only enumerated test files.
+- **failedApproach:** Equating a package-wide `*_test.go` inventory with complete direct package initializer coverage.
+- **correction:** [`bdb98ca1`](https://github.com/m-shogo/memories-project/commit/bdb98ca11a972350151bba7544ffe287733b0e5c) retains the separate `*_test.go` TestMain check and extends the existing initializer guard to every direct `*.go` package source, rejecting symlinked or non-regular additional files. The sole previously reviewed harmless soak initializer remains the only admitted `init`.
+- **recurrenceGuard:** The existing CI-reachable negative suite adds a compiler-valid new non-test `shadow.go` initializer that calls `os.Exit(0)`, requiring the same exact `unreviewed Upload Route package init bypass` rejection. Existing new-test, comment-split and reviewed-initializer-mutation negatives remain active.
+- **retryCondition:** Revisit only when direct package source membership, Go build semantics, the reviewed initializer, source-closure contract or permitted exact-source Go test execution path changes. Do not retry unchanged MinIO HTTP 401 or workflow-write permission blockers.
+
+## Material success
+
+- **outcome:** The read-only negative guard now checks initializer authority across all 27 direct Go compilation inputs of the reviewed HTTP server package, rather than only the 24 test files.
+- **evidence:** [Autonomous Learning Guard #41274621191](https://github.com/m-shogo/memories-project/actions/runs/41274621191) completed **SUCCESS** on exact code HEAD `bdb98ca11a972350151bba7544ffe287733b0e5c`. Observed logs show 601 canonical fail-closed negatives PASS, 39 supplemental-history fixtures PASS, 195 fanout synthetic cases PASS, 1,186 helper ancestor negatives PASS, append-only and read-only checks PASS. GitHub compare `b0460c73..bdb98ca1` reports only the existing negative validator changed (24 additions, 11 deletions).
+- **whySafe:** Only an existing CI-executed read-only negative validator was modified. No Go service implementation or test, workflow, production/recovery registry, credential, traffic, readiness or human promotion authority was changed.
+- **reusableMechanism:** For test-runner false-green protection, inventory the entire direct package compilation surface, not just test files; preserve a narrow reviewed legitimate initializer and exercise a non-test Go-file early-exit negative. Imported/transitive Go dependencies and generated toolchain files remain separate boundaries, not claimed as fully guarded.
+- **protectedAuthorityCheck:** The code commit changed exactly one validator path, so protected authorities did not drift. Canonical learning blob `b809c69d`, mandatory contract `87712ea9`, production status `b55ee4ad` with `productionDecision=NO_GO`, and the unchanged generation/objective/request/recovery/non-resurrection/review registries retain all OPS-P0-007 prerequisites and separate human promotion gates.
+
+## Execution boundary and next safe target
+
+All three code-head CI successes in this run are static negative-validator results, **not** non-skipped focused Go package tests. Existing Upload Route and Import API Security Slice workflows still start the known failing Quay MinIO image before Go tests; `Security Contracts` runs PostgreSQL/contract checks but no Go package tests. Seek an authorized, exact-source, pre-MinIO Go test path without changing blocked workflow authority or relabeling synthetic/local tests as production evidence.
