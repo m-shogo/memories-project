@@ -3215,6 +3215,19 @@ def require_reviewed_upload_route_package_init(package_tests: dict[str, str]) ->
         r"(?:/\*.*?\*/\s*)?(?:Exit|Fatal|Fatalf|Fatalln)\b",
         flags=re.DOTALL,
     )
+    # A dot import or explicit import alias can call Exit(0) without any
+    # os.Exit/syscall.Exit token. Reuse the reviewed Go import parser rather
+    # than creating a second import grammar.
+    for name, source in package_tests.items():
+        if type(source) is not str:
+            raise RuntimeError(failure)
+        try:
+            aliases = upload_route_local_go_imports(source, include_aliases=True)
+        except RuntimeError:
+            raise RuntimeError(failure) from None
+        if any(binding.split("\t", 1)[1] in {"os", "syscall", "log"}
+               for binding in aliases):
+            raise RuntimeError(failure)
     reviewed_exit = "deletion_worker_sigkill_recovery_linux_test.go"
     reviewed_helper = (
         r"(?m)^func sigkillHelperAbort\(stage string\) \{\n"
@@ -3410,6 +3423,15 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
             ("syscall variable initializer exit", "shadow.go",
              'package httpserver\nimport "syscall"\n'
              'var _ = func() int { syscall.Exit(0); return 0 }()\n'),
+            ("dot-import variable initializer exit", "shadow.go",
+             'package httpserver\nimport . "os"\n'
+             'var _ = func() int { Exit(0); return 0 }()\n'),
+            ("aliased-import variable initializer exit", "shadow.go",
+             'package httpserver\nimport exitpkg "os"\n'
+             'var _ = func() int { exitpkg.Exit(0); return 0 }()\n'),
+            ("aliased syscall variable initializer exit", "shadow.go",
+             'package httpserver\nimport terminate "syscall"\n'
+             'var _ = func() int { terminate.Exit(0); return 0 }()\n'),
             ("comment-split variable initializer exit", "shadow.go",
              'package httpserver\nimport "os"\n'
              'var _ = func() int { os /* gap */ . Exit(0); return 0 }()\n'),
