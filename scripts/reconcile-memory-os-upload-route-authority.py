@@ -562,7 +562,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 if untransferred_stage_fd is not None:
                     try:
                         os.close(untransferred_stage_fd)
-                    except OSError as stage_close_exc:
+                    except Exception as stage_close_exc:
                         # Do not retry an ambiguously completed descriptor close.
                         if original_failure is None:
                             raise
