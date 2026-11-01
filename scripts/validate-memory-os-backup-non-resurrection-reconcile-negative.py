@@ -7,6 +7,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-non-resurrection-authority.py"
@@ -308,8 +309,28 @@ def prove_post_write_aggregate_rollback() -> None:
     print("PASS rollback: aggregate rejection byte/mode-restores typed, generation, contract and status authorities")
 
 
+def prove_post_validator_target_allowlist() -> None:
+    reconciler = load_reconciler("memory_os_typed_non_resurrection_post_validator_allowlist")
+    unreviewed_relative = ALTERNATE_FILE.relative_to(ROOT)
+    with patch.object(reconciler.subprocess, "run", side_effect=Fail("unreviewed typed child executed")):
+        for path, relative, label in (
+            (ALTERNATE_FILE, unreviewed_relative, "typed non-resurrection validator"),
+            (ALTERNATE_FILE, unreviewed_relative, "synthetic unreviewed validator"),
+            (reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "operability validator"),
+        ):
+            try:
+                reconciler.run_post_validator(path, relative, label)
+            except reconciler.Fail as exc:
+                require(str(exc) == "unreviewed typed non-resurrection post-validator",
+                        "typed post-validator unreviewed target rejected at wrong boundary")
+            else:
+                raise Fail("typed post-validator unreviewed repository target accepted")
+    print("PASS: typed non-resurrection post-validator closed label/path targets")
+
+
 def main() -> int:
     require(ALTERNATE_FILE.is_file(), "alternate repository fixture missing")
+    prove_post_validator_target_allowlist()
     for attribute in (
         "CONTRACT",
         "REGISTRY",

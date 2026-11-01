@@ -283,6 +283,12 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
         values.append(value)
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
+    reviewed = {
+        "typed non-resurrection validator": (VALIDATOR, VALIDATOR_REL),
+        "operability validator": (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL),
+    }
+    require(reviewed.get(label) == (path, expected_relative),
+            "unreviewed typed non-resurrection post-validator")
     require_exact_repo_file(path, expected_relative, label)
     # Preserve the reviewed post-validator's execution boundary: inherited
     # import/loader/Git settings must not turn a failing child into exit 0.
