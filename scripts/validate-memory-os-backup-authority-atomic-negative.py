@@ -278,6 +278,44 @@ def local_reconciler_child_transport(module, label: str) -> None:
         )
 
 
+def local_reconciler_cleanup_preserves_primary(module, label: str) -> None:
+    """Secondary temporary cleanup errors must not hide a failed authority write."""
+    status = module.STATUS_PATH if label == "normalizer" else module.STATUS
+    original = status.read_bytes()
+    before = set(status.parent.glob(f".{status.name}.*.tmp"))
+    real_replace = module.os.replace
+    real_unlink = Path.unlink
+    cleanup_attempts: list[Path] = []
+
+    def fail_replace(source, destination) -> None:
+        raise OSError("synthetic primary authority replacement failure")
+
+    def fail_cleanup(self, *args, **kwargs) -> None:
+        if self.name.startswith(f".{status.name}.") and self.name.endswith(".tmp"):
+            cleanup_attempts.append(self)
+            raise OSError("synthetic secondary temporary cleanup failure")
+        real_unlink(self, *args, **kwargs)
+
+    module.os.replace = fail_replace
+    try:
+        with patch.object(Path, "unlink", fail_cleanup):
+            try:
+                module.atomic_write_bytes(status, b"synthetic local-only payload")
+            except (module.ReconcileFailure if label == "normalizer" else module.Fail) as exc:
+                require("atomic authority write failed" in str(exc),
+                        f"{label} secondary cleanup masked primary write failure")
+            else:
+                raise Fail(f"{label} accepted failed authority replacement")
+        require(len(cleanup_attempts) == 1,
+                f"{label} did not attempt temporary cleanup")
+        require(status.read_bytes() == original,
+                f"{label} cleanup failure changed production status")
+    finally:
+        module.os.replace = real_replace
+        for item in set(status.parent.glob(f".{status.name}.*.tmp")) - before:
+            real_unlink(item)
+
+
 def normalizer_noop_validation(module) -> None:
     original = module.STATUS_PATH.read_bytes()
     real_normalize = module.normalize
@@ -618,6 +656,8 @@ def main() -> int:
     coherent_authority_identity(coherent)
     local_reconciler_child_transport(normalizer, "normalizer")
     local_reconciler_child_transport(coherent, "coherent")
+    local_reconciler_cleanup_preserves_primary(normalizer, "normalizer")
+    local_reconciler_cleanup_preserves_primary(coherent, "coherent")
     normalizer_noop_validation(normalizer)
     normalizer_atomic_replace_failure(normalizer)
     normalizer_atomic_rollback(normalizer)
@@ -640,6 +680,7 @@ def main() -> int:
     print("normalizer atomic replacement/rollback bytes+mode: enforced")
     print("coherent no-op aggregate validation: enforced")
     print("coherent atomic replacement/rollback bytes+mode: enforced")
+    print("temporary cleanup preserves primary failure: enforced")
     print("temporary authority cleanup: enforced")
     print("production evidence: false")
     print("production decision: NO_GO")

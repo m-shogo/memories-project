@@ -335,7 +335,13 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
         raise ReconcileFailure(f"atomic authority write failed: {path.name}") from exc
     finally:
         if temp_path is not None and temp_path.exists():
-            temp_path.unlink()
+            try:
+                temp_path.unlink()
+            except OSError:
+                # Preserve the original write failure; the leftover temp remains
+                # observable by the caller's clean-source / rollback checks.
+                if sys.exc_info()[0] is None:
+                    raise ReconcileFailure("atomic authority temporary cleanup failed") from None
 
 
 CANONICAL_RUNTIME_AUTHORITY_GUARD = validate_runtime_authority
