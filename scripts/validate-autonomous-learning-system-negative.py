@@ -846,6 +846,45 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                     real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical malformed metadata recovery corrupted authority")
+        # A forged regular-file mode must not hide missing or non-integer
+        # identity fields and cause an unreviewed descriptor acquisition.
+        preflight_stat = real_lstat(target)
+        identity_fields = ("st_mode", "st_dev", "st_ino", "st_size",
+                           "st_mtime_ns", "st_ctime_ns")
+        for field, bad_value, missing in (
+                ("st_dev", None, True),
+                ("st_size", True, False),
+                ("st_ctime_ns", "123", False)):
+            metadata = {name: getattr(preflight_stat, name) for name in identity_fields}
+            if missing:
+                del metadata[field]
+            else:
+                metadata[field] = bad_value
+            forged_stat = type("SyntheticCanonicalStat", (), metadata)()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            unexpected_opens: list[Path] = []
+            def forged_lstat(path):
+                if path == target:
+                    return forged_stat
+                return real_lstat(path)
+            def forbid_forged_open(path, flags):
+                if Path(path) == target:
+                    unexpected_opens.append(Path(path))
+                    raise RuntimeError("incomplete canonical metadata opened authority")
+                return real_open(path, flags)
+            try:
+                with mock.patch.object(module.Path, "lstat", new=forged_lstat), \
+                     mock.patch.object(module.os, "open", side_effect=forbid_forged_open):
+                    reject("incomplete regular canonical metadata",
+                           f"unreadable authority: {target}")
+                if unexpected_opens:
+                    raise RuntimeError("incomplete canonical metadata reached os.open")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("incomplete canonical metadata corrupted canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical incomplete-metadata recovery corrupted authority")
         # Invalid os.open results confer no raw descriptor ownership. In
         # particular bool is an int subclass and must not alias fd 0 or 1.
         for invalid_fd in (None, True, -1, 1.5, "3"):
