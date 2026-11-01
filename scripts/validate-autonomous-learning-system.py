@@ -81,7 +81,12 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # outer finally close exactly the descriptor we still own.
         stream = os.fdopen(fd, "rb", closefd=False)
         with preserve_nonowning_stream_close(stream, path):
-            before = os.fstat(stream.fileno())
+            # The non-owning stream must expose the descriptor we opened;
+            # an alias to the same inode is not a transfer of authority.
+            stream_fd = stream.fileno()
+            if type(stream_fd) is not int or stream_fd != fd:
+                raise ValidationFailure(f"unreadable authority: {path}")
+            before = os.fstat(fd)
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                     or before.st_mode & 0o022
                     or (preflight.st_dev, preflight.st_ino) !=
