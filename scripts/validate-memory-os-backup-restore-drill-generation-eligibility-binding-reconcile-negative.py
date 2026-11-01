@@ -1131,8 +1131,19 @@ def prove_validator_negative_suite_private_transport() -> None:
 
     def fake_run(exit_code):
         def run(argv, **kwargs):
-            require(argv == [validator.sys.executable, str(validator.DRILL_NEGATIVE)],
+            require(len(argv) == 4
+                    and argv[0] == validator.sys.executable
+                    and argv[1] == "-c"
+                    and argv[3] == str(validator.DRILL_NEGATIVE),
                     "binding negative suite child target drift")
+            require("sys.stdin.buffer.read()" in argv[2]
+                    and "exec(compile(" in argv[2]
+                    and "sys.argv[:] = [path]" in argv[2],
+                    "binding negative suite pinned bootstrap drift")
+            source = kwargs.get("input")
+            require(type(source) is bytes
+                    and source == validator.DRILL_NEGATIVE.read_bytes(),
+                    "binding negative suite child source was not pinned")
             require(kwargs.get("cwd") == validator.ROOT
                     and kwargs.get("stdout") == validator.subprocess.DEVNULL
                     and kwargs.get("stderr") == validator.subprocess.DEVNULL
@@ -1182,7 +1193,7 @@ def prove_validator_negative_suite_private_transport() -> None:
     require(seen == [0, 1, False, None],
             "binding negative suite transport controls incomplete")
     assert_canonical_unchanged(canonical_contract, canonical_registry, "binding negative suite transport")
-    print("PASS: binding negative suite isolated bounded private transport and strict typed exit")
+    print("PASS: binding negative suite pinned stdin source, isolated bounded private transport and strict typed exit")
 
 
 def main() -> int:

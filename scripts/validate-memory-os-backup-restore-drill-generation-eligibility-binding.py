@@ -220,8 +220,10 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_module(path: Path, expected_relative: Path, name: str, field: str):
-    """Execute only a bounded source snapshot opened beneath pinned no-follow directories."""
+def load_module(path: Path, expected_relative: Path, name: str, field: str,
+                *, source_only: bool = False):
+    """Read pinned canonical module bytes; execute only when explicitly requested."""
+    require(type(source_only) is bool, f"{field} module source option invalid")
     require_exact_repo_file(path, expected_relative, field)
     owned: list[int] = []
     source: bytes
@@ -317,6 +319,9 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         if cleanup_failed and not primary_failure:
             raise Fail(f"{field} module descriptor cleanup failed") from None
 
+    if source_only:
+        return source
+
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -325,14 +330,30 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
     return module
 
 def run_negative_suite() -> None:
-    require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")
+    # The child must execute the same verified bytes, not re-open a mutable
+    # pathname after the reviewed negative-validator identity check.
+    source = load_module(
+        DRILL_NEGATIVE, DRILL_NEGATIVE_REL,
+        "pinned_drill_request_negative_source",
+        "drill request negative validator", source_only=True,
+    )
+    require(type(source) is bytes, "drill request negative suite invalid pinned source")
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
     }
+    bootstrap = (
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+    )
     try:
         completed = subprocess.run(
-            [sys.executable, str(DRILL_NEGATIVE)],
+            [sys.executable, "-c", bootstrap, str(DRILL_NEGATIVE)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
