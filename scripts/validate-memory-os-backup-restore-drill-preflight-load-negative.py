@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
@@ -497,11 +498,32 @@ def prove_post_reconcile_output_suppression(reconciler: object) -> None:
                 kwargs.get("stderr") == reconciler.subprocess.DEVNULL and
                 kwargs.get("check") is False and kwargs.get("timeout") == 180,
                 "preflight post-validator output/timeout boundary drift")
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict), "preflight post-validator child environment missing")
+        require(child_env.get("SAFE_PREFLIGHT_RECONCILE_ENV") == "preserved",
+                "preflight post-validator benign environment lost")
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                    "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+            require(key not in child_env, "preflight post-validator inherited override: " + key)
+        require(child_env == {
+            key: value for key, value in reconciler.os.environ.items()
+            if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+        }, "preflight post-validator child environment drift")
         return SimpleNamespace(returncode=0)
 
     try:
         reconciler.subprocess.run = reviewed_run
-        reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
+        poisoned = {
+            "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+            "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+            "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+            "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+            "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+            "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+            "SAFE_PREFLIGHT_RECONCILE_ENV": "preserved",
+        }
+        with patch.dict(reconciler.os.environ, poisoned):
+            reconciler.run_post_reconcile_validator(reconciler.VALIDATOR_MODULE, "preflight")
         require(len(calls) == 1, "preflight post-validator positive was not invoked")
 
         reconciler.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
@@ -548,7 +570,7 @@ def prove_post_reconcile_output_suppression(reconciler: object) -> None:
             raise Fail("preflight post-validator OS failure accepted")
     finally:
         reconciler.subprocess.run = original_run
-    print("PASS: preflight post-reconcile bounded output-suppressed positive and 4 negatives")
+    print("PASS: preflight post-reconcile sanitized child environment, bounded output and 4 negatives")
 
 
 def prove_atomic_write_failure(reconciler: object) -> None:

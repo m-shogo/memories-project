@@ -281,10 +281,17 @@ def run_post_reconcile_validator(path: Path, label: str) -> None:
         relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
     else:
         relative = require_repo_file(path, f"{label} validator missing")
+    # A post-reconcile PASS must come from the reviewed validator, not from
+    # an inherited Python import or dynamic-loader override exiting zero.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(ROOT / relative)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
