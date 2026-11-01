@@ -3354,15 +3354,31 @@ def require_reviewed_upload_route_transitive_callsite(function_source: str) -> N
     if len(loops) != 1 or loops[0] not in definition.body:
         raise RuntimeError(failure)
     # A source-visible loop inside an unreachable wrapper is not a real
-    # admission path. Nor may a top-level or conditional return precede it.
-    def eager_return(node: ast.AST) -> bool:
+    # admission path. Pre-loop returns and successful process termination
+    # can otherwise make the import-closure checker appear reachable but unrun.
+    def eager_bypass(node: ast.AST) -> bool:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                              ast.Lambda, ast.ClassDef)):
             return False  # Deferred function/class bodies are not this path.
         if isinstance(node, ast.Return):
             return True
-        return any(eager_return(child) for child in ast.iter_child_nodes(node))
-    if any(eager_return(node) for node in
+        if isinstance(node, ast.Raise):
+            target = node.exc
+            if isinstance(target, ast.Call):
+                target = target.func
+            if isinstance(target, ast.Name) and target.id == "SystemExit":
+                return True
+        if isinstance(node, ast.Call):
+            callee = node.func
+            if isinstance(callee, ast.Name) and callee.id in {"exit", "quit"}:
+                return True
+            if (isinstance(callee, ast.Attribute)
+                    and isinstance(callee.value, ast.Name)
+                    and (callee.value.id, callee.attr) in {
+                        ("sys", "exit"), ("os", "_exit")}):
+                return True
+        return any(eager_bypass(child) for child in ast.iter_child_nodes(node))
+    if any(eager_bypass(node) for node in
            definition.body[:definition.body.index(loops[0])]):
         raise RuntimeError(failure)
     file_loops = [node for node in ast.walk(loops[0])
@@ -3455,6 +3471,16 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
             while_anchor, "    return\n" + while_anchor, 1)),
         ("conditional early return", source.replace(
             while_anchor, "    if True:\n        return\n" + while_anchor, 1)),
+        ("pre-loop SystemExit zero", source.replace(
+            while_anchor, "    raise SystemExit(0)\n" + while_anchor, 1)),
+        ("conditional SystemExit zero", source.replace(
+            while_anchor, "    if True:\n        raise SystemExit(0)\n" + while_anchor, 1)),
+        ("pre-loop sys exit zero", source.replace(
+            while_anchor, "    sys.exit(0)\n" + while_anchor, 1)),
+        ("pre-loop os immediate exit zero", source.replace(
+            while_anchor, "    os._exit(0)\n" + while_anchor, 1)),
+        ("pre-loop builtin exit zero", source.replace(
+            while_anchor, "    exit(0)\n" + while_anchor, 1)),
         ("unreachable wrapper", nested_loop),
         ("duplicate call", source.replace(anchor, anchor + anchor, 1)),
     ):
