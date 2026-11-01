@@ -792,6 +792,64 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 raise RuntimeError("canonical close-after-effect corrupted canary")
             real_close(recycled[0])
             real_close(guard_fd)
+        # A non-owning stream close fault must not replace an existing
+        # canonical validation failure, and its raw descriptor must be
+        # released once even if the stream cleanup itself fails.
+        for label, payload, after_effect, error_type, expected in (
+                ("stream close before success", b"stable", False, OSError,
+                 f"unreadable authority: {target}"),
+                ("stream close before original error", b"x" * 11, False, OSError,
+                 "reviewed source oversized"),
+                ("stream close after success", b"stable", True, ValueError,
+                 f"unreadable authority: {target}"),
+                ("stream close after original error", b"x" * 11, True, ValueError,
+                 "reviewed source oversized")):
+            target.write_bytes(payload)
+            opened.clear()
+            stream_instances = []
+            guard_fd = real_open(canary, os.O_RDONLY)
+            def faulty_stream(descriptor, mode, **kwargs):
+                if mode != "rb" or kwargs.get("closefd") is not False:
+                    raise RuntimeError("canonical stream ownership drift")
+                underlying = actual_fdopen(descriptor, mode, **kwargs)
+                class StreamWithFault:
+                    close_calls = 0
+                    def fileno(self):
+                        return underlying.fileno()
+                    def read(self, size=-1):
+                        return underlying.read(size)
+                    def close(self):
+                        self.close_calls += 1
+                        if after_effect:
+                            underlying.close()
+                        raise error_type("synthetic stream close fault")
+                wrapper = StreamWithFault()
+                stream_instances.append((wrapper, underlying))
+                return wrapper
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.os, "fdopen", side_effect=faulty_stream):
+                    reject(label, expected)
+                if len(opened) != 1 or len(stream_instances) != 1:
+                    raise RuntimeError("canonical stream-close fixture inventory drift")
+                wrapper, underlying = stream_instances[0]
+                if wrapper.close_calls != 1:
+                    raise RuntimeError("canonical stream close was not attempted exactly once")
+                try:
+                    os.fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical stream close wrong FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical stream close leaked raw FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical stream close corrupted external canary")
+            finally:
+                for _, underlying in stream_instances:
+                    underlying.close()
+                real_close(guard_fd)
+        target.write_bytes(b"stable")
         target.write_bytes(b"stable")
         target.write_bytes(b"x" * 11)
         reject("oversized", "reviewed source oversized")
