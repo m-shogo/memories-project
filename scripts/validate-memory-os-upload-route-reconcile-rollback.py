@@ -1563,7 +1563,8 @@ def prove_atomic_prestage_parent_swap(module) -> None:
 
     # A failed child-component open must retain its original error even
     # when the outer ancestor cleanup close fails before or after its effect.
-    for child_open_close_case in ("before-child-open-cleanup", "after-child-open-cleanup"):
+    for child_open_close_case in ("before-child-open-cleanup", "after-child-open-cleanup",
+                                  "before-child-open-valueerror", "after-child-open-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-open-close-") as temp_dir:
             root = Path(temp_dir)
             parent = root / "owned"
@@ -1588,13 +1589,15 @@ def prove_atomic_prestage_parent_swap(module) -> None:
 
             def fail_ancestor_cleanup_close(descriptor):
                 if descriptor == root_fd[0]:
-                    if child_open_close_case == "after-child-open-cleanup":
+                    if child_open_close_case in ("after-child-open-cleanup", "after-child-open-valueerror"):
                         original_close(descriptor)
                         probe = original_open(canary, module.os.O_RDONLY)
                         if probe != descriptor:
                             module.os.dup2(probe, descriptor)
                             original_close(probe)
                         recycled_fd[0] = descriptor
+                    if child_open_close_case.endswith("valueerror"):
+                        raise ValueError("synthetic outer ancestor cleanup close fault")
                     raise OSError("synthetic outer ancestor cleanup close fault")
                 return original_close(descriptor)
 
@@ -1609,6 +1612,9 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                     require(any("pinned ancestor cleanup descriptor close status unknown" in note
                                 for note in getattr(exc, "__notes__", [])),
                             "child open cleanup lost primary failure diagnostic")
+                    if child_open_close_case.endswith("valueerror"):
+                        require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                "non-OSError child open cleanup lost close uncertainty type")
                 else:
                     raise Fail("child component open failure was accepted")
             finally:
@@ -1622,7 +1628,7 @@ def prove_atomic_prestage_parent_swap(module) -> None:
             except OSError as exc:
                 raise Fail(f"child open cleanup retried uncertain descriptor: {exc}") from exc
             try:
-                if child_open_close_case == "after-child-open-cleanup":
+                if child_open_close_case in ("after-child-open-cleanup", "after-child-open-valueerror"):
                     require(recycled_fd[0] == root_fd[0]
                             and stat.S_ISREG(observed.st_mode)
                             and (observed.st_dev, observed.st_ino)

@@ -292,7 +292,7 @@ def open_pinned_parent(path: Path, expected_parent: os.stat_result) -> int:
         if fd is not None:
             try:
                 os.close(fd)
-            except OSError as ancestor_cleanup_exc:
+            except Exception as ancestor_cleanup_exc:
                 # A failed close may already have consumed this FD number.
                 # Never retry it or overwrite the original traversal failure.
                 exc.add_note(
