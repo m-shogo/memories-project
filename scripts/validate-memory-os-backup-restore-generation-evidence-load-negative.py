@@ -1151,6 +1151,55 @@ def prove_generation_private_authority_path_diagnostics(validator) -> None:
     print("PASS: generation evidence missing file/lock parent diagnostics suppress private context")
 
 
+def prove_generation_child_target_allowlist(validator) -> None:
+    """A valid repository file or mismatched label cannot become an executable child."""
+    reviewed = (
+        (validator.NEGATIVE_VALIDATOR, validator.NEGATIVE_VALIDATOR_REL,
+         "negative admission suite"),
+        (validator.SEMANTIC_NEGATIVE_VALIDATOR, validator.SEMANTIC_NEGATIVE_VALIDATOR_REL,
+         "semantic generation negative admission suite"),
+        (validator.REVIEW_SOURCE_ORDER_VALIDATOR, validator.REVIEW_SOURCE_ORDER_VALIDATOR_REL,
+         "review source-order validator"),
+        (validator.INDEPENDENT_REVIEW_VALIDATOR, validator.INDEPENDENT_REVIEW_VALIDATOR_REL,
+         "generation independent-review validator"),
+    )
+    original_run = validator.subprocess.run
+    launched = []
+
+    def fake_run(argv, **kwargs):
+        launched.append(argv)
+        require(kwargs.get("cwd") == validator.ROOT,
+                "generation child positive control cwd drift")
+        return validator.subprocess.CompletedProcess(argv, 0)
+
+    validator.subprocess.run = fake_run
+    try:
+        for path, relative, label in reviewed:
+            validator.run_validator(path, relative, label)
+        require(launched == [[validator.sys.executable, str(path)]
+                             for path, _, _ in reviewed],
+                "generation child reviewed positive target set drift")
+        before = len(launched)
+        for path, relative, label in (
+            (validator.WRITER, validator.WRITER_REL, "generation evidence writer"),
+            (reviewed[0][0], reviewed[0][1], reviewed[3][2]),
+            (reviewed[3][0], reviewed[3][1], reviewed[0][2]),
+            (reviewed[0][0], reviewed[3][1], reviewed[0][2]),
+        ):
+            try:
+                validator.run_validator(path, relative, label)
+            except validator.Fail as exc:
+                require(str(exc) == "unreviewed generation evidence child validator",
+                        "generation child target rejected at wrong boundary")
+            else:
+                raise Fail("unreviewed generation evidence child was accepted")
+            require(len(launched) == before,
+                    "unreviewed generation child reached subprocess")
+    finally:
+        validator.subprocess.run = original_run
+    print("PASS: generation evidence child validator reviewed label/path allowlist")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -1184,6 +1233,7 @@ def main() -> int:
     prove_generation_evidence_writer_json_reader(writer)
     prove_generation_evidence_json_reader(validator)
     prove_generation_private_authority_path_diagnostics(validator)
+    prove_generation_child_target_allowlist(validator)
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
 
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")

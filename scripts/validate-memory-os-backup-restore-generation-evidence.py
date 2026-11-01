@@ -219,7 +219,18 @@ def load_writer():
 
 
 def run_validator(path: Path, expected_relative: Path, label: str) -> None:
-    """Execute a canonical child without publishing its output or hanging indefinitely."""
+    """Execute only a reviewed child without publishing its output or hanging indefinitely."""
+    reviewed = {
+        "negative admission suite": (NEGATIVE_VALIDATOR, NEGATIVE_VALIDATOR_REL),
+        "semantic generation negative admission suite": (
+            SEMANTIC_NEGATIVE_VALIDATOR, SEMANTIC_NEGATIVE_VALIDATOR_REL),
+        "review source-order validator": (
+            REVIEW_SOURCE_ORDER_VALIDATOR, REVIEW_SOURCE_ORDER_VALIDATOR_REL),
+        "generation independent-review validator": (
+            INDEPENDENT_REVIEW_VALIDATOR, INDEPENDENT_REVIEW_VALIDATOR_REL),
+    }
+    require(reviewed.get(label) == (path, expected_relative),
+            "unreviewed generation evidence child validator")
     require_exact_repo_file(path, expected_relative, label)
     # Never let inherited import/loader/Git overrides manufacture a child
     # validator exit zero before reviewed generation-evidence checks run.
