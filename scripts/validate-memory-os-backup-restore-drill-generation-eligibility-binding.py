@@ -8,6 +8,7 @@ import json
 import math
 import os
 import subprocess
+import stat
 import sys
 from pathlib import Path
 from typing import Any
@@ -126,13 +127,60 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_module(path: Path, expected_relative: Path, name: str, field: str):
+    """Execute only a bounded source snapshot opened beneath pinned no-follow directories."""
     require_exact_repo_file(path, expected_relative, field)
+    owned: list[int] = []
+    source: bytes
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(ROOT, directory_flags)
+        owned.append(parent_fd)
+        for component in expected_relative.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            owned.append(parent_fd)
+        source_fd = os.open(expected_relative.name, file_flags, dir_fd=parent_fd)
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(
+            stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            and 0 <= before.st_size <= MAX_BINDING_AUTHORITY_BYTES,
+            f"{field} module source type/size drift",
+        )
+        with os.fdopen(os.dup(source_fd), "rb") as stream:
+            source = stream.read(MAX_BINDING_AUTHORITY_BYTES + 1)
+        after = os.fstat(source_fd)
+        leaf = os.stat(expected_relative.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(
+            len(source) <= MAX_BINDING_AUTHORITY_BYTES
+            and len(source) == before.st_size
+            and identity(before) == identity(after) == identity(leaf),
+            f"{field} module source changed during read",
+        )
+        require_exact_repo_file(path, expected_relative, field)
+        require(
+            identity(path.stat()) == identity(after),
+            f"{field} module pathname changed during read",
+        )
+    except (OSError, ValueError, TypeError, OverflowError) as exc:
+        raise Fail(f"{field} module source unavailable or unsafe") from exc
+    finally:
+        for owned_fd in reversed(owned):
+            try:
+                os.close(owned_fd)
+            except OSError:
+                # Do not retry a potentially recycled descriptor.
+                pass
+
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Never ask SourceFileLoader to re-open a mutable pathname after validation.
+    exec(compile(source, str(path), "exec"), module.__dict__)
     return module
-
 
 def run_negative_suite() -> None:
     require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")

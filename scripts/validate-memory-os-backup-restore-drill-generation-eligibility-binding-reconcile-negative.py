@@ -68,6 +68,82 @@ def expect_validator_substitution_rejected(validator: Any, attribute: str, repla
         setattr(validator, attribute, original)
 
 
+def prove_validator_pinned_module_import() -> None:
+    """A post-check symlink swap must not execute external module bytes."""
+    with tempfile.TemporaryDirectory(prefix="binding-module-source-") as temporary:
+        root = Path(temporary) / "repo"
+        package = root / "pkg"
+        package.mkdir(parents=True)
+        approved = package / "approved.py"
+        approved.write_text("VALUE = 42\n", encoding="utf-8")
+        outside = Path(temporary) / "outside.py"
+        marker = Path(temporary) / "untrusted-executed"
+        outside.write_text(
+            "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('unsafe')\n",
+            encoding="utf-8",
+        )
+        validator = load_module(VALIDATOR, "memory_os_binding_pinned_module_negative")
+        original_root = validator.ROOT
+        original_check = validator.require_exact_repo_file
+        validator.ROOT = root
+        try:
+            module = validator.load_module(
+                approved, Path("pkg/approved.py"), "binding_safe_fixture", "fixture"
+            )
+            require(module.VALUE == 42, "pinned source positive control did not execute")
+
+            def swapped_leaf(path: Path, expected: Path, field: str) -> Path:
+                result = original_check(path, expected, field)
+                if not approved.is_symlink():
+                    approved.rename(package / "original.py")
+                    approved.symlink_to(outside)
+                return result
+
+            validator.require_exact_repo_file = swapped_leaf
+            try:
+                validator.load_module(
+                    approved, Path("pkg/approved.py"), "binding_leaf_swap", "fixture"
+                )
+            except validator.Fail:
+                pass
+            else:
+                raise Fail("post-check symlinked module leaf was executed")
+            require(not marker.exists(), "untrusted symlinked leaf module executed")
+
+            approved.unlink()
+            (package / "original.py").rename(approved)
+            outside_package = Path(temporary) / "outside-pkg"
+            outside_package.mkdir()
+            (outside_package / "approved.py").write_text(
+                outside.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+            swapped = False
+            def swapped_parent(path: Path, expected: Path, field: str) -> Path:
+                nonlocal swapped
+                result = original_check(path, expected, field)
+                if not swapped:
+                    swapped = True
+                    package.rename(root / "pkg-original")
+                    package.symlink_to(outside_package, target_is_directory=True)
+                return result
+
+            validator.require_exact_repo_file = swapped_parent
+            try:
+                validator.load_module(
+                    approved, Path("pkg/approved.py"), "binding_parent_swap", "fixture"
+                )
+            except validator.Fail:
+                pass
+            else:
+                raise Fail("post-check symlinked module parent was executed")
+            require(not marker.exists(), "untrusted symlinked parent module executed")
+        finally:
+            validator.require_exact_repo_file = original_check
+            validator.ROOT = original_root
+    print("PASS pinned module import: positive control, post-check leaf and parent swaps")
+
+
 def prove_validator_execution_identity() -> None:
     validator = load_module(VALIDATOR, "memory_os_drill_generation_binding_validator_negative")
     path_cases = (
@@ -575,6 +651,7 @@ def main() -> int:
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_validator_execution_identity()
+    prove_validator_pinned_module_import()
     prove_validator_strict_json_loader()
     prove_validator_negative_suite_private_transport()
     reconciler = load_reconciler()
