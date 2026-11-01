@@ -795,7 +795,14 @@ def prove_post_validator_private_transport(reconciler: object) -> None:
             reconciler.subprocess.run = original_run
     require(seen == [0, 1, False, None] * 2,
             "admission-chain post-validator positive/negative controls incomplete")
-    print("PASS: admission-chain post-validators use isolated bounded private transport")
+    try:
+        reconciler.run_validator(reconciler.CONTRACT, "synthetic unreviewed validator")
+    except reconciler.Fail as exc:
+        require(str(exc) == "unreviewed admission-chain post-reconcile validator",
+                "admission-chain unreviewed validator rejected at wrong boundary")
+    else:
+        raise Fail("admission-chain unreviewed repository validator accepted")
+    print("PASS: admission-chain post-validators use isolated bounded private transport and reject unreviewed targets")
 
 
 def main() -> int:

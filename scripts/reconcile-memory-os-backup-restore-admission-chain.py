@@ -192,7 +192,7 @@ def run_validator(path: Path, label: str) -> None:
     elif path == OPERABILITY_VALIDATOR:
         require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
     else:
-        require_repo_file(path, f"{label} validator missing")
+        raise Fail("unreviewed admission-chain post-reconcile validator")
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
