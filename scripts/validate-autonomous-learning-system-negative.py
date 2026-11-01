@@ -1330,7 +1330,23 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         # A malformed *second* parent metadata read must fail closed after
         # the leaf has been opened, without leaking the owned FD or replacing
         # the external canary. This differs from preflight malformed metadata.
-        for malformed in (None, object()):
+        postread_parent_stat = real_lstat(parent)
+        postread_fields = ("st_mode", "st_dev", "st_ino", "st_ctime_ns")
+        def malformed_postread_stat(field, value):
+            fields = {name: getattr(postread_parent_stat, name)
+                      for name in postread_fields}
+            fields[field] = value
+            return type("SyntheticPostreadParent", (), fields)()
+        for malformed in (
+                None,
+                object(),
+                malformed_postread_stat("st_mode", True),
+                malformed_postread_stat(
+                    "st_mode", type("PostreadModeSubclass", (int,), {})(
+                        postread_parent_stat.st_mode)),
+                malformed_postread_stat("st_dev", None),
+                malformed_postread_stat("st_ino", "123"),
+                malformed_postread_stat("st_ctime_ns", True)):
             parent_reads = 0
             guard_fd = real_open(canary, os.O_RDONLY)
             owned_fds: list[int] = []
