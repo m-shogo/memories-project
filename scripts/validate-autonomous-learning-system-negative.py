@@ -787,6 +787,48 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         real_close = os.close
         canary = Path(tmp) / "external-canary"
         canary.write_bytes(b"external")
+        # Malformed stream interfaces are ordinary acquisition/read faults,
+        # not unhandled tracebacks or authority bytes. Keep the external FD.
+        for label, fault in (
+                ("fdopen TypeError", "acquisition"),
+                ("missing stream interface", "missing"),
+                ("stream read TypeError", "read")):
+            opened.clear()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            def malformed_stream(descriptor, mode, **kwargs):
+                if fault == "acquisition":
+                    raise TypeError("synthetic malformed stream acquisition")
+                if fault == "missing":
+                    return None
+                underlying = actual_fdopen(descriptor, mode, **kwargs)
+                class BadReadStream:
+                    def fileno(self):
+                        return underlying.fileno()
+                    def read(self, size=-1):
+                        raise TypeError("synthetic malformed stream read")
+                    def close(self):
+                        underlying.close()
+                return BadReadStream()
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.os, "fdopen", side_effect=malformed_stream):
+                    reject(label, f"unreadable authority: {target}")
+                if len(opened) != 1:
+                    raise RuntimeError("canonical malformed-stream FD inventory drift")
+                try:
+                    os.fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical malformed-stream wrong FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical malformed-stream leaked raw FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical malformed-stream corrupted canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical malformed-stream recovery corrupted authority")
         # Only immutable bytes from a binary stream may become a canonical
         # authority snapshot. Non-byte payloads must fail before len/decoding.
         for label, payload in (
