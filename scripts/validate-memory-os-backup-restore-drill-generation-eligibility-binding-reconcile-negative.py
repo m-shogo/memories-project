@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import stat
 import subprocess
@@ -285,6 +286,91 @@ def prove_post_validator_private_transport(reconciler: Any) -> None:
     print("PASS: drill generation binding post-validators use isolated bounded private transport and closed targets")
 
 
+def prove_atomic_writer_double_fault_and_fd_ownership(reconciler: Any) -> None:
+    canonical_contract, canonical_registry = canonical_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-drill-generation-binding-fd-", dir=TMP_PARENT) as raw:
+        target = Path(raw) / "binding-atomic.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        original = target.read_bytes()
+        original_mode = stat.S_IMODE(target.stat().st_mode)
+        original_mkstemp = reconciler.tempfile.mkstemp
+        original_fdopen = reconciler.os.fdopen
+        captured = []
+
+        def capture_mkstemp(*args, **kwargs):
+            fd, name = original_mkstemp(*args, **kwargs)
+            captured.append((fd, Path(name)))
+            return fd, name
+
+        def reject_fdopen(*_args, **_kwargs):
+            raise OSError("synthetic private binding fdopen failure")
+
+        try:
+            reconciler.tempfile.mkstemp = capture_mkstemp
+            reconciler.os.fdopen = reject_fdopen
+            try:
+                reconciler.atomic_write_text(target, "{}")
+            except reconciler.Fail as exc:
+                require(str(exc) == "drill generation binding atomic write failed"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        f"binding fdopen failure leaked or changed diagnostic: {exc}")
+            else:
+                raise Fail("binding fdopen failure unexpectedly accepted")
+        finally:
+            reconciler.tempfile.mkstemp = original_mkstemp
+            reconciler.os.fdopen = original_fdopen
+
+        require(len(captured) == 1, "binding fdopen fixture did not acquire exactly one FD")
+        fd, temp_path = captured[0]
+        try:
+            os.fstat(fd)
+        except OSError:
+            pass
+        else:
+            raise Fail("binding fdopen failure leaked raw FD")
+        require(not temp_path.exists() and target.read_bytes() == original,
+                "binding fdopen failure left temp or changed isolated authority")
+
+        original_replace, original_unlink = reconciler.os.replace, reconciler.os.unlink
+        seen = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic private primary binding replace failure")
+
+        def reject_unlink(path, *args, **kwargs):
+            require(Path(path).parent == target.parent
+                    and Path(path).name.startswith(f".{target.name}."),
+                    "binding cleanup targeted unexpected authority")
+            seen.append(Path(path))
+            raise ValueError("synthetic private secondary binding cleanup failure")
+
+        try:
+            reconciler.os.replace = reject_replace
+            reconciler.os.unlink = reject_unlink
+            try:
+                reconciler.atomic_write_text(target, "{} ")
+            except reconciler.Fail as exc:
+                require(str(exc) == "drill generation binding atomic write failed"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        f"binding cleanup masked primary failure: {exc}")
+            else:
+                raise Fail("binding atomic double-fault unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+            for path in target.parent.glob(f".{target.name}.*.tmp"):
+                original_unlink(path)
+
+        require(len(seen) == 1 and target.read_bytes() == original
+                and stat.S_IMODE(target.stat().st_mode) == original_mode,
+                "binding atomic double-fault mutated isolated authority or missed cleanup")
+        require(not list(target.parent.glob(f".{target.name}.*.tmp")),
+                "binding atomic double-fault left temporary authority")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, "binding atomic FD/cleanup faults")
+    print("PASS: drill generation binding fdopen ownership and primary atomic failure precedence")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
@@ -294,6 +380,7 @@ def main() -> int:
     prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_reconciler_execution_identity(reconciler)
+    prove_atomic_writer_double_fault_and_fd_ownership(reconciler)
 
     original_contract_path = reconciler.CONTRACT
     original_registry_path = reconciler.DRILL_REGISTRY
@@ -365,8 +452,9 @@ def main() -> int:
             try:
                 try:
                     reconciler._reconcile()
-                except OSError as exc:
-                    require("synthetic atomic replacement failure" in str(exc), f"atomic replacement failed at wrong boundary: {exc}")
+                except reconciler.Fail as exc:
+                    require(str(exc) == "drill generation binding atomic write failed",
+                            f"atomic replacement failed at wrong boundary: {exc}")
                 except Exception as exc:
                     raise Fail(f"atomic replacement failure leaked unexpected exception: {type(exc).__name__}: {exc}") from exc
                 else:

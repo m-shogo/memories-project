@@ -120,23 +120,46 @@ def atomic_write_text(path: Path, text: str) -> None:
         original_mode = stat.S_IMODE(path.stat().st_mode)
     except OSError as exc:
         raise Fail(f"cannot stat {path.relative_to(ROOT)} before atomic replacement: {exc}") from exc
-    fd, temp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        dir=path.parent,
-    )
+    fd: int | None = None
+    temp_name: str | None = None
     try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+        )
         os.fchmod(fd, original_mode)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        # The raw FD remains ours if fdopen, stream write, flush or close fails.
+        with os.fdopen(fd, "w", encoding="utf-8", closefd=False) as handle:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
+        owned_fd = fd
+        fd = None  # Do not retry a possibly post-effect numeric close.
+        os.close(owned_fd)
         os.replace(temp_name, path)
+        temp_name = None
+    except (OSError, ValueError, TypeError):
+        raise Fail("drill generation binding atomic write failed") from None
     finally:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
+        primary_failure = sys.exc_info()[0] is not None
+        cleanup_failed = False
+        if fd is not None:
+            owned_fd = fd
+            fd = None
+            try:
+                os.close(owned_fd)
+            except Exception:
+                cleanup_failed = True
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                cleanup_failed = True
+        if cleanup_failed and not primary_failure:
+            raise Fail("drill generation binding atomic cleanup failed") from None
 
 
 CANONICAL_REQUIRE = require
