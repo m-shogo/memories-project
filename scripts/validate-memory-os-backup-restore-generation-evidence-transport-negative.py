@@ -53,7 +53,8 @@ def prove_private_bounded_child_execution(module: Any) -> None:
     """Exercise the real child runner with synthetic secret-bearing failures."""
     original_run = module.subprocess.run
     canary = "private-generation-evidence-child-canary"
-    cases = ("success", "nonzero", "timeout", "oserror", "missing-result", "boolean-code")
+    cases = ("success", "nonzero", "timeout", "oserror", "valueerror", "typeerror",
+             "missing-result", "boolean-code", "forged-zero")
     poisoned = {
         "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
         "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
@@ -91,6 +92,12 @@ def prove_private_bounded_child_execution(module: Any) -> None:
                     raise module.subprocess.TimeoutExpired(argv, 90, output=canary, stderr=canary)
                 if case == "oserror":
                     raise OSError(canary)
+                if case == "valueerror":
+                    raise ValueError(canary)
+                if case == "typeerror":
+                    raise TypeError(canary)
+                if case == "forged-zero":
+                    return type("ForgedResult", (), {"returncode": 0})()
                 if case == "missing-result":
                     return None
                 if case == "boolean-code":

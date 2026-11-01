@@ -248,9 +248,10 @@ def run_validator(path: Path, expected_relative: Path, label: str) -> None:
             timeout=90,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail("generation evidence child validator failed") from None
-    if type(getattr(completed, "returncode", None)) is not int or completed.returncode != 0:
+    if (not isinstance(completed, subprocess.CompletedProcess)
+            or type(completed.returncode) is not int or completed.returncode != 0):
         raise Fail("generation evidence child validator failed") from None
 
 
