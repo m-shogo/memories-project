@@ -476,8 +476,28 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 )
         except OSError:
             raise ReconcileFailure(f"concurrent publication parent drift: {path}") from None
-        os.replace(temporary.name, path.name,
-                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        try:
+            os.replace(temporary.name, path.name,
+                       src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        except Exception as replace_exc:
+            # A wrapper may raise after rename already took effect. This is
+            # an unknown publication outcome, not evidence of no write.
+            try:
+                post_replace = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            except Exception as probe_exc:
+                replace_exc.add_note(
+                    f"atomic replace outcome unknown; post-error probe unavailable "
+                    f"({type(probe_exc).__name__})")
+            else:
+                if (stat.S_ISREG(post_replace.st_mode)
+                        and (post_replace.st_dev, post_replace.st_ino)
+                        == (staged_stat.st_dev, staged_stat.st_ino)):
+                    replace_exc.add_note(
+                        "atomic replace outcome unknown; staged inode visible after error")
+                else:
+                    replace_exc.add_note(
+                        "atomic replace outcome unknown; staged inode not confirmed after error")
+            raise
         published = True
         try:
             live_parent = path.parent.lstat()
