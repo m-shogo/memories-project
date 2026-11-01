@@ -209,9 +209,12 @@ def load(path: Path) -> dict[str, Any]:
 MAX_WRITER_SOURCE_BYTES = 1024 * 1024
 
 
-def read_pinned_writer_source() -> bytes:
-    """Pin reviewed writer bytes and parent directories before any execution."""
-    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+def read_pinned_writer_source(path: Path | None = None, relative: Path | None = None,
+                              field: str = "generation evidence writer") -> bytes:
+    """Pin reviewed source bytes and parent directories before any execution."""
+    path = WRITER if path is None else path
+    relative = WRITER_REL if relative is None else relative
+    require_exact_repo_file(path, relative, field)
     owned: list[int] = []
     try:
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -220,7 +223,7 @@ def read_pinned_writer_source() -> bytes:
         require(type(parent_fd) is int and parent_fd >= 0,
                 "generation evidence writer source invalid descriptor")
         owned.append(parent_fd)
-        for component in WRITER_REL.parts[:-1]:
+        for component in relative.parts[:-1]:
             parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
             require(type(parent_fd) is int and parent_fd >= 0,
                     "generation evidence writer source invalid descriptor")
@@ -232,7 +235,7 @@ def read_pinned_writer_source() -> bytes:
         require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
                     for item in parent_before),
                 "generation evidence writer source parent unsafe")
-        source_fd = os.open(WRITER_REL.name, file_flags, dir_fd=parent_fd)
+        source_fd = os.open(relative.name, file_flags, dir_fd=parent_fd)
         require(type(source_fd) is int and source_fd >= 0,
                 "generation evidence writer source invalid descriptor")
         owned.append(source_fd)
@@ -253,7 +256,7 @@ def read_pinned_writer_source() -> bytes:
             remaining -= len(chunk)
         source = b"".join(chunks)
         after = os.fstat(source_fd)
-        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        leaf = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (
             item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
             item.st_size, item.st_mtime_ns, item.st_ctime_ns
@@ -264,14 +267,14 @@ def read_pinned_writer_source() -> bytes:
                 "generation evidence writer source changed during read")
         for index, directory_fd in enumerate(owned[:-1]):
             opened = os.fstat(directory_fd)
-            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            lexical = ROOT if index == 0 else ROOT.joinpath(*relative.parts[:index])
             pathname = os.lstat(lexical)
             require(stat.S_ISDIR(pathname.st_mode)
                     and parent_identity(parent_before[index])
                     == parent_identity(opened) == parent_identity(pathname),
                     "generation evidence writer source parent changed during read")
-        require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
-        require(identity(WRITER.stat()) == identity(after),
+        require_exact_repo_file(path, relative, field)
+        require(identity(path.stat()) == identity(after),
                 "generation evidence writer source pathname changed during read")
         return source
     except (OSError, ValueError, TypeError, OverflowError):
@@ -315,6 +318,17 @@ def run_validator(path: Path, expected_relative: Path, label: str) -> None:
     require(reviewed.get(label) == (path, expected_relative),
             "unreviewed generation evidence child validator")
     require_exact_repo_file(path, expected_relative, label)
+    # A later subprocess path lookup is mutable. Execute only descriptor-pinned,
+    # identity-rechecked source bytes, including the negative suites.
+    source = read_pinned_writer_source(path, expected_relative, label)
+    bootstrap = (
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+    )
     # Never let inherited import/loader/Git overrides manufacture a child
     # validator exit zero before reviewed generation-evidence checks run.
     child_env = {
@@ -323,7 +337,8 @@ def run_validator(path: Path, expected_relative: Path, label: str) -> None:
     }
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, "-c", bootstrap, str(path)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
