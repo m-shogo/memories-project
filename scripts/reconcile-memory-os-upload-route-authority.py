@@ -516,7 +516,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                             follow_symlinks=False)
                     except FileNotFoundError:
                         pass
-                    except OSError as cleanup_exc:
+                    except Exception as cleanup_exc:
                         # Do not mask the primary publication failure or unlink an unverified name.
                         if original_failure is None:
                             raise
@@ -529,7 +529,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                                 == staged_identity):
                             try:
                                 os.unlink(temporary.name, dir_fd=parent_fd)
-                            except OSError as unlink_exc:
+                            except Exception as unlink_exc:
                                 # The syscall may have removed the name before failing.
                                 if original_failure is None:
                                     raise
