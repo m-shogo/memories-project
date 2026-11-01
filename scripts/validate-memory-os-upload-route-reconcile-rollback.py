@@ -1958,7 +1958,8 @@ def prove_atomic_prestage_parent_swap(module) -> None:
 
     # Stage creation failure must retain its primary error even if closing
     # the pinned parent fails before or after consuming that descriptor.
-    for prestage_close_scenario in ("before-prestage-close", "after-prestage-close"):
+    for prestage_close_scenario in ("before-prestage-close", "after-prestage-close",
+                                   "before-prestage-valueerror", "after-prestage-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-prestage-close-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -1983,8 +1984,10 @@ def prove_atomic_prestage_parent_swap(module) -> None:
             def fail_prestage_parent_close(fd):
                 if captured_parents and fd == captured_parents[0] and not close_tripped[0]:
                     close_tripped[0] = True
-                    if prestage_close_scenario == "after-prestage-close":
+                    if prestage_close_scenario.startswith("after-prestage"):
                         original_close(fd)
+                    if prestage_close_scenario.endswith("valueerror"):
+                        raise ValueError("synthetic prestage parent close ValueError")
                     raise OSError("synthetic prestage parent close failure")
                 return original_close(fd)
 
@@ -2000,6 +2003,9 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                     require(any("prestage pinned parent descriptor close status unknown" in note
                                 for note in getattr(exc, "__notes__", [])),
                             "prestage parent close lacked bounded uncertainty diagnostic")
+                    if prestage_close_scenario.endswith("valueerror"):
+                        require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                "non-OSError prestage cleanup lost fault type diagnostic")
                 else:
                     raise Fail("prestage parent close unexpectedly published")
             finally:
@@ -2008,7 +2014,7 @@ def prove_atomic_prestage_parent_swap(module) -> None:
                 module.os.close = original_close
             require(close_tripped[0] and len(captured_parents) == 1,
                     "prestage close fault did not reach pinned descriptor")
-            if prestage_close_scenario == "before-prestage-close":
+            if prestage_close_scenario.startswith("before-prestage"):
                 os.fstat(captured_parents[0])
                 original_close(captured_parents[0])
             else:
