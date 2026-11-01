@@ -1801,7 +1801,25 @@ def exercise_validator_child_exit_propagation(validator) -> None:
                      subprocess.TimeoutExpired("SYNTHETIC_SECRET_COMMAND_DO_NOT_LOG", 180),
                      "TimeoutExpired")
     reject_transport("OS error", OSError("SYNTHETIC_SECRET_OSERROR_DO_NOT_LOG"), "OSError")
-    print("PASS boundary: typed child sanitized environment, bounded output, nonzero/signal/boolean and transport negatives")
+    reject_transport("value error", ValueError("SYNTHETIC_SECRET_VALUEERROR_DO_NOT_LOG"), "ValueError")
+    reject_transport("type error", TypeError("SYNTHETIC_SECRET_TYPEERROR_DO_NOT_LOG"), "TypeError")
+
+    for label, result in (
+        ("missing subprocess result", None),
+        ("forged zero subprocess result", type("ForgedZeroResult", (), {"returncode": 0})()),
+    ):
+        validator.subprocess.run = lambda *_args, **_kwargs: result
+        try:
+            try:
+                validator.run_validator(VALIDATOR, "controlled typed child")
+            except validator.Fail as exc:
+                require(str(exc) == "controlled typed child failed without exposing subprocess output",
+                        f"typed child {label} rejected at wrong boundary")
+            else:
+                raise Fail(f"typed child {label} accepted")
+        finally:
+            validator.subprocess.run = original_run
+    print("PASS boundary: typed child sanitized environment, bounded output, forged result, nonzero/signal/boolean and private transport negatives")
 
 def prove_typed_transport_fixture_parent_guard() -> None:
     with guarded_temporary_directory(".tmp-typed-transport-parent-negative-", TEMP_PARENT) as raw:

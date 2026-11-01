@@ -249,9 +249,10 @@ def run_validator(path: Path, label: str) -> None:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             check=False, timeout=180,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired) as exc:
         raise Fail(f"{label} unavailable ({type(exc).__name__})") from None
-    require(type(completed.returncode) is int and completed.returncode == 0,
+    require(isinstance(completed, subprocess.CompletedProcess)
+            and type(completed.returncode) is int and completed.returncode == 0,
             f"{label} failed without exposing subprocess output")
 
 CANONICAL_SUBPROCESS_RUN = subprocess.run
