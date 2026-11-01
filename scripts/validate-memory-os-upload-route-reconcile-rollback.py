@@ -740,12 +740,14 @@ def prove_atomic_dup_failure_cleanup(module) -> None:
 
 def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
     """Recover only a descriptor-owned stage; never delete a reused name."""
-    for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused"):
+    for scenario in ("recover", "reused-unlinked", "reused-linked", "unverified-owned", "unverified-reused", "unverified-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-initial-fstat-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
             target.write_bytes(b"original")
             target.chmod(0o755)
+            external_canary = root / "external-recovery-canary.txt"
+            external_canary.write_bytes(b"independent-recovery-canary")
             captured: list[tuple[int, str]] = []
             tripped: list[bool] = []
             original_stage = module.create_pinned_stage
@@ -766,6 +768,8 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_initial_stage_fstat(fd):
                 if captured and fd == captured[0][0] and (not tripped or scenario.startswith("unverified-")):
                     tripped.append(True)
+                    if scenario == "unverified-valueerror" and len(tripped) == 2:
+                        raise ValueError("synthetic recovery fstat ValueError")
                     if scenario in ("reused-unlinked", "reused-linked", "unverified-reused"):
                         independent = root / captured[0][1]
                         if scenario == "reused-linked":
@@ -788,6 +792,9 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                         require(any("private stage identity unavailable" in note
                                     for note in getattr(exc, "__notes__", [])),
                                 "unverified stage retention lacked primary-error diagnostic")
+                        if scenario == "unverified-valueerror":
+                            require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                    "non-OSError recovery probe lost bounded fault type")
                 else:
                     raise Fail("atomic writer accepted initial staged fstat failure")
             finally:
@@ -813,6 +820,8 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             else:
                 os.close(captured[0][0])
                 raise Fail("atomic writer leaked descriptor after initial staged fstat failure")
+            require(external_canary.read_bytes() == b"independent-recovery-canary",
+                    "initial fstat recovery changed external canary")
             require(target.read_bytes() == b"original",
                     "initial staged fstat failure changed original authority")
             require(stat.S_IMODE(target.stat().st_mode) == 0o755,
@@ -824,7 +833,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 if scenario == "reused-linked":
                     require((root / "retained-stage-alias.txt").read_bytes() == b"",
                             "initial staged fstat cleanup changed retained original inode")
-            elif scenario == "unverified-owned":
+            elif scenario in ("unverified-owned", "unverified-valueerror"):
                 require(staged.read_bytes() == b"",
                         "persistent fstat failure removed unverified owned stage")
                 require(stat.S_IMODE(staged.stat().st_mode) == 0o600,
