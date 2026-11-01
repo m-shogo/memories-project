@@ -868,6 +868,46 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical stream-alias recovery corrupted authority")
+        # A stream must not switch to an alias only after the first fstat.
+        opened.clear()
+        switched: list[int] = []
+        guard_fd = real_open(canary, os.O_RDONLY)
+        def post_read_alias(descriptor, mode, **kwargs):
+            underlying = actual_fdopen(descriptor, mode, **kwargs)
+            duplicate = os.dup(descriptor)
+            switched.append(duplicate)
+            class SwitchingStream:
+                fileno_calls = 0
+                def fileno(self):
+                    self.fileno_calls += 1
+                    return descriptor if self.fileno_calls == 1 else duplicate
+                def read(self, size=-1):
+                    return underlying.read(size)
+                def close(self):
+                    underlying.close()
+                    real_close(duplicate)
+            return SwitchingStream()
+        try:
+            with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                 mock.patch.object(module.os, "fdopen", side_effect=post_read_alias):
+                reject("post-read stream alias", f"unreadable authority: {target}")
+            if len(opened) != 1 or len(switched) != 1:
+                raise RuntimeError("canonical post-read alias inventory drift")
+            for descriptor in opened + switched:
+                try:
+                    os.fstat(descriptor)
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical post-read alias FD state") from exc
+                else:
+                    real_close(descriptor)
+                    raise RuntimeError("canonical post-read alias FD leak")
+            if os.read(guard_fd, 8) != b"external":
+                raise RuntimeError("canonical post-read alias canary corrupted")
+        finally:
+            real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical post-read alias recovery corrupted authority")
         # Only immutable bytes from a binary stream may become a canonical
         # authority snapshot. Non-byte payloads must fail before len/decoding.
         for label, payload in (
