@@ -3332,7 +3332,15 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     if not {"route_authority_test.go", "server_live_test.go"} <= set(package_tests):
         raise RuntimeError("unreviewed Upload Route package TestMain bypass")
     require_no_upload_route_testmain(package_tests)
-    require_reviewed_upload_route_package_init(package_tests)
+    # Include non-test package Go files: their init() runs before go test too.
+    package_sources = dict(package_tests)
+    for go_path in sorted(package_dir.glob("*.go")):
+        if go_path.name in package_sources:
+            continue
+        if go_path.is_symlink() or not go_path.is_file():
+            raise RuntimeError("unreviewed Upload Route package init bypass")
+        package_sources[go_path.name] = go_path.read_text(encoding="utf-8")
+    require_reviewed_upload_route_package_init(package_sources)
     for label, name, declaration in (
             ("existing test file", "route_authority_test.go",
              "func TestMain(m *testing.M) {}"),
@@ -3361,15 +3369,20 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
             raise RuntimeError("focused Go package TestMain negative accepted: " + label)
     # Package-level init executes before the Go test runner. Preserve the
     # sole reviewed soak initializer, but reject new or modified initializers.
-    for label, source in (
-            ("new init exit", 'package httpserver\nimport "os"\n'
+    for label, name, source in (
+            ("new test init exit", "shadow_test.go",
+             'package httpserver\nimport "os"\n'
              'func init() { os.Exit(0) }\n'),
-            ("comment-split init exit", 'package httpserver\nimport "os"\n'
-             'func /* split */ init() { os.Exit(0) }\n')):
-        if "shadow_test.go" in package_tests:
+            ("comment-split test init exit", "shadow_test.go",
+             'package httpserver\nimport "os"\n'
+             'func /* split */ init() { os.Exit(0) }\n'),
+            ("new production init exit", "shadow.go",
+             'package httpserver\nimport "os"\n'
+             'func init() { os.Exit(0) }\n')):
+        if name in package_sources:
             raise RuntimeError("focused Go init fixture name collision")
-        changed_tests = dict(package_tests)
-        changed_tests["shadow_test.go"] = source
+        changed_tests = dict(package_sources)
+        changed_tests[name] = source
         try:
             require_reviewed_upload_route_package_init(changed_tests)
         except RuntimeError as exc:
@@ -3379,10 +3392,10 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
             raise RuntimeError("focused Go package init negative accepted: " + label)
     soak = "sustained_local_soak_test.go"
     reviewed_tail = "\t_ = sort.Ints\n}"
-    if package_tests[soak].count(reviewed_tail) != 1:
+    if package_sources[soak].count(reviewed_tail) != 1:
         raise RuntimeError("focused Go reviewed init fixture anchor drift")
-    changed_tests = dict(package_tests)
-    changed_tests[soak] = package_tests[soak].replace(
+    changed_tests = dict(package_sources)
+    changed_tests[soak] = package_sources[soak].replace(
         reviewed_tail, "\tos.Exit(0)\n" + reviewed_tail, 1
     )
     try:
