@@ -189,10 +189,68 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 finally:
                     validator.os.close = real_close
                     validator.require_exact_repo_file = original_check
+
+            # Reject a hardlink, oversized source, and in-place mid-read change.
+            alias = package / "hardlink.py"
+            os.link(approved, alias)
+            try:
+                try:
+                    validator.load_module(
+                        approved, Path("pkg/approved.py"), "binding_hardlink", "fixture"
+                    )
+                except validator.Fail as exc:
+                    require(str(exc) == "fixture module source type/size drift",
+                            f"hardlinked source rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("hardlinked module source unexpectedly accepted")
+            finally:
+                alias.unlink()
+
+            approved.write_bytes(b"#" * (validator.MAX_BINDING_AUTHORITY_BYTES + 1))
+            try:
+                validator.load_module(
+                    approved, Path("pkg/approved.py"), "binding_oversize", "fixture"
+                )
+            except validator.Fail as exc:
+                require(str(exc) == "fixture module source type/size drift",
+                        f"oversized module source rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("oversized module source unexpectedly accepted")
+
+            approved.write_text(
+                "from pathlib import Path\nPath(" + repr(str(marker))
+                + ").write_text('unsafe')\n", encoding="utf-8"
+            )
+            original_fdopen = validator.os.fdopen
+            changed = False
+            def mutate_during_fdopen(fd: int, *args, **kwargs):
+                nonlocal changed
+                stream = original_fdopen(fd, *args, **kwargs)
+                if not changed:
+                    changed = True
+                    with approved.open("ab") as writer:
+                        writer.write(b"# changed after fstat\n")
+                return stream
+
+            validator.os.fdopen = mutate_during_fdopen
+            try:
+                try:
+                    validator.load_module(
+                        approved, Path("pkg/approved.py"), "binding_midread", "fixture"
+                    )
+                except validator.Fail as exc:
+                    require(str(exc) == "fixture module source changed during read",
+                            f"mid-read source change rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("mid-read module mutation unexpectedly accepted")
+            finally:
+                validator.os.fdopen = original_fdopen
+            require(changed and not marker.exists(),
+                    "mid-read mutation fixture not reached or untrusted module executed")
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup and double faults (OSError/ValueError)")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read")
 
 
 def prove_validator_execution_identity() -> None:
