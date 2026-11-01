@@ -3286,11 +3286,13 @@ def require_reviewed_upload_route_transitive_package_init(relative: str, source:
 
 def prove_upload_route_transitive_package_init_negatives() -> None:
     """An imported package must not exit successfully before focused tests."""
-    relative = "services/import-api/internal/obslog/event.go"
+    relative = "services/import-api/internal/obslog/codes.go"
     # The reviewed obslog eventCodeSet variable is ordinary data, not an
     # executable package initializer; preserve this legitimate positive.
     for source in (
             'package obslog\nvar eventCodeSet = map[string]struct{}{"E": {}}\n',
+            'package obslog\nvar eventCodeSet = func() map[string]struct{} {\n'
+            '  set := map[string]struct{}{"E": {}}; return set\n}()\n',
             'package obslog\nimport "os"\nvar _ = os.Getenv("HOME")\n'):
         require_reviewed_upload_route_transitive_package_init(relative, source)
     cases = (
@@ -3298,6 +3300,10 @@ def prove_upload_route_transitive_package_init_negatives() -> None:
          'package obslog\nimport "os"\nfunc init() { os.Exit(0) }\n'),
         ("transitive variable exit",
          'package obslog\nimport "os"\nvar _ = func() int { os.Exit(0); return 0 }()\n'),
+        ("transitive eventCodeSet initializer exit",
+         'package obslog\nimport "os"\n'
+         'var eventCodeSet = func() map[string]struct{} {\n'
+         '  os.Exit(0); return map[string]struct{}{}\n}()\n'),
         ("transitive comment-split exit",
          'package obslog\nimport "os"\nvar _ = func() int { os /* gap */ . Exit(0); return 0 }()\n'),
         ("transitive named-alias exit",
