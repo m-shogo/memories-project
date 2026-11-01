@@ -80,6 +80,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         fd = os.open(path, flags)
     except (OSError, ValueError, TypeError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
+    # A malformed acquisition result is not an owned descriptor: never
+    # pass bool/int-like values to fdopen or close them by numeric alias.
+    if type(fd) is not int or fd < 0:
+        raise ValidationFailure(f"unreadable authority: {path}")
     try:
         # Retain ownership of the raw descriptor throughout stream use.
         # closefd=False prevents an ambiguous fdopen handoff and lets the
