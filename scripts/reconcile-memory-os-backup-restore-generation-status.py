@@ -138,6 +138,7 @@ def write_text(path: Path, text: str) -> None:
     except OSError as exc:
         raise Fail(f"cannot atomically write {relative}: {exc}") from exc
     finally:
+        primary_failure = sys.exc_info()[0] is not None
         if fd is not None:
             # closefd=False keeps the raw FD ours; release it only once.
             owned_fd = fd
@@ -149,10 +150,9 @@ def write_text(path: Path, text: str) -> None:
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
-            except FileNotFoundError:
-                pass
-            except OSError:
-                pass
+            except Exception as cleanup_exc:
+                if not primary_failure:
+                    raise Fail(f"cannot clean temporary authority for {relative}") from cleanup_exc
 
 
 def append_once(items: list[Any], value: str) -> None:

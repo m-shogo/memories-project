@@ -268,6 +268,61 @@ def prove_generation_status_fdopen_ownership(reconciler) -> None:
     print("PASS boundary: generation-status fdopen failure closes untransferred descriptor")
 
 
+def prove_generation_status_atomic_cleanup_precedence(reconciler) -> None:
+    canonical_status, canonical_contract = STATUS.read_bytes(), CONTRACT.read_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-cleanup-", dir=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "generation-status-cleanup.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        before_bytes = target.read_bytes()
+        before_mode = stat.S_IMODE(target.stat().st_mode)
+        before_temps = set(target.parent.glob(f".{target.name}.*.tmp"))
+        original_replace = reconciler.os.replace
+        original_unlink = reconciler.os.unlink
+        seen_cleanup = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic primary generation-status replace rejection")
+
+        def reject_cleanup(path, *args, **kwargs):
+            require(Path(path).parent == target.parent
+                    and Path(path).name.startswith(f".{target.name}."),
+                    "generation-status cleanup targeted unexpected path")
+            seen_cleanup.append(Path(path))
+            raise ValueError("synthetic secondary generation-status cleanup rejection")
+
+        try:
+            reconciler.os.replace = reject_replace
+            reconciler.os.unlink = reject_cleanup
+            try:
+                reconciler.write_text(target, before_bytes.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc)
+                        and "synthetic primary generation-status replace rejection" in str(exc),
+                        f"generation-status cleanup masked primary failure: {exc}")
+                require("secondary" not in str(exc),
+                        "generation-status cleanup leaked secondary diagnostic")
+            else:
+                raise Fail("generation-status cleanup double-fault write unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+            created = set(target.parent.glob(f".{target.name}.*.tmp")) - before_temps
+            for path in created:
+                original_unlink(path)
+
+        require(len(seen_cleanup) == 1 and seen_cleanup[0] in created,
+                "generation-status secondary cleanup fault not exercised")
+        require(target.read_bytes() == before_bytes
+                and stat.S_IMODE(target.stat().st_mode) == before_mode,
+                "generation-status cleanup double fault mutated isolated authority")
+        require(set(target.parent.glob(f".{target.name}.*.tmp")) == before_temps,
+                "generation-status cleanup double fault left synthetic temporary authority")
+    require(STATUS.read_bytes() == canonical_status and CONTRACT.read_bytes() == canonical_contract,
+            "generation-status cleanup double fault changed canonical authorities")
+    print("PASS boundary: generation-status primary atomic failure survives secondary cleanup exception")
+
+
 def main() -> int:
     require(BINDING_VALIDATOR.is_file(), "generation binding validator missing")
     require(RECONCILER.is_file(), "generation status reconciler missing")
@@ -278,6 +333,7 @@ def main() -> int:
     prove_generation_status_private_validator_transport(reconciler)
     validate_atomic_diagnostic_publication()
     prove_generation_status_fdopen_ownership(reconciler)
+    prove_generation_status_atomic_cleanup_precedence(reconciler)
 
     cases = (
         ("generation binding contract substitution", "generation binding contract", "CONTRACT", reconciler.STATUS),
