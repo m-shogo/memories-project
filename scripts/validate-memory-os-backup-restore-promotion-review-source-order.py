@@ -13,6 +13,9 @@ recovery objectives, or traffic.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from unittest.mock import patch
 import re
 import subprocess
 import sys
@@ -21,6 +24,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+TRUSTED_GIT = "/usr/bin/git"
 CONTRACT_REL = Path("contracts/operations/backup-restore-promotion-review-contract.v1.json")
 PROMOTION_REGISTRY_REL = Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")
 GENERATION_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
@@ -97,10 +101,19 @@ def canonical_review_ref(value: Any, field: str) -> tuple[str, Path]:
     return value, path
 
 
+def trusted_git_env() -> dict[str, str]:
+    """Do not inherit Git or dynamic-loader overrides for human review chronology."""
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("GIT_", "LD_", "DYLD_"))}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=os.devnull)
+    return env
+
+
 def git_output(args: list[str], field: str) -> str:
     completed = subprocess.run(
-        ["git", *args],
-        cwd=ROOT,
+        [TRUSTED_GIT, *args],
+        cwd=ROOT, env=trusted_git_env(),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -122,8 +135,8 @@ def first_commit_for_path(ref: str, field: str) -> str:
 
 def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
     completed = subprocess.run(
-        ["git", "show", f"{commit_sha}:{ref}"],
-        cwd=ROOT,
+        [TRUSTED_GIT, "show", f"{commit_sha}:{ref}"],
+        cwd=ROOT, env=trusted_git_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -138,8 +151,8 @@ def require_creation_blob_immutable(current: bytes, created: bytes, field: str) 
 
 def commit_exists(commit_sha: str, field: str) -> None:
     completed = subprocess.run(
-        ["git", "cat-file", "-e", f"{commit_sha}^{{commit}}"],
-        cwd=ROOT,
+        [TRUSTED_GIT, "cat-file", "-e", f"{commit_sha}^{{commit}}"],
+        cwd=ROOT, env=trusted_git_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -169,8 +182,8 @@ def review_time(value: Any, field: str) -> datetime:
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
     completed = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
-        cwd=ROOT,
+        [TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=ROOT, env=trusted_git_env(),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
@@ -252,7 +265,51 @@ def validate_row(row: dict[str, Any], index: int, generations: dict[str, dict[st
         require_review_time_window(reviewed_at, source_time, commit_time(review_commit, field), field)
 
 
+def git_transport_self_test() -> None:
+    ref = "docs/evidence/backup-restore/promotion/synthetic-git-path-decoy.json"
+    with tempfile.TemporaryDirectory(prefix="promotion-source-order-git-decoy-") as temp:
+        fake = Path(temp) / "git"
+        fake.write_text("#!/bin/sh\necho " + "a" * 40 + "\n", encoding="utf-8")
+        fake.chmod(0o755)
+        with patch.dict(os.environ, {"PATH": temp + os.pathsep + os.environ.get("PATH", "")}):
+            decoy = subprocess.run(
+                ["git", "log", "--diff-filter=A", "--follow",
+                 "--format=%H", "--", ref],
+                cwd=ROOT, capture_output=True, text=True, check=False, timeout=10,
+            )
+            require(decoy.returncode == 0 and decoy.stdout == "a" * 40 + "\n",
+                    "promotion source-order Git PATH decoy positive control ineffective")
+            try:
+                first_commit_for_path(ref, "self-test")
+            except Fail as exc:
+                require(str(exc) == "self-test must have exactly one committed creation point",
+                        "promotion source-order Git PATH decoy rejected for unrelated reason")
+            else:
+                raise Fail("promotion source-order Git PATH decoy admitted forged review")
+    with patch.dict(os.environ, {
+        "GIT_DIR": "/tmp/unreviewed-git-dir",
+        "LD_PRELOAD": "/tmp/unreviewed-git-loader.so",
+        "DYLD_INSERT_LIBRARIES": "/tmp/unreviewed-git-loader.dylib",
+    }):
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=[], returncode=0, stdout="a" * 40 + "\n", stderr="",
+        )) as observed:
+            require(first_commit_for_path(ref, "self-test") == "a" * 40,
+                    "promotion source-order Git sanitized positive control invalid")
+            args, kwargs = observed.call_args
+            env = kwargs.get("env")
+            require(args[0][0] == TRUSTED_GIT == "/usr/bin/git"
+                    and type(env) is dict
+                    and all(key not in env for key in (
+                        "GIT_DIR", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"
+                    ))
+                    and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+                    and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
+                    "promotion source-order Git executable/environment authority drift")
+
+
 def self_test() -> None:
+    git_transport_self_test()
     source = "1" * 40
     review = "2" * 40
     require_source_precedes_review(source, review, "self-test", ancestor_check=lambda _a, _b: True)
