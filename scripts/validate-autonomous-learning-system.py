@@ -117,7 +117,7 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                     or live.st_ctime_ns != before.st_ctime_ns):
                 raise ValidationFailure(diagnostic)
             return raw
-    except OSError:
+    except (OSError, ValueError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
     finally:
         # Preserve the original validation/read failure if cleanup fails.
