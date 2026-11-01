@@ -287,9 +287,16 @@ def run_validator(path: Path, name: str) -> None:
     expected = expected_by_name.get(name)
     require(isinstance(expected, Path), f"unknown upstream validator authority: {name}")
     require_exact_executable(path, expected, f"{name} validator")
+    # An inherited Python import path or dynamic loader override can make a
+    # child exit successfully before the reviewed validator executes.
+    # Keep ordinary CI variables, but exclude process/import/Git overrides.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)], cwd=ROOT,
+            [sys.executable, str(path)], cwd=ROOT, env=child_env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             check=False, timeout=180,
         )
