@@ -3002,7 +3002,6 @@ if len(parent_inventory) != len(commits) or set(parent_inventory) != set(commits
                 for i in range(len(actual) - len(expected) + 1)) == 1
             and sum(ast.dump(node, include_attributes=False) == parent_guard
                     for node in ast.walk(checks[0])) == 1)
-
 def supplemental_history_diff_confirmation_bound(source: str) -> bool:
     """Pin independent quiet-diff confirmation inside each parent edge."""
     try:
@@ -3038,7 +3037,6 @@ if confirmation.stdout != raw:
     actual = [ast.dump(node, include_attributes=False)
               for node in loops[0].body]
     return actual[1:1 + len(expected)] == expected
-
 def validate_supplemental_learning_history(failures: list[str]) -> None:
     """Run additive-history proof and destructive Git negatives before admission."""
     relative = "scripts/validate-autonomous-learning-records-history.py"
@@ -3087,13 +3085,15 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
-        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes", 'TRUSTED_GIT = "/usr/bin/git"', "subprocess.run([TRUSTED_GIT,",
+        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes", 'TRUSTED_GIT = "/usr/bin/git"',
     ):
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
             failures.append("supplemental history Git oid transport mutation accepted")
             return
     for original, altered in (
+        ('subprocess.run([TRUSTED_GIT,', 'subprocess.run(["git",'),
+        ('TRUSTED_GIT = "/usr/bin/git"', 'TRUSTED_GIT = "/usr/bin/git"\nTRUSTED_GIT = "git"'),
         ('git(root, "rev-parse", "--verify", "HEAD^{commit}")',
          'git(root, "rev-parse", "HEAD")'),
         ('git(root, "rev-list", "--reverse", f"{baseline}..{head}")',
