@@ -33,7 +33,7 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
     # An inherited GIT_DIR or GIT_WORK_TREE can redirect -C to an unrelated
     # repository. Reject every inherited Git override before inspecting history.
     env = {key: value for key, value in os.environ.items()
-           if not key.startswith("GIT_")}
+           if not key.startswith(("GIT_", "LD_", "DYLD_"))}
     env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
                GIT_CONFIG_GLOBAL=os.devnull)
     try:
@@ -406,6 +406,27 @@ def self_test() -> None:
                 os.environ.pop("PATH", None)
             else:
                 os.environ["PATH"] = previous_path
+
+    # The pinned /usr/bin/git is still dynamically linked. An inherited
+    # loader override can inject code or emit diagnostics before Git starts.
+    # Verify the actual subprocess environment, not only the source spelling.
+    with patch.dict(os.environ, {
+        "LD_PRELOAD": "/tmp/untrusted-git-loader.so",
+        "LD_DEBUG": "libs",
+        "DYLD_INSERT_LIBRARIES": "/tmp/untrusted-git-loader.dylib",
+        "GIT_DIR": "/tmp/untrusted-repo",
+    }):
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=[TRUSTED_GIT], returncode=0,
+            stdout=b"git version 2.0\\n", stderr=b"",
+        )) as observed:
+            git(Path("."), "--version")
+            passed = observed.call_args.kwargs.get("env")
+            if (not isinstance(passed, dict) or
+                    any(key in passed for key in (
+                        "LD_PRELOAD", "LD_DEBUG", "DYLD_INSERT_LIBRARIES", "GIT_DIR"
+                    ))):
+                raise GuardFailure("supplemental Git dynamic loader override inherited")
 
     # A caller can also inject Git configuration without touching GIT_DIR.
     # Prove that a synthetic hooksPath override is visible to naive Git but
