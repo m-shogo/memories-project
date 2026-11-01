@@ -111,20 +111,24 @@ def trusted_git_env() -> dict[str, str]:
 
 
 def git_output(args: list[str], field: str) -> str:
-    completed = subprocess.run(
-        [TRUSTED_GIT, *args],
-        cwd=ROOT, env=trusted_git_env(),
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(completed.returncode == 0, f"cannot inspect {field}: {completed.stderr.strip()}")
+    try:
+        completed = subprocess.run(
+            [TRUSTED_GIT, *args],
+            cwd=ROOT, env=trusted_git_env(), text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field}") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"cannot inspect {field}")
+    require(type(completed.stdout) is str and len(completed.stdout) <= 256,
+            f"cannot inspect {field} output")
     return completed.stdout.strip()
 
 
 def first_commit_for_path(ref: str, field: str) -> str:
-    output = git_output(["log", "--diff-filter=A", "--follow", "--format=%H", "--", ref], field)
+    output = git_output(["log", "--diff-filter=A", "--max-count=2", "--follow", "--format=%H", "--", ref], field)
     commits = [line.strip() for line in output.splitlines() if line.strip()]
     require(
         len(commits) == 1 and SHA40.fullmatch(commits[0]) is not None,
@@ -308,7 +312,61 @@ def git_transport_self_test() -> None:
                     "promotion source-order Git executable/environment authority drift")
 
 
+def git_output_transport_self_test() -> None:
+    ref = "docs/evidence/backup-restore/promotion/synthetic-transport.json"
+    field = "self-test"
+    marker = "PRIVATE_PROMOTION_GIT_DIAGNOSTIC_DO_NOT_LOG"
+    state = {"stdout": "a" * 40 + "\n", "returncode": 0, "error": None}
+    calls = []
+    def fake_git(args, **kwargs):
+        require(args == [TRUSTED_GIT, "log", "--diff-filter=A",
+                         "--max-count=2", "--follow", "--format=%H", "--", ref],
+                "promotion Git history bounded command drift")
+        require(kwargs.get("cwd") == ROOT and kwargs.get("text") is True
+                and kwargs.get("stdout") is subprocess.PIPE
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("check") is False and kwargs.get("timeout") == 20,
+                "promotion Git history private/timeout transport drift")
+        env = kwargs.get("env")
+        require(type(env) is dict and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+                and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
+                "promotion Git history environment drift")
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(
+            args, state["returncode"], stdout=state["stdout"], stderr=marker
+        )
+    with patch.object(subprocess, "run", side_effect=fake_git):
+        require(first_commit_for_path(ref, field) == "a" * 40,
+                "promotion Git bounded history positive control invalid")
+        cases = (
+            ("two-commits", {"stdout": "a" * 40 + "\n" + "b" * 40 + "\n"},
+             f"{field} must have exactly one committed creation point"),
+            ("nonzero", {"returncode": 1}, f"cannot inspect {field}"),
+            ("bool-exit", {"returncode": True}, f"cannot inspect {field}"),
+            ("bytes-output", {"stdout": b"a" * 40}, f"cannot inspect {field} output"),
+            ("oversized", {"stdout": "a" * 257}, f"cannot inspect {field} output"),
+            ("timeout", {"error": subprocess.TimeoutExpired(
+                [TRUSTED_GIT, "log"], 20, stderr=marker
+            )}, f"cannot inspect {field}"),
+            ("unavailable", {"error": OSError(marker)}, f"cannot inspect {field}"),
+        )
+        for label, changes, expected in cases:
+            state.update({"stdout": "a" * 40 + "\n", "returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                first_commit_for_path(ref, field)
+            except Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"promotion Git history {label} wrong/private failure")
+            else:
+                raise Fail(f"promotion Git history {label} unexpectedly accepted")
+        require(len(calls) == 8, "promotion Git history negative call count drift")
+
+
 def self_test() -> None:
+    git_output_transport_self_test()
     git_transport_self_test()
     source = "1" * 40
     review = "2" * 40
