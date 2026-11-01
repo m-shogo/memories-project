@@ -713,6 +713,18 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
 
         if read() != b"stable":
             raise RuntimeError("canonical descriptor positive drift")
+        # The stream must never acquire ownership of the raw descriptor.
+        # Observe the real constructor rather than trusting a source comment.
+        actual_fdopen = os.fdopen
+        seen_fdopen: list[tuple[str, object]] = []
+        def observe_fdopen(descriptor, mode, **kwargs):
+            seen_fdopen.append((mode, kwargs.get("closefd")))
+            return actual_fdopen(descriptor, mode, **kwargs)
+        with mock.patch.object(module.os, "fdopen", side_effect=observe_fdopen):
+            if read() != b"stable":
+                raise RuntimeError("canonical non-owning fdopen positive drift")
+        if seen_fdopen != [("rb", False)]:
+            raise RuntimeError("canonical reader fdopen ownership transfer regression")
         opened: list[int] = []
         real_open = os.open
 
@@ -739,6 +751,48 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             raise RuntimeError("canonical fdopen failure leaked raw descriptor")
         if read() != b"stable":
             raise RuntimeError("canonical fdopen negative corrupted authority")
+        # A close that fails before effect must fail closed without silently
+        # leaking the still-owned raw FD in this disposable fault fixture.
+        real_close = os.close
+        opened.clear()
+        def close_before_effect(_descriptor):
+            raise OSError(errno.EIO, "synthetic close-before-effect")
+        with mock.patch.object(module.os, "open", side_effect=capture_open), \
+             mock.patch.object(module.os, "close", side_effect=close_before_effect):
+            reject("close before effect", f"unreadable authority: {target}")
+        if len(opened) != 1:
+            raise RuntimeError("canonical close-before-effect FD inventory drift")
+        try:
+            os.fstat(opened[0])
+        except OSError as exc:
+            raise RuntimeError("canonical close-before-effect lost owned FD") from exc
+        real_close(opened[0])
+
+        # A close that already consumed its FD must not be retried by number:
+        # force that same number onto an independent external canary.
+        canary = Path(tmp) / "external-canary"
+        canary.write_bytes(b"external")
+        for label, payload, expected in (
+                ("close after effect", b"stable", f"unreadable authority: {target}"),
+                ("original error after close", b"x" * 11, "reviewed source oversized")):
+            target.write_bytes(payload)
+            guard_fd = real_open(canary, os.O_RDONLY)
+            opened.clear()
+            recycled: list[int] = []
+            def close_then_reuse(descriptor):
+                real_close(descriptor)
+                recycled.append(os.dup2(guard_fd, descriptor))
+                raise OSError(errno.EIO, "synthetic close-after-effect")
+            with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                 mock.patch.object(module.os, "close", side_effect=close_then_reuse):
+                reject(label, expected)
+            if len(opened) != 1 or recycled != opened:
+                raise RuntimeError("canonical close-after-effect FD reuse drift")
+            if os.read(recycled[0], 8) != b"external":
+                raise RuntimeError("canonical close-after-effect corrupted canary")
+            real_close(recycled[0])
+            real_close(guard_fd)
+        target.write_bytes(b"stable")
         target.write_bytes(b"x" * 11)
         reject("oversized", "reviewed source oversized")
         target.write_bytes(b"stable")
