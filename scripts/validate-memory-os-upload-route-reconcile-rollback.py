@@ -683,58 +683,63 @@ def prove_atomic_fdopen_failure_cleanup(module) -> None:
 
 def prove_atomic_dup_failure_cleanup(module) -> None:
     """A failed stage-descriptor duplication must not leak or leave residue."""
-    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-dup-fault-") as temp_dir:
-        root = Path(temp_dir)
-        target = root / "authority.txt"
-        target.write_bytes(b"original")
-        target.chmod(0o755)
-        before = {item.name for item in root.glob(".authority.txt.*.tmp")}
-        opened: list[int] = []
-        duplicated: list[int] = []
-        original_stage = module.create_pinned_stage
-        original_dup = module.os.dup
+    for dup_fault_type in ("OSError", "ValueError"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-dup-fault-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            canary = root / "external-dup-canary.txt"
+            canary.write_bytes(b"independent-dup-canary")
+            target.chmod(0o755)
+            before = {item.name for item in root.glob(".authority.txt.*.tmp")}
+            opened: list[int] = []
+            duplicated: list[int] = []
+            original_stage = module.create_pinned_stage
+            original_dup = module.os.dup
 
-        def capture_stage(parent_fd, leaf):
-            descriptor, name = original_stage(parent_fd, leaf)
-            opened.append(descriptor)
-            return descriptor, name
+            def capture_stage(parent_fd, leaf):
+                descriptor, name = original_stage(parent_fd, leaf)
+                opened.append(descriptor)
+                return descriptor, name
 
-        def reject_dup(fd):
-            require(len(opened) == 1 and fd == opened[0],
-                    "dup failure was not injected on the staged descriptor")
-            duplicated.append(fd)
-            raise OSError("synthetic staging dup failure")
+            def reject_dup(fd):
+                require(len(opened) == 1 and fd == opened[0],
+                        "dup failure was not injected on the staged descriptor")
+                duplicated.append(fd)
+                if dup_fault_type == "ValueError":
+                    raise ValueError("synthetic staging dup failure")
+                raise OSError("synthetic staging dup failure")
 
-        module.create_pinned_stage = capture_stage
-        module.os.dup = reject_dup
-        try:
+            module.create_pinned_stage = capture_stage
+            module.os.dup = reject_dup
             try:
-                module.atomic_write_bytes(target, b"unpublished")
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except (OSError, ValueError) as exc:
+                    require(type(exc).__name__ == dup_fault_type and str(exc) == "synthetic staging dup failure",
+                            f"dup failure rejected for unrelated reason: {exc}")
+                else:
+                    raise Fail("atomic writer accepted a failed staging descriptor duplication")
+            finally:
+                module.create_pinned_stage = original_stage
+                module.os.dup = original_dup
+            require(len(opened) == 1 and duplicated == opened,
+                    "staging dup failure did not reach the reviewed descriptor")
+            try:
+                os.fstat(opened[0])
             except OSError as exc:
-                require(str(exc) == "synthetic staging dup failure",
-                        f"dup failure rejected for unrelated reason: {exc}")
+                require(exc.errno == errno.EBADF,
+                        f"failed-dup descriptor closed for unrelated reason: {exc}")
             else:
-                raise Fail("atomic writer accepted a failed staging descriptor duplication")
-        finally:
-            module.create_pinned_stage = original_stage
-            module.os.dup = original_dup
-        require(len(opened) == 1 and duplicated == opened,
-                "staging dup failure did not reach the reviewed descriptor")
-        try:
-            os.fstat(opened[0])
-        except OSError as exc:
-            require(exc.errno == errno.EBADF,
-                    f"failed-dup descriptor closed for unrelated reason: {exc}")
-        else:
-            os.close(opened[0])
-            raise Fail("atomic writer leaked a staged descriptor after dup failure")
-        require(target.read_bytes() == b"original",
-                "failed staging dup changed original authority bytes")
-        require(stat.S_IMODE(target.stat().st_mode) == 0o755,
-                "failed staging dup changed original authority mode")
-        after = {item.name for item in root.glob(".authority.txt.*.tmp")}
-        require(after == before,
-                "failed staging dup left temporary residue")
+                os.close(opened[0])
+                raise Fail("atomic writer leaked a staged descriptor after dup failure")
+            require(target.read_bytes() == b"original",
+                    "failed staging dup changed original authority bytes")
+            require(stat.S_IMODE(target.stat().st_mode) == 0o755,
+                    "failed staging dup changed original authority mode")
+            after = {item.name for item in root.glob(".authority.txt.*.tmp")}
+            require(after == before and canary.read_bytes() == b"independent-dup-canary",
+                    "failed staging dup left temporary residue or changed external canary")
 
 
 
