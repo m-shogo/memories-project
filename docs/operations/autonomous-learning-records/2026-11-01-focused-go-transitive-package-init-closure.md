@@ -1,0 +1,25 @@
+# Supplemental OPS learning — transitive Go initializer false-green closure (2026-11-01)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and `contracts/operations/autonomous-learning-system.json`. This is not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review, final-candidate, or human-promotion evidence.
+
+## Material failure
+
+- **symptom:** The direct `httpserver/*.go` pre-test exit guard did not inspect `init()` or package-variable initializers in locally imported packages. A transitive package could return a false-green `go test` result without executing a selected failing test.
+- **evidence:** Isolated Go 1.23.2 packages importing a synthetic `dep` with `func init(){os.Exit(0)}`, a variable initializer calling `os.Exit(0)`, `import terminate "os"; terminate.Exit(0)`, or `import . "os"; Exit(0)` each returned exit code 0 while the deliberately failing `TestMustRun` remained unexecuted. A separate synthetic `syscall.Exit(0)` case behaved likewise. These are compiler/runtime synthetic observations, not execution of the real repository's Focused Go Tests or production.
+- **rootCauseOrUnknown:** Verified Go initialization order: dependencies initialize before the importing package and before the test runner. The previous direct-package guard did not bind transitive package initializer behavior.
+- **failedApproach:** Treating the direct 27-file `httpserver` package initializer/alias guard and 109-input import/trigger inventory as proof that imported packages cannot exit before tests.
+- **correction:** [25cf4dae](https://github.com/m-shogo/memories-project/commit/25cf4daebbf667b2b361c1a8b58da3e2a106ce49) extends the existing CI-reachable negative validator. Each discovered local non-test Go source in the import closure is now checked for unreviewed `init` tokens, `os/syscall/log` exit references (including comment-separated selectors), and dot/named imports of those packages.
+- **recurrenceGuard:** Nine bounded synthetic negative fixtures cover direct, comment-split, named/dot-aliased, syscall, log, and unreviewed `init` forms. Two positive fixtures retain ordinary `obslog.eventCodeSet` map initialization and benign `os.Getenv`. The guard executes inside the existing local import closure scan and reuses its Go import parser. Lexical rejection is deliberately conservative; it is not full Go semantic or external-module initializer proof.
+- **retryCondition:** Revisit only if reviewed transitive source/import graph, Go compiler semantics, external dependency audit, CI execution path, or authorized pre-MinIO Focused Go Test path changes. Do not repeat unchanged MinIO HTTP 401 or workflow-write permission blockers.
+
+## Material success
+
+- **outcome:** Exact-source Autonomous Learning Guard [#41280002306](https://github.com/m-shogo/memories-project/actions/runs/41280002306) completed SUCCESS on code HEAD `25cf4daebbf667b2b361c1a8b58da3e2a106ce49` (2026-11-01 06:17:51 UTC). All workflow job steps, including read-only source verification, completed successfully.
+- **evidence:** CI job logs show canonical learning contract PASS, 601 fail-closed negatives PASS, 39 supplemental-history fixtures verified, source-negative reachability 52 workflows / 63 direct Python commands / 204 fixtures, fanout 195 synthetic cases PASS, and helper ancestor 1,186 fail-closed mutations PASS. GitHub compare `03417d0d..25cf4dae` shows only `scripts/validate-autonomous-learning-system-negative.py` changed (+74 lines).
+- **whySafe:** Synthetic tests and a fail-closed read-only validator changed; no Go service/test implementation, workflow, production/restore evidence, credential, traffic, or promotion authority changed. No claim of non-skipped real repository Focused Go Test success is made.
+- **reusableMechanism:** Traverse the reviewed local Go import closure, check each non-test source for pre-test termination paths and aliased process-exit imports, preserve benign data initializers, and exercise compiler-valid false-green negatives through the existing CI path. External-module initializers and full semantic call graphs remain out of scope.
+- **protectedAuthorityCheck:** Git compare changed only the existing negative validator. Canonical learning blob `b809c69d`, mandatory contract `87712ea9`, production status `b55ee4ad` (`productionDecision=NO_GO`), OPS-P0-007 snapshot `dbaa36b0` (`PREREQUISITES_BLOCKED`, registered/eligible generations 0/0, approved objectives 0) and all protected evidence/review registries remained unchanged. No gate was satisfied or relaxed.
+
+## Next safe target
+
+Prove that the new transitive checker cannot be silently disconnected from the actual import-closure loop (executable call-site negative), then continue investigating an authorized, exact-source non-skipped Go test path independent of the blocked MinIO startup.
