@@ -1563,8 +1563,7 @@ def prove_atomic_prestage_parent_swap(module) -> None:
 
     # A failed child-component open must retain its original error even
     # when the outer ancestor cleanup close fails before or after its effect.
-    for child_open_close_case in ("before-child-open-cleanup", "after-child-open-cleanup",
-                                  "before-child-open-valueerror", "after-child-open-valueerror"):
+    for child_open_close_case in ("before-child-open-cleanup", "after-child-open-cleanup", "before-child-open-valueerror", "after-child-open-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-open-close-") as temp_dir:
             root = Path(temp_dir)
             parent = root / "owned"
