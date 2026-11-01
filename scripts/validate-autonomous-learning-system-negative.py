@@ -3361,9 +3361,27 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     reject("prefilter loop unconditional break", route,
            "request := httptest.NewRequest(http.MethodPost, test.path, nil)",
            "if true { break }\n\t\trequest := httptest.NewRequest(http.MethodPost, test.path, nil)")
-    reject("route loop goto bypass", route,
-           "t.Run(test.name, func(t *testing.T) {",
-           "goto skipCases\n\t\tt.Run(test.name, func(t *testing.T) {")
+    # Unlike an unresolved-label lexical mutation, this is a compilable Go
+    # bypass: goto skips the t.Run assertion and lands inside the same loop.
+    goto_start = "t.Run(test.name, func(t *testing.T) {"
+    goto_end = "\t\t})\n\t}\n}\n\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes"
+    if files[route].count(goto_start) != 1 or files[route].count(goto_end) != 1:
+        raise RuntimeError("focused Go goto fixture anchor drift")
+    goto_bypass = dict(files)
+    goto_bypass[route] = files[route].replace(
+        goto_start, "goto skipCases\n\t\t" + goto_start, 1
+    ).replace(
+        goto_end,
+        "\t\t})\n\tskipCases:\n\t\t_ = test\n\t}\n}\n\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes",
+        1,
+    )
+    try:
+        require_reviewed_upload_route_focused_go_tests(goto_bypass)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route focused Go test target":
+            raise
+    else:
+        raise RuntimeError("focused Go executable goto negative accepted")
     # Wrap the entire first reviewed test in a Go-valid constant-false
     # block. All case literals, loops and assertions remain unchanged.
     signature = "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {\n"
