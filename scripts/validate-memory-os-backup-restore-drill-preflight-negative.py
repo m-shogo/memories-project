@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-preflight.py"
@@ -600,11 +601,32 @@ def expect_upstream_validator_output_redacted(validator: Any) -> None:
                 kwargs.get("stderr") == validator.subprocess.DEVNULL and
                 kwargs.get("check") is False and kwargs.get("timeout") == 180,
                 "preflight upstream output/timeout boundary drift")
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict), "preflight upstream child environment missing")
+        require(child_env.get("SAFE_PREFLIGHT_CHILD_ENV") == "preserved",
+                "preflight upstream benign environment lost")
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                    "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+            require(key not in child_env, "preflight upstream import/loader override inherited: " + key)
+        require(child_env == {
+            key: value for key, value in validator.os.environ.items()
+            if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+        }, "preflight upstream child environment authority drift")
         return SimpleNamespace(returncode=0)
 
     try:
         validator.subprocess.run = reviewed_run
-        validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
+        poisoned = {
+            "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+            "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+            "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+            "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+            "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+            "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+            "SAFE_PREFLIGHT_CHILD_ENV": "preserved",
+        }
+        with patch.dict(validator.os.environ, poisoned):
+            validator.run_validator(validator.GEN_VALIDATOR, "environment generation")
         require(len(calls) == 1, "preflight reviewed upstream positive not executed")
 
         validator.subprocess.run = lambda *args, **kwargs: SimpleNamespace(
@@ -651,7 +673,7 @@ def expect_upstream_validator_output_redacted(validator: Any) -> None:
             raise Fail("preflight upstream OS failure accepted")
     finally:
         validator.subprocess.run = original_run
-    print("PASS: preflight upstream bounded output-suppressed positive and 4 negatives")
+    print("PASS: preflight upstream sanitized child environment, bounded output and 4 negatives")
 
 
 def expect_unexpected_helper_exception_preserved(
