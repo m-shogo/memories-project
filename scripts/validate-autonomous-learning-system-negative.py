@@ -784,6 +784,9 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 raise RuntimeError("canonical ValueError leaked raw descriptor")
         if read() != b"stable":
             raise RuntimeError("canonical ValueError recovery corrupted authority")
+        real_close = os.close
+        canary = Path(tmp) / "external-canary"
+        canary.write_bytes(b"external")
         # Only immutable bytes from a binary stream may become a canonical
         # authority snapshot. Non-byte payloads must fail before len/decoding.
         for label, payload in (
@@ -825,7 +828,6 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             raise RuntimeError("canonical nonbyte recovery corrupted authority")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
-        real_close = os.close
         opened.clear()
         def close_before_effect(_descriptor):
             raise OSError(errno.EIO, "synthetic close-before-effect")
@@ -842,8 +844,6 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
 
         # A close that already consumed its FD must not be retried by number:
         # force that same number onto an independent external canary.
-        canary = Path(tmp) / "external-canary"
-        canary.write_bytes(b"external")
         for label, payload, expected in (
                 ("close after effect", b"stable", f"unreadable authority: {target}"),
                 ("original error after close", b"x" * 11, "reviewed source oversized")):
