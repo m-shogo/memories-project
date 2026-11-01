@@ -136,6 +136,9 @@ def read_text(path: Path) -> str:
     except (OSError, ValueError):
         raise Fail("preflight reconcile authority unreadable") from None
     finally:
+        # Cleanup must not replace the original unreadable-authority failure.
+        # A close failure without a primary error remains fail-closed.
+        primary_failure = sys.exc_info()[0] is not None
         cleanup_failed = False
         if fd >= 0:
             try:
@@ -147,7 +150,7 @@ def read_text(path: Path) -> str:
                 os.close(directory_fd)
             except OSError:
                 cleanup_failed = True
-        if cleanup_failed:
+        if cleanup_failed and not primary_failure:
             raise Fail("preflight reconcile authority cleanup failed") from None
     require(len(raw) <= MAX_AUTHORITY_BYTES,
             "preflight reconcile authority exceeds 1 MiB")

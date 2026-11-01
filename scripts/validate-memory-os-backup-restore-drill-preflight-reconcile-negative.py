@@ -533,6 +533,70 @@ def assert_authorities_restored(
     )
 
 
+def prove_reader_double_fault_preserves_primary(module) -> None:
+    """A secondary descriptor-close error must not mask an earlier read failure."""
+    canonical_before = {
+        module.CONTRACT: (module.CONTRACT.read_bytes(), mode(module.CONTRACT)),
+        module.STATUS: (module.STATUS.read_bytes(), mode(module.STATUS)),
+    }
+    with guarded_temporary_directory(".tmp-preflight-read-double-fault-", TMP_PARENT) as raw:
+        target = Path(raw) / "preflight-reader.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        before = target.read_bytes()
+        original_open, original_fdopen, original_close = (
+            module.os.open, module.os.fdopen, module.os.close
+        )
+        opened = []
+        close_faults = []
+
+        def capture_open(*args, **kwargs):
+            descriptor = original_open(*args, **kwargs)
+            opened.append(descriptor)
+            return descriptor
+
+        def reject_fdopen(*_args, **_kwargs):
+            raise OSError("synthetic private primary preflight reader failure")
+
+        def close_then_fail(descriptor):
+            original_close(descriptor)
+            if not close_faults:
+                close_faults.append(descriptor)
+                raise OSError("synthetic private secondary preflight close failure")
+
+        try:
+            module.os.open = capture_open
+            module.os.fdopen = reject_fdopen
+            module.os.close = close_then_fail
+            try:
+                module.read_text(target)
+            except module.Fail as exc:
+                require(str(exc) == "preflight reconcile authority unreadable"
+                        and exc.__suppress_context__ and exc.__cause__ is None,
+                        f"preflight read cleanup masked primary failure: {exc}")
+            else:
+                raise Fail("preflight reader double-fault unexpectedly accepted")
+        finally:
+            module.os.open = original_open
+            module.os.fdopen = original_fdopen
+            module.os.close = original_close
+
+        require(close_faults and len(opened) >= 2,
+                "preflight reader double-fault injection was not exercised")
+        for descriptor in opened:
+            try:
+                os.fstat(descriptor)
+            except OSError:
+                pass
+            else:
+                raise Fail("preflight reader double-fault leaked descriptor")
+        require(target.read_bytes() == before,
+                "preflight reader double-fault mutated isolated authority")
+    for path, (expected_bytes, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected_bytes and mode(path) == expected_mode,
+                f"preflight reader double-fault changed canonical authority: {path.name}")
+    print("PASS boundary: preflight primary reader failure survives secondary descriptor cleanup fault")
+
+
 def prove_atomic_cleanup_preserves_primary(module) -> None:
     canonical_before = {
         module.CONTRACT: (module.CONTRACT.read_bytes(), mode(module.CONTRACT)),
@@ -771,6 +835,7 @@ def main() -> int:
     module = load_module()
     module.enforce_execution_identity()
     module.enforce_runtime_authorities()
+    prove_reader_double_fault_preserves_primary(module)
     prove_atomic_cleanup_preserves_primary(module)
     # Reject valid repository paths with unreviewed labels/targets before any
     # subprocess can run; these are synthetic authority candidates only.
