@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -135,17 +136,26 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
 
 def run_negative_suite() -> None:
     require_exact_repo_file(DRILL_NEGATIVE, DRILL_NEGATIVE_REL, "drill request negative validator")
-    completed = subprocess.run(
-        [sys.executable, str(DRILL_NEGATIVE)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(DRILL_NEGATIVE)],
+            cwd=ROOT,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        raise Fail("drill request negative suite unavailable or timed out (raw output withheld)") from None
     require(
-        completed.returncode == 0,
-        f"drill request negative suite failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}",
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        "drill request negative suite failed (raw output withheld)",
     )
 
 

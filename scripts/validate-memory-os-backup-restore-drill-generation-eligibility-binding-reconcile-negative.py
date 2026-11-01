@@ -499,12 +499,84 @@ def prove_validator_strict_json_loader() -> None:
     print("PASS: binding validator strict JSON positive and five ambiguity/size negatives")
 
 
+def prove_validator_negative_suite_private_transport() -> None:
+    validator = load_module(VALIDATOR, "memory_os_binding_negative_transport")
+    canonical_contract, canonical_registry = canonical_bytes()
+    original_run = validator.subprocess.run
+    marker = "synthetic-private-binding-negative-suite-output"
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT",
+        "SAFE_BINDING_NEGATIVE_ENV": "preserved",
+    }
+    seen = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv == [validator.sys.executable, str(validator.DRILL_NEGATIVE)],
+                    "binding negative suite child target drift")
+            require(kwargs.get("cwd") == validator.ROOT
+                    and kwargs.get("stdout") == validator.subprocess.DEVNULL
+                    and kwargs.get("stderr") == validator.subprocess.DEVNULL
+                    and kwargs.get("check") is False
+                    and kwargs.get("timeout") == 120,
+                    "binding negative suite private bounded transport drift")
+            env = kwargs.get("env")
+            require(isinstance(env, dict)
+                    and env.get("SAFE_BINDING_NEGATIVE_ENV") == "preserved"
+                    and all(key not in env for key in poisoned if key != "SAFE_BINDING_NEGATIVE_ENV"),
+                    "binding negative suite inherited unreviewed loader environment")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code)
+        return run
+
+    try:
+        with patch.dict(os.environ, poisoned):
+            validator.subprocess.run = fake_run(0)
+            validator.run_negative_suite()
+            for code in (1, False, None):
+                validator.subprocess.run = fake_run(code)
+                try:
+                    validator.run_negative_suite()
+                except validator.Fail as exc:
+                    require(str(exc) == "drill request negative suite failed (raw output withheld)"
+                            and marker not in str(exc),
+                            f"binding negative suite invalid exit class drift: {exc}")
+                else:
+                    raise Fail("binding negative suite invalid exit unexpectedly accepted")
+            for failure in (
+                OSError(marker), ValueError(marker), TypeError(marker),
+                subprocess.TimeoutExpired(["synthetic"], 120, output=marker, stderr=marker),
+            ):
+                def raise_failure(*_args, **_kwargs):
+                    raise failure
+                validator.subprocess.run = raise_failure
+                try:
+                    validator.run_negative_suite()
+                except validator.Fail as exc:
+                    require(str(exc) == "drill request negative suite unavailable or timed out (raw output withheld)"
+                            and marker not in str(exc),
+                            f"binding negative suite exception leaked private output: {exc}")
+                else:
+                    raise Fail("binding negative suite transport failure unexpectedly accepted")
+    finally:
+        validator.subprocess.run = original_run
+    require(seen == [0, 1, False, None],
+            "binding negative suite transport controls incomplete")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, "binding negative suite transport")
+    print("PASS: binding negative suite isolated bounded private transport and strict typed exit")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_validator_execution_identity()
     prove_validator_strict_json_loader()
+    prove_validator_negative_suite_private_transport()
     reconciler = load_reconciler()
     prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
