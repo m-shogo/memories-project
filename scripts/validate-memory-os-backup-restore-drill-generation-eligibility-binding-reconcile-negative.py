@@ -797,9 +797,44 @@ def prove_pinned_json_path_boundaries() -> None:
                 require(mutated[0], name + " mutation injection did not run")
             finally:
                 module.os.read = original_read
+
+            swapped = [False]
+            moved_parent = root / "swapped-parent"
+            def swap_parent_during_read(fd: int, count: int):
+                chunk = original_read(fd, count)
+                if not swapped[0]:
+                    swapped[0] = True
+                    parent.rename(moved_parent)
+                    parent.symlink_to(moved_parent, target_is_directory=True)
+                return chunk
+            try:
+                module.os.read = swap_parent_during_read
+                reject(prefix + " JSON authority parent pathname drift",
+                       "parent swapped after descriptor acquisition")
+                require(swapped[0], name + " parent swap not exercised")
+            finally:
+                module.os.read = original_read
+                if parent.is_symlink():
+                    parent.unlink()
+                    moved_parent.rename(parent)
+
+            original_close = module.os.close
+            def close_after_effect(fd: int) -> None:
+                original_close(fd)
+                raise ValueError("synthetic JSON close after effect")
+            try:
+                module.os.close = close_after_effect
+                reject(prefix + " JSON descriptor cleanup failed",
+                       "successful read close fault")
+                module.os.read = lambda _fd, _n: b""
+                reject(prefix + " JSON authority changed during read",
+                       "primary read failure plus secondary close fault")
+            finally:
+                module.os.read = original_read
+                module.os.close = original_close
     assert_canonical_unchanged(canonical_contract, canonical_registry,
                                "pinned JSON authority negative cases")
-    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation; fragmented positive")
+    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault; fragmented positive")
 
 
 def prove_validator_negative_suite_private_transport() -> None:
