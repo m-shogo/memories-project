@@ -61,16 +61,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
     except OSError:
         raise ValidationFailure(f"unreadable authority: {path}") from None
     try:
-        # fdopen owns the descriptor only after returning a stream. If stream
-        # acquisition fails, close the raw descriptor before failing closed.
-        try:
-            stream = os.fdopen(fd, "rb")
-        except BaseException:
-            try:
-                os.close(fd)
-            except OSError:
-                pass  # fdopen may already have closed the descriptor.
-            raise
+        # Retain ownership of the raw descriptor throughout stream use.
+        # closefd=False prevents an ambiguous fdopen handoff and lets the
+        # outer finally close exactly the descriptor we still own.
+        stream = os.fdopen(fd, "rb", closefd=False)
         with stream:
             before = os.fstat(stream.fileno())
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
@@ -110,6 +104,15 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             return raw
     except OSError:
         raise ValidationFailure(f"unreadable authority: {path}") from None
+    finally:
+        # Preserve the original validation/read failure if cleanup fails.
+        # A cleanup failure on the success path must still fail closed.
+        pending_error = sys.exc_info()[0] is not None
+        try:
+            os.close(fd)
+        except Exception:
+            if not pending_error:
+                raise ValidationFailure(f"unreadable authority: {path}") from None
 
 
 def load_object(path: Path) -> dict[str, Any]:
