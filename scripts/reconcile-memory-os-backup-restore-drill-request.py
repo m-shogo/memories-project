@@ -121,7 +121,9 @@ def read_text(path: Path) -> str:
         lexical = path.relative_to(ROOT)
     except (TypeError, ValueError):
         raise Fail("drill request reconcile authority symlinked parent refused") from None
-    require(path.is_absolute() and lexical == repo_relative(path),
+    # Preserve the existing leaf-symlink rejection at O_NOFOLLOW; only a
+    # symlinked ancestor belongs to this separate parent-path guard.
+    require(path.is_absolute() and (path.is_symlink() or lexical == repo_relative(path)),
             "drill request reconcile authority symlinked parent refused")
     require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
             "drill request reconcile safe authority reader unsupported")
