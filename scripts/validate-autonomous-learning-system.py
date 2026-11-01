@@ -68,6 +68,11 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # to its old inode while the leaf still resolves to identical bytes.
         parents = [(parent, parent.lstat()) for parent in path.parents]
         preflight = path.lstat()
+        # A stable symlinked ancestor is still an unreviewed authority alias.
+        # Checking only post-read parent drift cannot reject an alias that
+        # existed before the descriptor was opened.
+        if any(not stat.S_ISDIR(prior.st_mode) for _, prior in parents):
+            raise ValidationFailure(diagnostic)
     except OSError:
         raise ValidationFailure(f"unreadable authority: {path}") from None
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
