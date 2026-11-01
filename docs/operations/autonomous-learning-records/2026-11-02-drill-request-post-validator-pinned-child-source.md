@@ -1,0 +1,25 @@
+# Supplemental OPS learning — pinned drill request post-validator source (2026-11-02)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. **Not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, approved objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent-review, final-candidate or promotion evidence.
+
+## Material failure — post-validator executable pathname reopened after review
+
+- **symptom:** The drill-request reconciler verified a reviewed post-validator path but later executed `python <path>`, leaving a mutable-path reopen between identity review and the child process. No malicious replacement or production compromise was observed.
+- **evidence:** At pre-change `8dc6ffd77e3aea4dc79324d04a56c34940eb030c`, `run_post_validator` used a closed label/path map, explicit child environment, DEVNULL output, typed return-code check and 120-second timeout, but `subprocess.run([sys.executable, str(path)])` reopened the script pathname. The existing [drill-generation-binding pinned child learning](2026-11-02-drill-binding-pinned-post-validator-stdin.md) established the same failure mode and a successful mitigation.
+- **rootCauseOrUnknown:** Verified executable-source TOCTOU gap between precheck and subprocess script-path reopen. Actual external runner filesystem mutation is unknown.
+- **failedApproach:** Assuming a prior canonical pathname check guaranteed that the later child interpreter executed the same bytes.
+- **correction:** [`488083e8`](https://github.com/m-shogo/memories-project/commit/488083e87b0d975cbab7ce6ff4cd2d803ce2705a) pins the reviewed source with no-follow directory and leaf descriptors, rejects unsafe writable/link/size/identity changes, closes owned FDs with primary-error precedence, and executes exact verified bytes through a fixed Python `-c` bootstrap with stdin. The reviewed label/path map remains closed.
+- **recurrenceGuard:** The CI-reachable drill-request reconcile rollback negative suite asserts exact pinned stdin source, fixed bootstrap/direct-script semantics, sanitized environment, 120-second timeout, private output, strict exit types and error classes. A new synthetic substituted-leaf-FD negative must reject before the child process can run.
+- **retryCondition:** Revisit only if reviewed child source/target, Python CLI/loader semantics, source pinning, CI fixture or exact-source CI outcome changes. Do not replay unchanged Quay MinIO 401, workflow permission or missing human evidence blockers.
+
+## Material success — reviewed post-validator source identity preserved
+
+- **outcome:** Both reviewed drill-request post-validators now execute the pinned verified bytes rather than reopening their script pathname.
+- **evidence:** Exact-source [Backup Restore Drill Request Reconcile Rollback #41355818778](https://github.com/m-shogo/memories-project/actions/runs/41355818778) completed **SUCCESS** for `488083e87b0d975cbab7ce6ff4cd2d803ce2705a`. Job `124995483981` logs explicitly show `PASS: drill request post-validators reject substituted source FD before child execution`, `Memory OS backup/restore drill request reconcile rollback negative suite PASS`, `production decision: NO_GO`, and `production decision changed: false`. Other workflows were not all complete at observation and are not claimed successful.
+- **whySafe:** Only the existing reconciler and its read-only negative suite changed; all reviewed child labels and script identities remain unchanged. The substituted source is a synthetic temporary fixture and never executes. No workflow, production status, registry, real evidence, credential, traffic or human promotion authority changed.
+- **reusableMechanism:** Carry a bounded no-follow source snapshot through FD identity checks and transport the exact bytes through stdin to a fixed Python bootstrap. Prove the substitution rejection before child execution with an executable negative test, not prose alone.
+- **protectedAuthorityCheck:** Exact Git compare `8dc6ffd7..488083e8` lists only the two reviewed Python paths. All ten protected Git blobs are unchanged: learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, objectives `f4d74f33`, drill request registry `acebcd02`, generation evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, promotion review `99cb895f`. `productionDecision=NO_GO`, `PREREQUISITES_BLOCKED`; learning/CI cannot satisfy generation, objective, request-bound evidence, eight-domain, independent-review or human promotion gates.
+
+## Next safe target
+
+Audit the independent drill-request validator's negative child runner and canonical helper import for a comparable pathname reopen. Reuse existing pinned-source negative fixtures and do not change production authorities or workflow permissions.
