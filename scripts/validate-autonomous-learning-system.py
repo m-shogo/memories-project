@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from contextlib import contextmanager
 import ast
 import difflib
 import hashlib
@@ -40,6 +41,20 @@ class ValidationFailure(RuntimeError):
     pass
 
 
+@contextmanager
+def preserve_nonowning_stream_close(stream: Any, path: Path):
+    """Keep an original validation failure when a non-owning stream close fails."""
+    try:
+        yield stream
+    finally:
+        pending_error = sys.exc_info()[0] is not None
+        try:
+            stream.close()
+        except Exception:
+            if not pending_error:
+                raise ValidationFailure(f"unreadable authority: {path}") from None
+
+
 MAX_LEARNING_CONTRACT_BYTES = 1024 * 1024
 MAX_CANONICAL_LEARNING_BYTES = 8 * 1024 * 1024
 MAX_CANONICAL_ENTRYPOINT_BYTES = 512 * 1024
@@ -65,7 +80,7 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # closefd=False prevents an ambiguous fdopen handoff and lets the
         # outer finally close exactly the descriptor we still own.
         stream = os.fdopen(fd, "rb", closefd=False)
-        with stream:
+        with preserve_nonowning_stream_close(stream, path):
             before = os.fstat(stream.fileno())
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                     or before.st_mode & 0o022
