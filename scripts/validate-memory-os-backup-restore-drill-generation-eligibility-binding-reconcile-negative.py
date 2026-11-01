@@ -466,11 +466,45 @@ def prove_reconciler_strict_json_loader(reconciler: Any) -> None:
     print("PASS: binding reconciler strict JSON positive and five ambiguity/size negatives")
 
 
+def prove_validator_strict_json_loader() -> None:
+    validator = load_module(VALIDATOR, "memory_os_binding_strict_json_negative")
+    canonical_contract, canonical_registry = canonical_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-drill-generation-validator-json-", dir=TMP_PARENT) as raw:
+        authority = Path(raw) / "validator-json.json"
+        authority.write_bytes(b'{"safe":true}')
+        require(validator.load(authority) == {"safe": True},
+                "binding validator strict JSON positive control rejected")
+        cases = (
+            ("duplicate", b'{"safe":true,"safe":false}',
+             "drill generation binding validator JSON duplicate key refused"),
+            ("nonfinite", b'{"safe":Infinity}',
+             "drill generation binding validator JSON nonfinite number refused"),
+            ("overflow float", b'{"safe":1e9999}',
+             "drill generation binding validator JSON nonfinite number refused"),
+            ("oversized integer", b'{"safe":' + b'9' * 129 + b'}',
+             "drill generation binding validator JSON oversized integer refused"),
+            ("oversized bytes", b'x' * (validator.MAX_BINDING_AUTHORITY_BYTES + 1),
+             "drill generation binding validator JSON oversized authority refused"),
+        )
+        for label, payload, expected in cases:
+            authority.write_bytes(payload)
+            try:
+                validator.load(authority)
+            except validator.Fail as exc:
+                require(str(exc) == expected,
+                        f"binding validator JSON {label} rejected at wrong boundary: {exc}")
+            else:
+                raise Fail(f"binding validator JSON {label} ambiguity unexpectedly accepted")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, "binding validator strict JSON")
+    print("PASS: binding validator strict JSON positive and five ambiguity/size negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_validator_execution_identity()
+    prove_validator_strict_json_loader()
     reconciler = load_reconciler()
     prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
