@@ -7,12 +7,14 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-promotion-review.py"
@@ -308,11 +310,33 @@ def prove_private_negative_suite_transport() -> None:
             and "text" not in kwargs,
             "promotion negative suite subprocess privacy/timeout drift",
         )
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict), "promotion negative child environment missing")
+        require(child_env.get("SAFE_PROMOTION_NEGATIVE_ENV") == "preserved",
+                "promotion negative benign environment lost")
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                    "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+            require(key not in child_env, "promotion negative inherited override: " + key)
+        require(child_env == {
+            key: value for key, value in validator.os.environ.items()
+            if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+        }, "promotion negative child environment authority drift")
         calls.append(args)
         if state["error"] is not None:
             raise state["error"]
         return subprocess.CompletedProcess(args, state["returncode"], stdout=marker, stderr=marker)
 
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_PROMOTION_NEGATIVE_ENV": "preserved",
+    }
+    env_patch = patch.dict(validator.os.environ, poisoned)
+    env_patch.start()
     validator.subprocess.run = fake_run
     try:
         validator.run_negative_suite()
@@ -339,7 +363,8 @@ def prove_private_negative_suite_transport() -> None:
                 "promotion negative suite subprocess case multiplicity drift")
     finally:
         validator.subprocess.run = original_run
-    print("PASS: actual promotion negative-suite subprocess bounded/private with four negatives")
+        env_patch.stop()
+    print("PASS: actual promotion negative-suite subprocess bounded/private/isolated with four negatives")
 
 
 def prove_bounded_promotion_payload_digest() -> None:

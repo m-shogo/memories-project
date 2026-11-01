@@ -7,6 +7,7 @@ import importlib.util
 import inspect
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -230,16 +231,21 @@ def inventory_area(inventory: dict[str, Any], area_id: str) -> dict[str, Any]:
 
 
 def run_negative_suite() -> None:
-    """Bound the private negative-suite subprocess; never surface its raw output."""
+    """Bound and isolate the private negative-suite subprocess."""
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
-            [sys.executable, str(NEGATIVE)], cwd=ROOT,
+            [sys.executable, str(NEGATIVE)], cwd=ROOT, env=child_env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             check=False, timeout=60,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail("promotion review negative suite unavailable or timed out") from None
-    require(type(completed.returncode) is int and completed.returncode == 0,
+    require(isinstance(completed, subprocess.CompletedProcess)
+            and type(completed.returncode) is int and completed.returncode == 0,
             "promotion review negative suite failed")
 
 
