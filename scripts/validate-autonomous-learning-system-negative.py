@@ -1151,6 +1151,70 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical short-read recovery corrupted authority")
+        # The pinned FD and final leaf snapshots must have exact integer
+        # metadata, not a forged bool/int-subclass that compares equal.
+        real_fstat = os.fstat
+        snapshot_fields = ("st_mode", "st_dev", "st_ino", "st_nlink",
+                           "st_size", "st_mtime_ns", "st_ctime_ns")
+        leaf_mode = real_lstat(target).st_mode
+        for phase, field, bad_value in (
+                ("before", "st_mode", True),
+                ("before", "st_nlink", True),
+                ("after", "st_nlink", True),
+                ("after", "st_ctime_ns", "123"),
+                ("live", "st_mode", type("LeafModeSubclass", (int,), {})(leaf_mode)),
+                ("live", "st_ino", "123")):
+            opened.clear()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            fstat_calls = 0
+            leaf_reads = 0
+            def forged_snapshot(original):
+                fields = {name: getattr(original, name) for name in snapshot_fields}
+                fields[field] = bad_value
+                return type("SyntheticCanonicalSnapshot", (), fields)()
+            def corrupt_snapshot_fstat(descriptor):
+                nonlocal fstat_calls
+                original = real_fstat(descriptor)
+                if opened and descriptor == opened[0]:
+                    fstat_calls += 1
+                    if ((phase == "before" and fstat_calls == 1)
+                            or (phase == "after" and fstat_calls == 2)):
+                        return forged_snapshot(original)
+                return original
+            def corrupt_snapshot_lstat(path):
+                nonlocal leaf_reads
+                original = real_lstat(path)
+                if path == target:
+                    leaf_reads += 1
+                    if phase == "live" and leaf_reads == 2:
+                        return forged_snapshot(original)
+                return original
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.os, "fstat", side_effect=corrupt_snapshot_fstat), \
+                     mock.patch.object(module.Path, "lstat", new=corrupt_snapshot_lstat):
+                    reject(f"malformed {phase} snapshot {field}",
+                           f"unreadable authority: {target}")
+                if len(opened) != 1:
+                    raise RuntimeError("canonical malformed snapshot FD inventory drift")
+                expected_fstats = 1 if phase == "before" else 2
+                expected_leaf_reads = 1 if phase == "before" else 2
+                if fstat_calls != expected_fstats or leaf_reads != expected_leaf_reads:
+                    raise RuntimeError("canonical malformed snapshot stage reachability drift")
+                try:
+                    real_fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical malformed snapshot FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical malformed snapshot leaked owned FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical malformed snapshot corrupted external canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical malformed snapshot recovery corrupted authority")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
         opened.clear()
