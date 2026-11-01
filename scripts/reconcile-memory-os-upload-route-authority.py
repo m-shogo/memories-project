@@ -501,11 +501,12 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 if not published and staged_identity is None and untransferred_stage_fd is not None:
                     try:
                         recovery_stat = os.fstat(untransferred_stage_fd)
-                    except OSError:
+                    except Exception as recovery_exc:
                         # The stage name is not trustworthy when fd identity is unavailable.
                         if original_failure is not None:
                             original_failure.add_note(
-                                f"private stage identity unavailable; name left untouched: {temporary.name}")
+                                f"private stage identity unavailable; name left untouched: {temporary.name} "
+                                f"({type(recovery_exc).__name__})")
                     else:
                         if stat.S_ISREG(recovery_stat.st_mode) and recovery_stat.st_nlink == 1:
                             staged_identity = (recovery_stat.st_dev, recovery_stat.st_ino)
