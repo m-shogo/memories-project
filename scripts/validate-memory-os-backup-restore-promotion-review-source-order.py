@@ -51,11 +51,24 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def read_bounded_bytes(path: Path, field: str) -> bytes:
+    require(isinstance(path, Path) and not path.is_symlink() and path.is_file(),
+            f"{field} file unsafe")
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_JSON_BYTES + 1)
+    except (OSError, ValueError):
+        raise Fail(f"{field} unreadable") from None
+    require(type(raw) is bytes and len(raw) <= MAX_JSON_BYTES,
+            f"{field} bytes invalid or oversized")
+    return raw
+
+
 def load_json(path: Path, field: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"{field} unreadable or invalid JSON: {exc}") from exc
+        value = json.loads(read_bounded_bytes(path, field).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        raise Fail(f"{field} unreadable or invalid JSON") from None
     require(isinstance(value, dict), f"{field} root must be object")
     return value
 
@@ -289,10 +302,7 @@ def validate_row(row: dict[str, Any], index: int, generations: dict[str, dict[st
         ref, path = canonical_review_ref(row.get(name), field)
         review_commit = first_commit_for_path(ref, field)
         require_source_precedes_review(source_commit, review_commit, field)
-        try:
-            current_blob = path.read_bytes()
-        except OSError as exc:
-            raise Fail(f"cannot read {field} current blob: {exc}") from exc
+        current_blob = read_bounded_bytes(path, field)
         require_creation_blob_immutable(current_blob, creation_blob(review_commit, ref, field), field)
         payload = load_json(path, field)
         require(payload.get("recoveryEvidenceId") == evidence_id, f"{field} recoveryEvidenceId binding mismatch")
@@ -549,7 +559,61 @@ def creation_blob_transport_self_test() -> None:
         require(len(calls) == 19, "promotion creation blob negative count drift")
 
 
+def bounded_review_bytes_self_test() -> None:
+    field = "self-test"
+    with tempfile.TemporaryDirectory(prefix="promotion-review-bytes-negative-") as temp:
+        root = Path(temp)
+        path = root / "review.json"
+        positive = b'{"reviewResult":"APPROVED"}\n'
+        path.write_bytes(positive)
+        require(read_bounded_bytes(path, field) == positive,
+                "promotion bounded review bytes positive invalid")
+        require(load_json(path, field).get("reviewResult") == "APPROVED",
+                "promotion bounded review JSON positive invalid")
+        for label, fixture, expected, loader in (
+            ("oversized", b"x" * (MAX_JSON_BYTES + 1),
+             f"{field} bytes invalid or oversized", read_bounded_bytes),
+            ("invalid-utf8", b"\\xff",
+             f"{field} unreadable or invalid JSON", load_json),
+            ("invalid-json", b"{broken",
+             f"{field} unreadable or invalid JSON", load_json),
+        ):
+            path.write_bytes(fixture)
+            try:
+                loader(path, field)
+            except Fail as exc:
+                require(str(exc) == expected,
+                        f"promotion review {label} rejected at wrong boundary")
+            else:
+                raise Fail(f"promotion review {label} unexpectedly accepted")
+            require(path.read_bytes() == fixture,
+                    f"promotion review {label} mutated source fixture")
+        path.write_bytes(positive)
+        link = root / "linked.json"
+        link.symlink_to(path)
+        try:
+            read_bounded_bytes(link, field)
+        except Fail as exc:
+            require(str(exc) == f"{field} file unsafe",
+                    "promotion review symlink rejected at wrong boundary")
+        else:
+            raise Fail("promotion review symlink unexpectedly accepted")
+        directory = root / "directory"
+        directory.mkdir()
+        try:
+            read_bounded_bytes(directory, field)
+        except Fail as exc:
+            require(str(exc) == f"{field} file unsafe",
+                    "promotion review directory rejected at wrong boundary")
+        else:
+            raise Fail("promotion review directory unexpectedly accepted")
+        require(read_bounded_bytes(path, field) == positive
+                and load_json(path, field).get("reviewResult") == "APPROVED",
+                "promotion review bounded bytes recovery positive invalid")
+
+
 def self_test() -> None:
+    bounded_review_bytes_self_test()
     creation_blob_transport_self_test()
     commit_ancestry_transport_self_test()
     git_output_transport_self_test()
