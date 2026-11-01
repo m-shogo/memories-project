@@ -233,7 +233,7 @@ def read_regular_bytes(path: Path) -> bytes | None:
         read_failure = sys.exception()
         try:
             os.close(descriptor)
-        except OSError as read_close_exc:
+        except Exception as read_close_exc:
             # A failed close may already have consumed the descriptor.
             if read_failure is None:
                 raise
