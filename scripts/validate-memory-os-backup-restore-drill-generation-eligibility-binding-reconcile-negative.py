@@ -286,8 +286,8 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
             original_close = validator.os.close
             original_fstat = validator.os.fstat
             for fail_at, invalid in (
-                (1, None), (2, True), (len(approved.parts), -1),
-                (len(approved.parts), 1.5), (len(approved.parts), "7"),
+                (1, None), (2, True), (len(Path("pkg/approved.py").parts) + 1, -1),
+                (len(Path("pkg/approved.py").parts) + 1, 1.5), (len(Path("pkg/approved.py").parts) + 1, "7"),
             ):
                 canary_fd = original_open(approved, os.O_RDONLY)
                 acquired: list[int] = []
