@@ -243,9 +243,11 @@ def run_validator(path: Path, label: str) -> None:
     }
     require(type(label) is str and reviewed.get(label) == path,
             "unreviewed typed admission child validator")
-    repo_relative(path)
+    relative = repo_relative(path)
     require(path.is_file() and not path.is_symlink(),
             "typed admission child validator must be a regular canonical file")
+    require(relative == path.relative_to(ROOT),
+            "typed admission child validator canonical parent path drift")
     # Child validation must not inherit Python import, loader or Git overrides:
     # an injected import can exit zero before any reviewed assertions execute.
     child_env = {

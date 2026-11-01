@@ -1882,12 +1882,27 @@ def prove_child_validator_symlink_rejected(validator) -> None:
             else:
                 raise Fail("typed admission executed a symlinked child validator")
             require(len(calls) == 1, "typed child symlink reached subprocess")
+            real_parent = parent / "real-child-parent"
+            real_parent.mkdir()
+            (real_parent / "child.py").write_text("raise SystemExit(0)\n", encoding="utf-8")
+            linked_parent = parent / "linked-child-parent"
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+            validator.LOCAL_APPLE_VALIDATOR = linked_parent / "child.py"
+            try:
+                validator.run_validator(validator.LOCAL_APPLE_VALIDATOR,
+                                        "local Apple replay restore validator")
+            except validator.Fail as exc:
+                require(str(exc) == "typed admission child validator canonical parent path drift",
+                        "typed child symlinked parent rejected at wrong boundary")
+            else:
+                raise Fail("typed admission executed a child through a symlinked parent")
+            require(len(calls) == 1, "typed child symlinked parent reached subprocess")
         finally:
             validator.LOCAL_APPLE_VALIDATOR = original_target
             validator.subprocess.run = original_run
         require(alias.is_symlink() and child.read_text(encoding="utf-8") == "raise SystemExit(0)\n",
                 "typed child symlink negative modified trusted fixture")
-    print("PASS reject: typed admission unreviewed targets, swapped labels and internal symlink")
+    print("PASS reject: typed admission unreviewed targets, swapped labels, leaf and parent symlinks")
 
 def exercise_writer_lock_lifecycle_negative() -> None:
     """Execute the existing actual-writer lock lifecycle negative through the canonical CI suite."""
