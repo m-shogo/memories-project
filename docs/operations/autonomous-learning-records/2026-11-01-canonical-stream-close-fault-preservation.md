@@ -1,0 +1,25 @@
+# Supplemental OPS learning — canonical non-owning stream close faults (2026-11-01)
+
+Append-only history under `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent-review, final-candidate or human-promotion evidence.
+
+## Material failure
+
+- **symptom:** A non-owning stream's `close()` could raise an ordinary exception while the canonical authority reader was already raising a more meaningful validation failure, replacing that primary diagnostic. This was a source-level cleanup fault class, not a reported production incident.
+- **evidence:** At source HEAD `7115406381cb4270bc4f5ef320a2478dccfdaa0c`, `read_canonical_authority_bytes` used `with stream:`; Python context-manager exit can replace an exception from the body if stream close itself raises. Existing real-FD tests covered outer raw `os.close` before/after-effect faults, but not inner stream-close faults. An isolated Python context-manager control reproduced original-error replacement.
+- **rootCauseOrUnknown:** Verified exception precedence of the `with stream` exit boundary. A stream-close exception is not automatically secondary to an earlier body exception.
+- **failedApproach:** Assuming that protecting the outer raw-descriptor `os.close` was sufficient to preserve original errors through the inner stream context. The earlier raw-close negatives did not exercise this distinct boundary.
+- **correction:** [`68e6a499`](https://github.com/m-shogo/memories-project/commit/68e6a499293915e797f9f7174217f0420362fb94) introduces a scoped context manager that closes the non-owning stream once, preserves a pending validation/read exception on ordinary stream-close failure, and raises a canonical unreadable-authority error on a successful body whose stream cleanup fails.
+- **recurrenceGuard:** [`62d8e7c0`](https://github.com/m-shogo/memories-project/commit/62d8e7c01fb9def1f064c0d67b56e3e003cc6715) adds four CI-reached real-FD cases: before-effect OSError and after-effect ValueError on both successful reads and preexisting oversized-authority errors. Each asserts exact diagnostic, one stream-close attempt, raw FD closure and an independent external canary. The existing `closefd=False` constructor binding remains checked.
+- **retryCondition:** Revisit when canonical stream ownership, stream-close exception behavior, cleanup ordering, or the executable negative harness changes. Do not retry unchanged MinIO HTTP 401 or workflow-write permission blockers.
+
+## Material success
+
+- **outcome:** The non-owning stream cleanup now preserves original validation errors under injected ordinary close faults without suppressing success-path cleanup failures.
+- **evidence:** [Autonomous Learning Guard #41283631358](https://github.com/m-shogo/memories-project/actions/runs/41283631358) completed SUCCESS on exact runtime HEAD `68e6a499`; [Autonomous Learning Guard #41283656601](https://github.com/m-shogo/memories-project/actions/runs/41283656601) completed SUCCESS on exact test HEAD `62d8e7c0`. The latter logged canonical contract PASS, 601 fail-closed negatives PASS, entry-docs PASS, 195 fanout synthetic PASS and 1,186 helper-ancestor negatives PASS. These are CI results, not production or recovery evidence.
+- **whySafe:** Changes were limited to the canonical read-only Python validator and its isolated negative suite. No production service, workflow authority, credential, traffic, readiness, recovery registry or human-promotion decision was changed. Raw FD ownership remains explicitly retained through `closefd=False` and the outer cleanup.
+- **reusableMechanism:** For nested resource cleanup, capture pending exception state before closing each resource; preserve the original failure if cleanup fails, but fail closed if cleanup alone fails. Exercise before/after-effect faults across OSError and ordinary non-OSError classes.
+- **protectedAuthorityCheck:** At code HEAD `62d8e7c0`, all ten protected blobs remained unchanged: canonical learning `b809c69d`, contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, objectives `f4d74f33`, reviewed requests `acebcd02`, generation evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, promotion review `99cb895f`. Production remains `NO_GO`; OPS-P0-007 remains `PREREQUISITES_BLOCKED`, registered/semantically eligible generations 0/0, approved objectives 0. Reviewed requests remain planning-only; current executable request-bound evidence, typed eight-domain coverage, independent review and separate human promotion are still mandatory.
+
+## Next safe target
+
+Verify ordinary non-OSError stream acquisition/read failures and strictly typed immutable-byte read transport with real-FD negatives, without changing production evidence or relying on MinIO.
