@@ -478,15 +478,15 @@ def coherent_atomic_rollback(module) -> None:
         module.STATUS.chmod(original_mode)
 
 
-def local_foundation_git_ancestry(module) -> None:
+def trusted_git_ancestry(module, label: str) -> None:
     """A PATH decoy must not make an invented local evidence SHA an ancestor."""
     actual_head = subprocess.check_output(
         ["/usr/bin/git", "rev-parse", "HEAD"], cwd=ROOT, text=True, timeout=10
     ).strip()
     require(re.fullmatch(r"[0-9a-f]{40}", actual_head) is not None,
-            "local foundation Git positive source SHA invalid")
+            f"{label} Git positive source SHA invalid")
     require(module.source_is_ancestor(actual_head),
-            "local foundation Git positive ancestry rejected")
+            f"{label} Git positive ancestry rejected")
     with tempfile.TemporaryDirectory(prefix="local-foundation-git-decoy-") as temp:
         fake = Path(temp) / "git"
         fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
@@ -500,9 +500,9 @@ def local_foundation_git_ancestry(module) -> None:
                 check=False, timeout=10,
             )
             require(decoy.returncode == 0,
-                    "local foundation Git PATH decoy control ineffective")
+                    f"{label} Git PATH decoy control ineffective")
             require(not module.source_is_ancestor("0" * 40),
-                    "local foundation Git PATH decoy admitted false ancestry")
+                    f"{label} Git PATH decoy admitted false ancestry")
         finally:
             if previous is None:
                 os.environ.pop("PATH", None)
@@ -517,7 +517,7 @@ def local_foundation_git_ancestry(module) -> None:
             args=[], returncode=0,
         )) as observed:
             require(module.source_is_ancestor(actual_head),
-                    "local foundation Git sanitized call control invalid")
+                    f"{label} Git sanitized call control invalid")
             args, kwargs = observed.call_args
             env = kwargs.get("env")
             require(args[0][0] == "/usr/bin/git" and type(env) is dict
@@ -525,7 +525,7 @@ def local_foundation_git_ancestry(module) -> None:
                         "GIT_DIR", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"
                     )) and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
                     and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
-                    "local foundation Git executable or environment authority drift")
+                    f"{label} Git executable or environment authority drift")
 
 
 def main() -> int:
@@ -533,7 +533,9 @@ def main() -> int:
     coherent = load_module(COHERENT, "memory_os_coherent_backup_authority_atomic_negative_target")
     semantic = load_module(SEMANTIC, "memory_os_backup_semantic_authority_negative_target")
     local_foundation = load_module(LOCAL_FOUNDATION, "memory_os_backup_local_foundation_git_negative_target")
-    local_foundation_git_ancestry(local_foundation)
+    trusted_git_ancestry(local_foundation, "local foundation")
+    trusted_git_ancestry(normalizer, "backup normalizer")
+    trusted_git_ancestry(coherent, "coherent backup")
     normalizer.validate_runtime_authority()
     coherent.validate_runtime_authority()
     semantic.validate_runtime_authority()
@@ -547,7 +549,7 @@ def main() -> int:
     coherent_atomic_replace_failure(coherent)
     coherent_atomic_rollback(coherent)
     print("Memory OS backup authority atomic negative suite PASS")
-    print("local foundation Git executable and inherited environment: enforced")
+    print("local foundation, backup normalizer and coherent Git executable/environment: enforced")
     print("semantic production status identity: enforced")
     print("normalizer data/executable authority identity: enforced")
     print("normalizer blocker validator identity: enforced")
