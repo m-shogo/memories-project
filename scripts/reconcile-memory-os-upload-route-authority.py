@@ -360,7 +360,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
     except BaseException as stage_exc:
         try:
             os.close(parent_fd)
-        except OSError as prestage_close_exc:
+        except Exception as prestage_close_exc:
             # Do not retry an ambiguously completed close or mask stage failure.
             stage_exc.add_note(
                 f"prestage pinned parent descriptor close status unknown "
