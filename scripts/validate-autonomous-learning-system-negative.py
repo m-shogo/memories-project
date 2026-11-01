@@ -3327,6 +3327,90 @@ def prove_upload_route_transitive_package_init_negatives() -> None:
 
 
 
+
+def require_reviewed_upload_route_transitive_callsite(function_source: str) -> None:
+    """Bind the transitive initializer guard to the executable import loop."""
+    import ast
+    failure = "unreviewed Upload Route transitive initializer callsite"
+    try:
+        tree = ast.parse(function_source)
+    except (SyntaxError, TypeError, ValueError):
+        raise RuntimeError(failure) from None
+    definitions = [node for node in tree.body
+                   if isinstance(node, ast.FunctionDef)
+                   and node.name == "prove_upload_route_go_direct_inputs"]
+    if len(definitions) != 1:
+        raise RuntimeError(failure)
+    definition = definitions[0]
+    loops = [node for node in ast.walk(definition)
+             if isinstance(node, ast.While) and
+             isinstance(node.test, ast.Name) and node.test.id == "pending"]
+    if len(loops) != 1:
+        raise RuntimeError(failure)
+    file_loops = [node for node in ast.walk(loops[0])
+                  if isinstance(node, ast.For) and
+                  isinstance(node.target, ast.Name) and node.target.id == "file"
+                  and isinstance(node.iter, ast.Name) and node.iter.id == "files"]
+    if len(file_loops) != 1:
+        raise RuntimeError(failure)
+    calls = [node for node in ast.walk(definition)
+             if isinstance(node, ast.Call) and
+             isinstance(node.func, ast.Name) and
+             node.func.id == "require_reviewed_upload_route_transitive_package_init"]
+    if len(calls) != 1:
+        raise RuntimeError(failure)
+    expected_call = ast.parse(
+        "require_reviewed_upload_route_transitive_package_init("
+        "file.relative_to(source_root).as_posix(), source)"
+    ).body[0].value
+    expected_read = ast.parse('source = file.read_text(encoding="utf-8")').body[0]
+    statements = file_loops[0].body
+    call_positions = [i for i, statement in enumerate(statements)
+                      if isinstance(statement, ast.Expr) and
+                      statement.value is calls[0]]
+    if len(call_positions) != 1 or call_positions[0] == 0:
+        raise RuntimeError(failure)
+    position = call_positions[0]
+    if (ast.dump(calls[0], include_attributes=False) !=
+            ast.dump(expected_call, include_attributes=False) or
+            ast.dump(statements[position - 1], include_attributes=False) !=
+            ast.dump(expected_read, include_attributes=False)):
+        raise RuntimeError(failure)
+
+
+def prove_upload_route_transitive_callsite_negatives() -> None:
+    """Mutations must not disconnect or condition the import-closure guard."""
+    import inspect
+    source = inspect.getsource(prove_upload_route_go_direct_inputs)
+    require_reviewed_upload_route_transitive_callsite(source)
+    anchor = ("            require_reviewed_upload_route_transitive_package_init("
+              "file.relative_to(source_root).as_posix(), source)\n")
+    read = '            source = file.read_text(encoding="utf-8")\n'
+    if source.count(anchor) != 1 or source.count(read + anchor) != 1:
+        raise RuntimeError("transitive Go callsite fixture anchor drift")
+    for label, changed in (
+        ("removed", source.replace(anchor, "", 1)),
+        ("comment decoy", source.replace(anchor, "            # " + anchor.lstrip(), 1)),
+        ("conditional", source.replace(anchor,
+            "            if file.name == 'missing.go':\n"
+            "    " + anchor, 1)),
+        ("unreachable", source.replace(anchor,
+            "            if False:\n" + "    " + anchor, 1)),
+        ("wrong source", source.replace(anchor,
+            anchor.replace(", source)", ", 'unreviewed')"), 1)),
+        ("before read", source.replace(read + anchor, anchor + read, 1)),
+        ("duplicate call", source.replace(anchor, anchor + anchor, 1)),
+    ):
+        try:
+            require_reviewed_upload_route_transitive_callsite(changed)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route transitive initializer callsite":
+                raise
+        else:
+            raise RuntimeError("transitive Go callsite negative accepted: " + label)
+
+
+
 def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> None:
     import re
     failure = "unreviewed Upload Route focused Go test target"
@@ -4346,6 +4430,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
     prove_upload_route_transitive_package_init_negatives()
+    prove_upload_route_transitive_callsite_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
     prove_go_linkname_negatives()
