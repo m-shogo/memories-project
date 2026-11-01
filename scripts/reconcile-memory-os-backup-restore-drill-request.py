@@ -277,7 +277,10 @@ def expected_decision(
 
 def run_post_validator(path: Path, label: str) -> None:
     """Execute read-only post-write validators with bounded private diagnostics."""
-    require(label in ("drill request", "operability"), "drill request post-validator class drift")
+    reviewed = {"drill request": VALIDATOR, "operability": OPERABILITY_VALIDATOR}
+    require(reviewed.get(label) == path, "unreviewed drill request post-validator")
+    require_exact_repo_file(path, VALIDATOR_REL if label == "drill request" else OPERABILITY_VALIDATOR_REL,
+                            "drill request post-validator")
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))

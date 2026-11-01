@@ -743,7 +743,18 @@ def prove_post_validator_transport(reconciler: Any) -> None:
         reconciler.subprocess.run = original_run
         env_patch.stop()
     require(seen == [0, 1, False, 0, 1, False], "post-validator positive/failure controls incomplete")
-    print("PASS: drill request post-validators use bounded class-only subprocess transport")
+    # An existing repository file cannot become an executable post-validator
+    # merely by borrowing a reviewed label; reject before subprocess starts.
+    with patch.object(reconciler.subprocess, "run", side_effect=Fail("unreviewed child process executed")):
+        for label in ("synthetic unreviewed validator", "drill request"):
+            try:
+                reconciler.run_post_validator(reconciler.CONTRACT, label)
+            except reconciler.Fail as exc:
+                require(str(exc) == "unreviewed drill request post-validator",
+                        "drill post-validator unreviewed target rejected at wrong boundary")
+            else:
+                raise Fail("drill post-validator unreviewed repository target accepted")
+    print("PASS: drill request post-validators use bounded class-only transport and closed targets")
 
 
 def prove_primary_and_rollback_diagnostics(reconciler: Any) -> None:
