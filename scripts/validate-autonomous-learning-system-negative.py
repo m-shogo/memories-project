@@ -854,7 +854,9 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         for field, bad_value, missing in (
                 ("st_dev", None, True),
                 ("st_size", True, False),
-                ("st_ctime_ns", "123", False)):
+                ("st_ctime_ns", "123", False),
+                ("st_mode", True, False),
+                ("st_mode", type("ModeSubclass", (int,), {})(preflight_stat.st_mode), False)):
             metadata = {name: getattr(preflight_stat, name) for name in identity_fields}
             if missing:
                 del metadata[field]
