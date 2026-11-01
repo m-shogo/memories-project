@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib.util
 import sys
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -73,46 +72,6 @@ def prove_atomic_write_failure() -> None:
     leftovers = list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp"))
     require(not leftovers, f"atomic replace rejection left temporary generation-status authority files: {leftovers}")
     print("PASS boundary: failed atomic generation-status write preserves canonical bytes and cleans temporary files")
-
-
-def prove_fdopen_failure_closes_untransferred_descriptor() -> None:
-    reconciler = load_reconciler("memory_os_generation_status_fdopen_ownership")
-    status_before = CANONICAL_STATUS.read_bytes()
-    contract_before = CANONICAL_CONTRACT.read_bytes()
-    original_fdopen = reconciler.os.fdopen
-    captured: list[int] = []
-
-    def reject_fdopen(fd: int, *_args, **_kwargs):
-        captured.append(fd)
-        raise OSError("synthetic generation-status fdopen rejection")
-
-    reconciler.os.fdopen = reject_fdopen
-    try:
-        try:
-            reconciler.write_text(CANONICAL_STATUS, status_before.decode("utf-8") + " ")
-        except reconciler.Fail as exc:
-            require("cannot atomically write" in str(exc),
-                    f"generation-status fdopen failure rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("generation-status fdopen failure unexpectedly accepted")
-    finally:
-        reconciler.os.fdopen = original_fdopen
-
-    require(len(captured) == 1, "generation-status fdopen fault injection was not reached")
-    try:
-        os.fstat(captured[0])
-    except OSError:
-        pass
-    else:
-        os.close(captured[0])
-        raise Fail("generation-status fdopen failure leaked the temporary descriptor")
-    require(CANONICAL_STATUS.read_bytes() == status_before,
-            "generation-status fdopen failure changed canonical production status")
-    require(CANONICAL_CONTRACT.read_bytes() == contract_before,
-            "generation-status fdopen failure changed canonical generation binding contract")
-    require(not list(CANONICAL_STATUS.parent.glob(f".{CANONICAL_STATUS.name}.*.tmp")),
-            "generation-status fdopen failure left a temporary authority")
-    print("PASS boundary: generation-status fdopen failure closes untransferred descriptor")
 
 
 def prove_post_write_aggregate_rollback() -> None:
@@ -208,7 +167,6 @@ def main() -> int:
     for attribute in ("CONTRACT", "VALIDATOR", "BACKUP_VALIDATOR", "OPERABILITY_VALIDATOR", "STATUS"):
         prove_substitution_rejected(attribute)
     prove_atomic_write_failure()
-    prove_fdopen_failure_closes_untransferred_descriptor()
     prove_post_write_aggregate_rollback()
     prove_rollback_failure_preserves_primary_diagnostic()
     print("Memory OS backup/restore generation status reconcile negative suite PASS")

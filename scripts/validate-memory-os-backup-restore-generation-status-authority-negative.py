@@ -220,6 +220,52 @@ def prove_generation_status_private_validator_transport(reconciler) -> None:
     print("PASS: generation status validators use isolated bounded private transport and closed targets")
 
 
+def prove_generation_status_fdopen_ownership(reconciler) -> None:
+    """CI-reached negative: fdopen failure must close the untransferred mkstemp FD."""
+    with tempfile.TemporaryDirectory(prefix=".tmp-generation-status-fdopen-", dir=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "fdopen-failure.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        original_bytes = target.read_bytes()
+        original_mode = stat.S_IMODE(target.stat().st_mode)
+        status_before, contract_before = STATUS.read_bytes(), CONTRACT.read_bytes()
+        original_fdopen = reconciler.os.fdopen
+        captured = []
+
+        def reject_fdopen(fd, *_args, **_kwargs):
+            captured.append(fd)
+            raise OSError("synthetic generation-status fdopen failure")
+
+        reconciler.os.fdopen = reject_fdopen
+        try:
+            try:
+                reconciler.write_text(target, original_bytes.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc),
+                        f"generation-status fdopen rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("generation-status fdopen failure unexpectedly accepted")
+        finally:
+            reconciler.os.fdopen = original_fdopen
+
+        require(len(captured) == 1, "generation-status fdopen injection not reached")
+        try:
+            os.fstat(captured[0])
+        except OSError:
+            pass
+        else:
+            os.close(captured[0])
+            raise Fail("generation-status fdopen failure leaked a descriptor")
+        require(target.read_bytes() == original_bytes
+                and stat.S_IMODE(target.stat().st_mode) == original_mode,
+                "generation-status fdopen failure changed fixture bytes or mode")
+        require(not list(target.parent.glob(f".{target.name}.*.tmp")),
+                "generation-status fdopen failure left a temporary authority")
+        require(STATUS.read_bytes() == status_before and CONTRACT.read_bytes() == contract_before,
+                "generation-status fdopen failure changed protected canonical authority")
+    print("PASS boundary: generation-status fdopen failure closes untransferred descriptor")
+
+
 def main() -> int:
     require(BINDING_VALIDATOR.is_file(), "generation binding validator missing")
     require(RECONCILER.is_file(), "generation status reconciler missing")
@@ -229,6 +275,7 @@ def main() -> int:
     reconciler = load_reconciler()
     prove_generation_status_private_validator_transport(reconciler)
     validate_atomic_diagnostic_publication()
+    prove_generation_status_fdopen_ownership(reconciler)
 
     cases = (
         ("generation binding contract substitution", "generation binding contract", "CONTRACT", reconciler.STATUS),
