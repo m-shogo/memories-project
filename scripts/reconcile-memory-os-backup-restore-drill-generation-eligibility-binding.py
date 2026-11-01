@@ -131,8 +131,17 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
             and 0 <= before.st_size <= MAX_BINDING_AUTHORITY_BYTES,
             f"{field} module source type/size drift",
         )
-        with os.fdopen(os.dup(source_fd), "rb") as stream:
-            source = stream.read(MAX_BINDING_AUTHORITY_BYTES + 1)
+        # Read from the already owned source FD: no duplicate stream/close boundary.
+        parts: list[bytes] = []
+        remaining = MAX_BINDING_AUTHORITY_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes, f"{field} module source invalid read result")
+            if not chunk:
+                break
+            parts.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(parts)
         after = os.fstat(source_fd)
         leaf = os.stat(expected_relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (

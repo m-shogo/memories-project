@@ -221,18 +221,17 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 "from pathlib import Path\nPath(" + repr(str(marker))
                 + ").write_text('unsafe')\n", encoding="utf-8"
             )
-            original_fdopen = validator.os.fdopen
+            original_read = validator.os.read
             changed = False
-            def mutate_during_fdopen(fd: int, *args, **kwargs):
+            def mutate_during_read(fd: int, count: int):
                 nonlocal changed
-                stream = original_fdopen(fd, *args, **kwargs)
                 if not changed:
                     changed = True
                     with approved.open("ab") as writer:
                         writer.write(b"# changed after fstat\n")
-                return stream
+                return original_read(fd, count)
 
-            validator.os.fdopen = mutate_during_fdopen
+            validator.os.read = mutate_during_read
             try:
                 try:
                     validator.load_module(
@@ -244,7 +243,7 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 else:
                     raise Fail("mid-read module mutation unexpectedly accepted")
             finally:
-                validator.os.fdopen = original_fdopen
+                validator.os.read = original_read
             require(changed and not marker.exists(),
                     "mid-read mutation fixture not reached or untrusted module executed")
         finally:
