@@ -119,7 +119,10 @@ def read_text(path: Path) -> str:
             "drill request reconcile safe authority reader unsupported")
     fd = None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        acquired = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(type(acquired) is int and acquired >= 0,
+                "drill request reconcile authority invalid descriptor")
+        fd = acquired
         before = os.fstat(fd)
         require(stat.S_ISREG(before.st_mode),
                 "drill request reconcile authority not regular file")

@@ -146,7 +146,10 @@ def load(path: Path) -> dict[str, Any]:
             "drill request JSON safe descriptor reader unsupported")
     fd: int | None = None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        acquired = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        require(type(acquired) is int and acquired >= 0,
+                "drill request JSON invalid descriptor")
+        fd = acquired
         before = os.fstat(fd)
         require(stat.S_ISREG(before.st_mode), "drill request JSON path unsafe")
         require(before.st_nlink == 1 and not (before.st_mode & 0o022),
