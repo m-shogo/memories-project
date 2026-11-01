@@ -1396,8 +1396,25 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         target.write_bytes(b"stable")
         target.write_bytes(b"stable")
         target.write_bytes(b"x" * 11)
-        reject("oversized", "reviewed source oversized")
+        guard_fd = real_open(canary, os.O_RDONLY)
+        oversized_opens: list[Path] = []
+        def forbid_oversized_open(path, flags):
+            if Path(path) == target:
+                oversized_opens.append(Path(path))
+                raise RuntimeError("oversized canonical leaf reached os.open")
+            return real_open(path, flags)
+        try:
+            with mock.patch.object(module.os, "open", side_effect=forbid_oversized_open):
+                reject("oversized", "reviewed source oversized")
+            if oversized_opens:
+                raise RuntimeError("oversized canonical leaf acquired descriptor")
+            if os.read(guard_fd, 8) != b"external":
+                raise RuntimeError("oversized canonical leaf corrupted canary")
+        finally:
+            real_close(guard_fd)
         target.write_bytes(b"stable")
+        if read() != b"stable":
+            raise RuntimeError("oversized canonical preflight recovery failed")
         alias = Path(tmp) / "hardlink"
         os.link(target, alias)
         guard_fd = real_open(canary, os.O_RDONLY)

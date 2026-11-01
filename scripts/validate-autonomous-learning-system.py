@@ -103,6 +103,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # Keep the pinned-FD mode check for changes after preflight.
         if preflight.st_mode & 0o022:
             raise ValidationFailure(diagnostic)
+        # An already oversized canonical leaf is disqualified before any
+        # descriptor acquisition; keep the fstat bound for preflight races.
+        if preflight.st_size > max_bytes:
+            raise ValidationFailure(too_large)
     except (OSError, ValueError, TypeError, AttributeError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
