@@ -855,6 +855,7 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 ("st_dev", None, True),
                 ("st_nlink", True, False),
                 ("st_size", True, False),
+                ("st_size", -1, False),
                 ("st_ctime_ns", "123", False),
                 ("st_mode", True, False),
                 ("st_mode", type("ModeSubclass", (int,), {})(preflight_stat.st_mode), False)):

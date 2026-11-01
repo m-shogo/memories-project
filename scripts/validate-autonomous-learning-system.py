@@ -95,6 +95,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                       "st_size", "st_mtime_ns", "st_ctime_ns"):
             if type(getattr(preflight, field)) is not int:
                 raise ValidationFailure(f"unreadable authority: {path}")
+        # Negative sizes are not valid regular-file byte counts. Reject
+        # malformed metadata before acquiring any canonical descriptor.
+        if preflight.st_size < 0:
+            raise ValidationFailure(f"unreadable authority: {path}")
         # A hardlinked canonical leaf is already noncanonical at preflight:
         # do not acquire a descriptor merely to rediscover its link count.
         if preflight.st_nlink != 1:
