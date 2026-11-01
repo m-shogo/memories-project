@@ -3387,6 +3387,22 @@ def require_reviewed_upload_route_transitive_callsite(function_source: str) -> N
                   and isinstance(node.iter, ast.Name) and node.iter.id == "files"]
     if len(file_loops) != 1 or file_loops[0] not in loops[0].body:
         raise RuntimeError(failure)
+    # The reviewed duplicate-package skip is the sole allowed pre-file
+    # continue. A new continue, break, return or zero-exit can bypass every
+    # per-file initializer check while retaining its exact AST callsite.
+    loop_prefix = loops[0].body[:loops[0].body.index(file_loops[0])]
+    reviewed_skip = ast.parse("if package in visited:\n    continue\n").body[0]
+    reviewed_skip_shape = ast.dump(reviewed_skip, include_attributes=False)
+    if sum(ast.dump(node, include_attributes=False) == reviewed_skip_shape
+           for node in loop_prefix) != 1:
+        raise RuntimeError(failure)
+    for statement in loop_prefix:
+        if ast.dump(statement, include_attributes=False) == reviewed_skip_shape:
+            continue
+        if (eager_bypass(statement) or
+                any(isinstance(node, (ast.Continue, ast.Break))
+                    for node in ast.walk(statement))):
+            raise RuntimeError(failure)
     calls = [node for node in ast.walk(definition)
              if isinstance(node, ast.Call) and
              isinstance(node.func, ast.Name) and
@@ -3433,9 +3449,11 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
     after_while = "    if len(visited) < 22:\n"
     file_anchor = "        for file in files:\n"
     after_file = "        if len(inputs) > 512:\n"
+    reviewed_skip_anchor = "        if package in visited:\n            continue\n"
     if (source.count(anchor) != 1 or source.count(read + anchor) != 1 or
             source.count(while_anchor) != 1 or source.count(after_while) != 1 or
-            source.count(file_anchor) != 1 or source.count(after_file) != 1):
+            source.count(file_anchor) != 1 or source.count(after_file) != 1 or
+            source.count(reviewed_skip_anchor) != 1):
         raise RuntimeError("transitive Go callsite fixture anchor drift")
     start = source.index(while_anchor)
     end = source.index(after_while, start)
@@ -3492,6 +3510,16 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
             while_anchor, "    exit(0)\n" + while_anchor, 1)),
         ("unreachable wrapper", nested_loop),
         ("unreachable file loop", nested_file_loop),
+        ("unconditional pre-file continue", source.replace(
+            file_anchor, "        continue\n" + file_anchor, 1)),
+        ("conditional pre-file break", source.replace(
+            file_anchor, "        if True:\n            break\n" + file_anchor, 1)),
+        ("pre-file SystemExit zero", source.replace(
+            file_anchor, "        raise SystemExit(0)\n" + file_anchor, 1)),
+        ("pre-file sys exit zero", source.replace(
+            file_anchor, "        sys.exit(0)\n" + file_anchor, 1)),
+        ("shadow reviewed duplicate skip", source.replace(
+            reviewed_skip_anchor, "        if True:\n            continue\n", 1)),
         ("duplicate call", source.replace(anchor, anchor + anchor, 1)),
     ):
         try:
