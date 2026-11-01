@@ -203,11 +203,17 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
         parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0,
+                f"{field} module source invalid descriptor")
         owned.append(parent_fd)
         for component in expected_relative.parts[:-1]:
             parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    f"{field} module source invalid descriptor")
             owned.append(parent_fd)
         source_fd = os.open(expected_relative.name, file_flags, dir_fd=parent_fd)
+        require(type(source_fd) is int and source_fd >= 0,
+                f"{field} module source invalid descriptor")
         owned.append(source_fd)
         before = os.fstat(source_fd)
         require(

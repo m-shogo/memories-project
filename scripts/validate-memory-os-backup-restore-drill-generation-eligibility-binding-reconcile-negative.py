@@ -280,10 +280,64 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 finally:
                     validator.os.read = original_read
             require(not marker.exists(), "raw read negative executed untrusted marker")
+
+            # Reject invalid os.open results before claiming descriptor ownership.
+            original_open = validator.os.open
+            original_close = validator.os.close
+            original_fstat = validator.os.fstat
+            for fail_at, invalid in (
+                (1, None), (2, True), (len(approved.parts), -1),
+                (len(approved.parts), 1.5), (len(approved.parts), "7"),
+            ):
+                canary_fd = original_open(approved, os.O_RDONLY)
+                acquired: list[int] = []
+                closed: list[int] = []
+                calls = [0]
+
+                def invalid_open(*args, **kwargs):
+                    calls[0] += 1
+                    if calls[0] == fail_at:
+                        return invalid
+                    fd = original_open(*args, **kwargs)
+                    acquired.append(fd)
+                    return fd
+
+                def owned_close(fd: int) -> None:
+                    require(fd in acquired and fd not in closed,
+                            "module acquisition closed an unowned/recycled descriptor")
+                    closed.append(fd)
+                    original_close(fd)
+
+                try:
+                    validator.os.open = invalid_open
+                    validator.os.close = owned_close
+                    try:
+                        validator.load_module(
+                            approved, Path("pkg/approved.py"),
+                            "binding_invalid_acquired_fd", "fixture"
+                        )
+                    except validator.Fail as exc:
+                        require(str(exc) == "fixture module source invalid descriptor",
+                                f"invalid acquired module FD rejected at wrong boundary: {exc}")
+                    else:
+                        raise Fail("invalid acquired module descriptor unexpectedly accepted")
+                finally:
+                    validator.os.open = original_open
+                    validator.os.close = original_close
+                    try:
+                        require(calls[0] == fail_at
+                                and len(acquired) == fail_at - 1
+                                and sorted(closed) == sorted(acquired),
+                                "module acquisition ownership/cleanup drift")
+                        require(original_fstat(canary_fd).st_size > 0,
+                                "module acquisition touched external FD canary")
+                    finally:
+                        original_close(canary_fd)
+            require(not marker.exists(), "invalid module descriptor executed untrusted marker")
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read, fragmented, EOF, nonbytes")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read, fragmented, EOF, nonbytes, invalid acquired FDs")
 
 
 def prove_validator_execution_identity() -> None:
