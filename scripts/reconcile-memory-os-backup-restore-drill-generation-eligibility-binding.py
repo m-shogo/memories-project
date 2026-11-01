@@ -71,6 +71,69 @@ MAX_BINDING_AUTHORITY_BYTES = 1024 * 1024
 
 def load(path: Path) -> dict[str, Any]:
     """Reject ambiguous or oversized planning authority before reconciliation."""
+
+    def pinned_read() -> bytes:
+        """Read a bounded authority from pinned no-follow directory descriptors."""
+        require(path.is_absolute() and ".." not in path.parts,
+                "drill generation binding JSON authority unsafe path")
+        owned: list[int] = []
+        try:
+            parent_fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            owned.append(parent_fd)
+            for component in path.parts[1:-1]:
+                parent_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                                    dir_fd=parent_fd)
+                owned.append(parent_fd)
+            source_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                                dir_fd=parent_fd)
+            owned.append(source_fd)
+            before = os.fstat(source_fd)
+            require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1,
+                    "drill generation binding JSON authority type/link drift")
+            require(0 <= before.st_size <= MAX_BINDING_AUTHORITY_BYTES,
+                    "drill generation binding JSON oversized authority refused")
+            chunks: list[bytes] = []
+            remaining = MAX_BINDING_AUTHORITY_BYTES + 1
+            while remaining:
+                chunk = os.read(source_fd, remaining)
+                require(type(chunk) is bytes, "drill generation binding JSON authority invalid read result")
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(source_fd)
+            leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+            identity = lambda item: (
+                item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns
+            )
+            require(len(raw) <= MAX_BINDING_AUTHORITY_BYTES,
+                    "drill generation binding JSON oversized authority refused")
+            require(len(raw) == before.st_size
+                    and identity(before) == identity(after) == identity(leaf),
+                    "drill generation binding JSON authority changed during read")
+            for index in range(1, len(path.parts) - 1):
+                current = os.lstat(Path(*path.parts[:index + 1]))
+                opened = os.fstat(owned[index])
+                require(stat.S_ISDIR(current.st_mode)
+                        and (current.st_dev, current.st_ino) == (opened.st_dev, opened.st_ino),
+                        "drill generation binding JSON authority parent pathname drift")
+            require(identity(os.lstat(path)) == identity(after),
+                    "drill generation binding JSON authority pathname drift")
+            return raw
+        except (OSError, ValueError, TypeError, OverflowError):
+            raise Fail("drill generation binding JSON authority unavailable or unsafe") from None
+        finally:
+            primary_failure = sys.exc_info()[0] is not None
+            cleanup_failed = False
+            for owned_fd in reversed(owned):
+                try:
+                    os.close(owned_fd)
+                except Exception:
+                    cleanup_failed = True
+            if cleanup_failed and not primary_failure:
+                raise Fail("drill generation binding JSON descriptor cleanup failed") from None
+
     def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
         for key, value in pairs:
@@ -92,8 +155,7 @@ def load(path: Path) -> dict[str, Any]:
         return int(value)
 
     try:
-        with path.open("rb") as source:
-            raw = source.read(MAX_BINDING_AUTHORITY_BYTES + 1)
+        raw = pinned_read()
         require(len(raw) <= MAX_BINDING_AUTHORITY_BYTES,
                 "drill generation binding JSON oversized authority refused")
         value = json.loads(

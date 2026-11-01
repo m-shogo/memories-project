@@ -717,6 +717,77 @@ def prove_validator_strict_json_loader() -> None:
     print("PASS: binding validator strict JSON positive and five ambiguity/size negatives")
 
 
+
+def prove_pinned_json_path_boundaries() -> None:
+    """Exercise independent pinned JSON readers without touching canonical authorities."""
+    canonical_contract, canonical_registry = canonical_bytes()
+    for script, name, prefix in (
+        (VALIDATOR, "validator", "drill generation binding validator"),
+        (RECONCILER, "reconciler", "drill generation binding"),
+    ):
+        module = load_module(script, "memory_os_pinned_json_" + name)
+        with tempfile.TemporaryDirectory(prefix=".tmp-binding-pinned-json-", dir=TMP_PARENT) as raw:
+            root = Path(raw)
+            parent = root / "authority"
+            parent.mkdir()
+            authority = parent / "binding.json"
+            payload = b'{"safe":true}'
+            authority.write_bytes(payload)
+            require(module.load(authority) == {"safe": True}, name + " positive JSON rejected")
+
+            def reject(expected: str, label: str) -> None:
+                try:
+                    module.load(authority)
+                except module.Fail as exc:
+                    require(str(exc) == expected,
+                            f"{name} {label} wrong failure: {exc}")
+                else:
+                    raise Fail(f"{name} {label} unexpectedly accepted")
+
+            other = root / "other.json"
+            other.write_bytes(payload)
+            authority.unlink()
+            authority.symlink_to(other)
+            reject(prefix + " JSON authority unavailable or unsafe", "leaf symlink")
+            authority.unlink()
+            authority.write_bytes(payload)
+            os.link(authority, root / "hardlink.json")
+            reject(prefix + " JSON authority type/link drift", "hardlink")
+            (root / "hardlink.json").unlink()
+
+            moved = root / "real-authority"
+            parent.rename(moved)
+            parent.symlink_to(moved, target_is_directory=True)
+            reject(prefix + " JSON authority unavailable or unsafe", "parent symlink")
+            parent.unlink()
+            moved.rename(parent)
+
+            original_read = module.os.read
+            try:
+                module.os.read = lambda fd, n: original_read(fd, min(n, 2))
+                require(module.load(authority) == {"safe": True},
+                        name + " fragmented positive rejected")
+                module.os.read = lambda _fd, _n: b""
+                reject(prefix + " JSON authority changed during read", "early EOF")
+                module.os.read = lambda _fd, _n: None
+                reject(prefix + " JSON authority invalid read result", "nonbytes")
+                mutated = [False]
+                def mutate(fd: int, n: int):
+                    chunk = original_read(fd, n)
+                    if not mutated[0]:
+                        mutated[0] = True
+                        authority.write_bytes(payload + b" ")
+                    return chunk
+                module.os.read = mutate
+                reject(prefix + " JSON authority changed during read", "mid-read mutation")
+                require(mutated[0], name + " mutation injection did not run")
+            finally:
+                module.os.read = original_read
+    assert_canonical_unchanged(canonical_contract, canonical_registry,
+                               "pinned JSON authority negative cases")
+    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation; fragmented positive")
+
+
 def prove_validator_negative_suite_private_transport() -> None:
     validator = load_module(VALIDATOR, "memory_os_binding_negative_transport")
     canonical_contract, canonical_registry = canonical_bytes()
@@ -796,6 +867,7 @@ def main() -> int:
     prove_validator_pinned_module_import()
     prove_validator_pinned_module_import(RECONCILER)
     prove_validator_strict_json_loader()
+    prove_pinned_json_path_boundaries()
     prove_validator_negative_suite_private_transport()
     reconciler = load_reconciler()
     prove_post_validator_private_transport(reconciler)
