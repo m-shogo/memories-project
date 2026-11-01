@@ -1198,12 +1198,20 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             reject("inode replacement", f"canonical authority changed during read: {target}")
         if read() != b"swapped":
             raise RuntimeError("canonical descriptor replacement recovery failed")
+        # Nonregular canonical leaves must be rejected before descriptor
+        # acquisition, not merely after a nonblocking FIFO or NOFOLLOW open.
+        def forbid_nonregular_open(path, flags):
+            if Path(path) == target:
+                raise RuntimeError("nonregular canonical leaf reached os.open")
+            return original_open(path, flags)
         target.unlink()
         os.mkfifo(target)
-        reject("FIFO", f"canonical authority changed during read: {target}")
+        with mock.patch.object(module.os, "open", side_effect=forbid_nonregular_open):
+            reject("FIFO", f"canonical authority changed during read: {target}")
         target.unlink()
         target.symlink_to("missing-target")
-        reject("symlink", f"unreadable authority: {target}")
+        with mock.patch.object(module.os, "open", side_effect=forbid_nonregular_open):
+            reject("symlink", f"unreadable authority: {target}")
 
         parent = Path(tmp) / "source-parent"
         parent.mkdir()
