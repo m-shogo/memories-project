@@ -3125,8 +3125,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         ('"diff", "--no-ext-diff"', '"diff", "--stat"'),
         ('confirmation.returncode != 0', 'confirmation.returncode == 0'),
         ('confirmation.stdout != raw', 'confirmation.stdout == raw'),
-        ('confirmation.returncode not in (0, 1)',
-         'confirmation.returncode not in (0, 2)'),
+        ('type(confirmation.stdout) is not bytes',
+         'type(confirmation.stdout) is bytes'),
     ):
         weakened = guard_source.replace(original, altered, 1)
         if weakened == guard_source or supplemental_history_diff_confirmation_bound(weakened):
