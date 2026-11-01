@@ -751,6 +751,39 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             raise RuntimeError("canonical fdopen failure leaked raw descriptor")
         if read() != b"stable":
             raise RuntimeError("canonical fdopen negative corrupted authority")
+        # A valid raw FD can still be paired with a failed Python stream
+        # acquisition or read that raises ValueError instead of OSError.
+        # Both must produce the reviewed single-line diagnostic and close FD.
+        for label, fail_at_read in (
+                ("fdopen ValueError", False), ("stream read ValueError", True)):
+            opened.clear()
+            def invalid_stream(descriptor, mode, **kwargs):
+                if not fail_at_read:
+                    raise ValueError("synthetic fdopen invalid stream")
+                underlying = actual_fdopen(descriptor, mode, **kwargs)
+                class InvalidRead:
+                    def fileno(self):
+                        return underlying.fileno()
+                    def read(self, size=-1):
+                        raise ValueError("synthetic stream read invalid")
+                    def close(self):
+                        underlying.close()
+                return InvalidRead()
+            with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                 mock.patch.object(module.os, "fdopen", side_effect=invalid_stream):
+                reject(label, f"unreadable authority: {target}")
+            if len(opened) != 1:
+                raise RuntimeError("canonical ValueError FD inventory drift")
+            try:
+                os.fstat(opened[0])
+            except OSError as exc:
+                if exc.errno != errno.EBADF:
+                    raise RuntimeError("canonical ValueError wrong FD state") from exc
+            else:
+                os.close(opened[0])
+                raise RuntimeError("canonical ValueError leaked raw descriptor")
+        if read() != b"stable":
+            raise RuntimeError("canonical ValueError recovery corrupted authority")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
         real_close = os.close
