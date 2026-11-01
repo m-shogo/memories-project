@@ -1,0 +1,25 @@
+# Supplemental OPS learning — bounded human promotion Git creation history (2026-11-01)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human promotion evidence.
+
+## Material failure — unbounded and diagnostic-leaking human promotion Git history
+
+- **symptom:** The human promotion source-order `git_output` requested unbounded creation history, lacked a subprocess timeout/output bound and included raw child stderr in admission failures. A pathological history could stall a read-only gate or surface private Git diagnostic text.
+- **evidence:** At source blob `08691e2f`, `git_output` used `stderr=subprocess.PIPE`, no `timeout`, unchecked returncode type, and returned unbounded stdout. `first_commit_for_path` requested all `git log --follow` creation history. No actual hang, secret leak or forged promotion review was observed.
+- **rootCauseOrUnknown:** Verified missing per-subprocess bounds and unnecessary raw stderr exposure in a separate promotion chronology reader. Actual secret disclosure or runner compromise is unknown.
+- **failedApproach:** Relying on workflow time limits and downstream exactly-one-commit parsing rather than bounding Git output at the reader. Sibling source-order history hardening did not automatically protect this promotion-specific reader.
+- **correction:** [`77572a09`](https://github.com/m-shogo/memories-project/commit/77572a09e9fa64870b7328228181b05af5b46eba) bounds creation history to two commits, enforces a 20-second Git subprocess timeout, suppresses stderr at source, rejects non-integer/unsuccessful exit status and non-string/oversized (over 256 characters) output with fixed diagnostic classes. Existing human review chronology and strict exactly-one-creation-commit semantics remain unchanged.
+- **recurrenceGuard:** The existing CI-invoked `--self-test` now calls the real `first_commit_for_path` with a positive and seven synthetic two-creation, nonzero, bool-exit, wrong-output-type, oversized, timeout and private-error negatives. The mock asserts exact bounded Git arguments, pinned executable, suppressed stderr, 20-second timeout, sanitized environment and eight-call multiplicity.
+- **retryCondition:** Revisit on reviewed chronology policy, Git transport or runner changes, or exact-source CI regression. Do not retry unchanged Quay MinIO HTTP 401, workflow-write permission or missing human production evidence.
+
+## Material success — exact-source promotion CI
+
+- **outcome:** The human promotion source-order creation history is bounded and redacted while preserving source-before-review chronology and fail-closed admission.
+- **evidence:** [Backup Restore Promotion Review Source Order #41311856819](https://github.com/m-shogo/memories-project/actions/runs/41311856819) and [Backup Restore Promotion Review #41311856730](https://github.com/m-shogo/memories-project/actions/runs/41311856730) completed **SUCCESS** at exact code HEAD `77572a09e9fa64870b7328228181b05af5b46eba`. These are validator CI results, not actual promotion review or production readiness.
+- **whySafe:** Only one read-only Python validator changed. Synthetic Git results and private markers do not create reviews, recovery evidence, production credentials, traffic, generations, objectives, readiness or promotion.
+- **reusableMechanism:** Require minimum-necessary bounded Git history at each consumer, fail closed on type/status/timeout, suppress child diagnostics before they reach Python, and exercise the actual reader with positive/negative/positive source-accurate fixtures in the existing CI path.
+- **protectedAuthorityCheck:** Ten protected blobs unchanged: canonical learning `b809c69d`, contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, objective registry `f4d74f33`, reviewed requests `acebcd02`, generation evidence `ae7e57ef`, typed eight-domain registry `26bb1cc7`, human promotion registry `99cb895f`. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`. Preflight requires unsuperseded semantically eligible generations from distinct environments and an explicitly human-approved current recovery objective; reviewed drill requests are planning-only; new recovery evidence remains bound to a current executable reviewed request; final candidates require complete typed eight-domain non-resurrection coverage and independent review; human promotion remains separate/nonautomatic.
+
+## Next safe target
+
+The promotion chronology's creation blob, commit-existence and ancestry Git subprocesses still need bounded private transport and a size preflight. Keep this separate from the unverified real pre-MinIO Focused Go Test execution path.
