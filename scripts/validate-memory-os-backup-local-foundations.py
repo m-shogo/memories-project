@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+# CI runner executable identity must not be selected by inherited PATH.
+TRUSTED_GIT = "/usr/bin/git"
 INDEX_PATH = ROOT / "contracts/operations/backup-local-foundation-evidence.v1.json"
 LOGICAL_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-logical-restore-results.sample.v1.json"
 OBJECT_RESULT = ROOT / "docs/fixtures/memory-os-operability/local-object-version-restore-results.sample.v1.json"
@@ -71,15 +74,21 @@ def strings(value: Any, field: str, minimum: int = 1) -> list[str]:
 def source_is_ancestor(value: Any) -> bool:
     if not isinstance(value, str) or SHA_RE.fullmatch(value) is None:
         return False
+    env = {key: item for key, item in os.environ.items()
+           if not key.startswith(("GIT_", "LD_", "DYLD_"))}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=os.devnull)
     try:
         return subprocess.run(
-            ["git", "merge-base", "--is-ancestor", value, "HEAD"],
+            [TRUSTED_GIT, "merge-base", "--is-ancestor", value, "HEAD"],
             cwd=ROOT,
+            env=env,
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            timeout=20,
         ).returncode == 0
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return False
 
 
