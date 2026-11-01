@@ -1101,7 +1101,8 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
 
     # The original staged FD remains owned if the first fstat fails.
     # Fault its final close before/after the syscall, preserving the primary error.
-    for stage_close_scenario in ("before-stage-close", "after-stage-close"):
+    for stage_close_scenario in ("before-stage-close", "after-stage-close",
+                                 "before-stage-valueerror", "after-stage-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-stage-close-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -1130,8 +1131,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_stage_close(fd):
                 if stage_fds and fd == stage_fds[0] and not close_tripped[0]:
                     close_tripped[0] = True
-                    if stage_close_scenario == "after-stage-close":
+                    if stage_close_scenario.startswith("after-stage"):
                         original_close(fd)
+                    if stage_close_scenario.endswith("valueerror"):
+                        raise ValueError("synthetic untransferred stage close ValueError")
                     raise OSError("synthetic untransferred stage close failure")
                 return original_close(fd)
 
@@ -1147,6 +1150,9 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     require(any("untransferred stage descriptor close status unknown" in note
                                 for note in getattr(exc, "__notes__", [])),
                             "untransferred stage close lacked bounded uncertainty diagnostic")
+                    if stage_close_scenario.endswith("valueerror"):
+                        require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                "non-OSError untransferred stage close lost fault type diagnostic")
                 else:
                     raise Fail("untransferred stage close unexpectedly published")
             finally:
@@ -1155,7 +1161,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 module.os.close = original_close
             require(fstat_tripped[0] and close_tripped[0] and len(stage_fds) == 1,
                     "untransferred stage close fault did not reach owned descriptor")
-            if stage_close_scenario == "before-stage-close":
+            if stage_close_scenario.startswith("before-stage"):
                 original_fstat(stage_fds[0])
                 original_close(stage_fds[0])
             else:
