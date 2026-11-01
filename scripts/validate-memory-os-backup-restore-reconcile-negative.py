@@ -186,6 +186,43 @@ def atomic_replace_negative(module) -> None:
         module.STATUS_PATH.chmod(original_mode)
 
 
+def cleanup_error_precedence_negative(module) -> None:
+    """A secondary unlink error must not replace the primary write rejection."""
+    status = module.STATUS_PATH
+    original = status.read_bytes()
+    before = set(status.parent.glob(f".{status.name}.*.tmp"))
+    real_replace = module.os.replace
+    real_unlink = Path.unlink
+    attempts: list[Path] = []
+
+    def fail_replace(source, destination) -> None:
+        raise OSError("synthetic primary replacement failure")
+
+    def fail_unlink(self, *args, **kwargs) -> None:
+        if self.name.startswith(f".{status.name}.") and self.name.endswith(".tmp"):
+            attempts.append(self)
+            raise OSError("synthetic secondary cleanup failure")
+        real_unlink(self, *args, **kwargs)
+
+    module.os.replace = fail_replace
+    try:
+        with patch.object(Path, "unlink", fail_unlink):
+            try:
+                module.atomic_write_bytes(status, b"synthetic local-only payload")
+            except module.ReconcileFailure as exc:
+                require("atomic authority write failed" in str(exc),
+                        "cleanup failure masked primary backup policy write failure")
+            else:
+                raise Fail("backup policy accepted failed atomic replacement")
+        require(len(attempts) == 1, "backup policy temporary cleanup was not attempted")
+        require(status.read_bytes() == original,
+                "backup policy cleanup failure changed production status")
+    finally:
+        module.os.replace = real_replace
+        for item in set(status.parent.glob(f".{status.name}.*.tmp")) - before:
+            real_unlink(item)
+
+
 def rollback_negative(module) -> None:
     original_status = module.STATUS_PATH.read_bytes()
     original_mode = module.STATUS_PATH.stat().st_mode & 0o777
@@ -328,6 +365,7 @@ def main() -> int:
     blocker_authority_identity_negative(reconciler)
     mode_preservation_positive(reconciler)
     atomic_replace_negative(reconciler)
+    cleanup_error_precedence_negative(reconciler)
     rollback_negative(reconciler)
     require(reconciler.STATUS_PATH.read_bytes() == original_status,
             "authority negatives mutated canonical Production Status")
@@ -343,6 +381,7 @@ def main() -> int:
     print("deterministic drift repair before full validation: enforced")
     print("atomic production status replacement: enforced")
     print("atomic production status mode preservation: enforced")
+    print("atomic replacement cleanup failure precedence: enforced")
     print("atomic replacement temp cleanup: enforced")
     print("post-write aggregate rollback bytes/mode preservation: enforced")
     print("canonical production blockers: unchanged")
