@@ -1337,11 +1337,28 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
             alias.unlink()
         if read() != b"stable":
             raise RuntimeError("hardlink preflight recovery corrupted authority")
-        target.chmod(0o666)
-        reject("world-writable", f"canonical authority changed during read: {target}")
-        target.chmod(0o644)
-        target.chmod(0o664)
-        reject("group-writable", f"canonical authority changed during read: {target}")
+        for label, mode in (("world-writable", 0o666),
+                            ("group-writable", 0o664)):
+            target.chmod(mode)
+            guard_fd = real_open(canary, os.O_RDONLY)
+            writable_opens: list[Path] = []
+            def forbid_writable_open(path, flags):
+                if Path(path) == target:
+                    writable_opens.append(Path(path))
+                    raise RuntimeError("writable canonical leaf reached os.open")
+                return real_open(path, flags)
+            try:
+                with mock.patch.object(module.os, "open", side_effect=forbid_writable_open):
+                    reject(label, f"canonical authority changed during read: {target}")
+                if writable_opens:
+                    raise RuntimeError("writable canonical leaf acquired descriptor")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("writable canonical leaf corrupted canary")
+            finally:
+                real_close(guard_fd)
+                target.chmod(0o644)
+            if read() != b"stable":
+                raise RuntimeError("writable canonical leaf recovery failed")
         target.chmod(0o640)
         if read() != b"stable":
             raise RuntimeError("group-read-only descriptor positive drift")
