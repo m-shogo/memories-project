@@ -40,6 +40,8 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
         raise GuardFailure("Git history inspection unavailable") from None
     if type(result.returncode) is not int or result.returncode < 0:
         raise GuardFailure("invalid supplemental Git exit status")
+    if type(result.stdout) is not bytes or type(result.stderr) is not bytes:
+        raise GuardFailure("invalid supplemental Git byte transport")
     if result.returncode and not allow_failure:
         raise GuardFailure("Git history inspection failed closed")
     if result.returncode == 0 and result.stderr:
@@ -302,6 +304,17 @@ def self_test() -> None:
                 lambda: git(Path("."), "rev-parse", "HEAD", allow_failure=True),
                 "invalid supplemental Git exit status",
                 "invalid-git-status-" + repr(invalid_status),
+            )
+
+    # Reject non-byte stdout/stderr even when a mocked success is otherwise quiet.
+    for invalid_stdout, invalid_stderr in (("text", b""), (None, b""), (b"safe\n", ""), (b"safe\n", None)):
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=["git"], returncode=0, stdout=invalid_stdout, stderr=invalid_stderr
+        )):
+            expect_guard_failure(
+                lambda: git(Path("."), "rev-parse", "HEAD"),
+                "invalid supplemental Git byte transport",
+                "nonbyte-git-stream-" + repr((invalid_stdout, invalid_stderr)),
             )
 
     # Successful Git commands with malformed object identities must fail
