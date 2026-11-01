@@ -887,6 +887,51 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical incomplete-metadata recovery corrupted authority")
+        # An ancestor's identity is a pre-open authority, not merely a
+        # post-read comparison. Malformed directory metadata must fail before
+        # either probing the leaf or acquiring a canonical descriptor.
+        ancestor_stat = real_lstat(target.parent)
+        ancestor_fields = ("st_mode", "st_dev", "st_ino", "st_ctime_ns")
+        for field, bad_value, missing in (
+                ("st_mode", True, False),
+                ("st_mode", type("DirModeSubclass", (int,), {})(ancestor_stat.st_mode), False),
+                ("st_dev", None, True),
+                ("st_ino", "123", False),
+                ("st_ctime_ns", True, False)):
+            metadata = {name: getattr(ancestor_stat, name) for name in ancestor_fields}
+            if missing:
+                del metadata[field]
+            else:
+                metadata[field] = bad_value
+            forged_parent = type("SyntheticCanonicalParent", (), metadata)()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            leaf_lstats: list[Path] = []
+            leaf_opens: list[Path] = []
+            def forged_parent_lstat(path):
+                if path == target.parent:
+                    return forged_parent
+                if path == target:
+                    leaf_lstats.append(path)
+                    raise RuntimeError("malformed ancestor probed canonical leaf")
+                return real_lstat(path)
+            def forbid_parent_leaf_open(path, flags):
+                if Path(path) == target:
+                    leaf_opens.append(Path(path))
+                    raise RuntimeError("malformed ancestor opened canonical leaf")
+                return real_open(path, flags)
+            try:
+                with mock.patch.object(module.Path, "lstat", new=forged_parent_lstat), \
+                     mock.patch.object(module.os, "open", side_effect=forbid_parent_leaf_open):
+                    reject("incomplete canonical ancestor metadata",
+                           f"unreadable authority: {target}")
+                if leaf_lstats or leaf_opens:
+                    raise RuntimeError("malformed ancestor reached canonical leaf")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("malformed ancestor corrupted external canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical ancestor metadata recovery corrupted authority")
         # Invalid os.open results confer no raw descriptor ownership. In
         # particular bool is an int subclass and must not alias fd 0 or 1.
         for invalid_fd in (None, True, -1, 1.5, "3"):
