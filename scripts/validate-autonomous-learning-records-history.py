@@ -20,6 +20,9 @@ SCOPES = (
     "docs/operations/learning/",
 )
 PASS = "Supplemental learning all-parent append-only history PASS (39 fixtures)"
+# Reviewed GitHub Ubuntu runners and macOS hosts provide this root-owned path.
+# PATH lookup is not authority: a preceding untrusted directory can replace git.
+TRUSTED_GIT = "/usr/bin/git"
 
 
 class GuardFailure(RuntimeError):
@@ -34,7 +37,7 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
     env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
                GIT_CONFIG_GLOBAL=os.devnull)
     try:
-        result = subprocess.run(["git", "-C", str(root), *args], env=env,
+        result = subprocess.run([TRUSTED_GIT, "-C", str(root), *args], env=env,
                                 capture_output=True, timeout=20, check=False)
     except (OSError, subprocess.TimeoutExpired):
         raise GuardFailure("Git history inspection unavailable") from None
@@ -379,6 +382,30 @@ def self_test() -> None:
                     os.environ.pop(variable, None)
                 else:
                     os.environ[variable] = previous
+
+    # PATH is not a trustworthy executable identity. Demonstrate that a
+    # decoy Git binary would win ordinary PATH resolution, then prove the
+    # canonical history wrapper still invokes the pinned system Git.
+    with tempfile.TemporaryDirectory(prefix="supplemental-git-path-negative-") as temp:
+        fake = Path(temp) / "git"
+        fake.write_text("#!/bin/sh\\nprintf 'DECOY_GIT_EXECUTED\\\\n'\\n", encoding="utf-8")
+        fake.chmod(0o755)
+        previous_path = os.environ.get("PATH")
+        try:
+            os.environ["PATH"] = temp + os.pathsep + (previous_path or "")
+            decoy = subprocess.run(
+                ["git", "--version"], capture_output=True, timeout=20, check=False,
+            )
+            if decoy.returncode != 0 or decoy.stdout != b"DECOY_GIT_EXECUTED\\n":
+                raise GuardFailure("supplemental Git PATH decoy control ineffective")
+            observed = git(Path("."), "--version").stdout
+            if not observed.startswith(b"git version ") or b"DECOY" in observed:
+                raise GuardFailure("supplemental Git executable identity redirected")
+        finally:
+            if previous_path is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = previous_path
 
     # A caller can also inject Git configuration without touching GIT_DIR.
     # Prove that a synthetic hooksPath override is visible to naive Git but
