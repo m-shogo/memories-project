@@ -3226,7 +3226,7 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
                 matches[0].end() + following.start() if following else len(source))]
             if (re.search(r"\.[ \t\r\n]*Skip(?:f|Now)?\b", body) or
                     re.search(r"\breturn\b", body) or
-                    not re.search(r"\bt\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
+                    not re.search(r"(?m)^[ \t]*t\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
                 raise RuntimeError(failure)
 
 def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
@@ -3283,6 +3283,11 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     reject("comment-adjacent live return", live,
            "func TestUploadLifecycleOverHTTP(t *testing.T) {",
            "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\treturn/* reviewed bypass */")
+    reject("commented route assertion", route,
+           't.Fatalf("POST %s returned', '// t.Fatalf("POST %s returned')
+    reject("quoted route assertion", route,
+           't.Fatalf("POST %s returned %d, want %d", test.path, response.Code, test.want)',
+           't.Log("t.Fatalf(")')
     reject("no route assertion", route,
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
     # Balanced block comments are legal Go and can conceal the first test
