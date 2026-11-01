@@ -284,10 +284,17 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
     require_exact_repo_file(path, expected_relative, label)
+    # Preserve the reviewed post-validator's execution boundary: inherited
+    # import/loader/Git settings must not turn a failing child into exit 0.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(path)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,

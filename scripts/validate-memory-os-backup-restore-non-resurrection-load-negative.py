@@ -13,6 +13,7 @@ import stat
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-non-resurrection-evidence.py"
@@ -1301,6 +1302,17 @@ def prove_typed_reconcile_child_validator() -> None:
                 and kwargs.get("timeout") == 180
                 and kwargs.get("check") is False,
                 "typed reconcile child output privacy/timeout drift")
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict), "typed reconcile child environment missing")
+        require(child_env.get("SAFE_TYPED_RECONCILE_ENV") == "preserved",
+                "typed reconcile benign child environment lost")
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                    "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+            require(key not in child_env, "typed reconcile inherited override: " + key)
+        require(child_env == {
+            key: value for key, value in reconciler.os.environ.items()
+            if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+        }, "typed reconcile child environment authority drift")
         if mode == "timeout":
             raise reconciler.subprocess.TimeoutExpired(args, 180)
         if mode == "oserror":
@@ -1309,6 +1321,17 @@ def prove_typed_reconcile_child_validator() -> None:
         return SimpleNamespace(returncode={"success": 0, "nonzero": 1,
                                            "bool": True, "string": "0"}[mode])
 
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_TYPED_RECONCILE_ENV": "preserved",
+    }
+    patcher = patch.dict(reconciler.os.environ, poisoned)
+    patcher.start()
     try:
         reconciler.subprocess.run = fake_run
         reconciler.run_post_validator(reconciler.VALIDATOR, reconciler.VALIDATOR_REL,
@@ -1333,9 +1356,10 @@ def prove_typed_reconcile_child_validator() -> None:
                 raise Fail(f"typed reconcile child {mode} unexpectedly accepted")
     finally:
         reconciler.subprocess.run = original_run
+        patcher.stop()
     require(observed == ["success", "nonzero", "bool", "string", "timeout", "oserror"],
             "typed reconcile child failure matrix incomplete")
-    print("PASS: typed reconcile child validator bounded private subprocess and five negatives")
+    print("PASS: typed reconcile child sanitized environment, bounded private subprocess and five negatives")
 
 
 def prove_typed_reconcile_private_path_diagnostics() -> None:
