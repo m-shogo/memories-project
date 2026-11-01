@@ -9,6 +9,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -322,15 +323,19 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                     else:
                         raise Fail("invalid acquired module descriptor unexpectedly accepted")
                 finally:
+                    # A secondary ownership assertion must not erase the
+                    # primary rejection/diagnostic failure from this fixture.
+                    primary_failure = sys.exc_info()[0] is not None
                     validator.os.open = original_open
                     validator.os.close = original_close
                     try:
-                        require(calls[0] == fail_at
-                                and len(acquired) == fail_at - 1
-                                and sorted(closed) == sorted(acquired),
-                                "module acquisition ownership/cleanup drift")
-                        require(original_fstat(canary_fd).st_size > 0,
-                                "module acquisition touched external FD canary")
+                        if not primary_failure:
+                            require(calls[0] == fail_at
+                                    and len(acquired) == fail_at - 1
+                                    and sorted(closed) == sorted(acquired),
+                                    "module acquisition ownership/cleanup drift")
+                            require(original_fstat(canary_fd).st_size > 0,
+                                    "module acquisition touched external FD canary")
                     finally:
                         original_close(canary_fd)
             require(not marker.exists(), "invalid module descriptor executed untrusted marker")
