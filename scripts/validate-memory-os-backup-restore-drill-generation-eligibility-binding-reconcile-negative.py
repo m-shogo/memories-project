@@ -246,10 +246,44 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 validator.os.read = original_read
             require(changed and not marker.exists(),
                     "mid-read mutation fixture not reached or untrusted module executed")
+
+            approved.write_text("VALUE = 42\n", encoding="utf-8")
+            original_read = validator.os.read
+            def fragmented_read(fd: int, count: int):
+                return original_read(fd, min(count, 2))
+            validator.os.read = fragmented_read
+            try:
+                module = validator.load_module(
+                    approved, Path("pkg/approved.py"), "binding_fragmented", "fixture"
+                )
+                require(module.VALUE == 42, "short valid module reads did not reassemble")
+            finally:
+                validator.os.read = original_read
+
+            for label, fake_read, diagnostic in (
+                ("premature EOF", lambda _fd, _count: b"",
+                 "fixture module source changed during read"),
+                ("nonbytes result", lambda _fd, _count: None,
+                 "fixture module source invalid read result"),
+            ):
+                validator.os.read = fake_read
+                try:
+                    try:
+                        validator.load_module(
+                            approved, Path("pkg/approved.py"), "binding_" + label, "fixture"
+                        )
+                    except validator.Fail as exc:
+                        require(str(exc) == diagnostic,
+                                f"{label} rejected at wrong boundary: {exc}")
+                    else:
+                        raise Fail(f"module source {label} unexpectedly accepted")
+                finally:
+                    validator.os.read = original_read
+            require(not marker.exists(), "raw read negative executed untrusted marker")
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read, fragmented, EOF, nonbytes")
 
 
 def prove_validator_execution_identity() -> None:
