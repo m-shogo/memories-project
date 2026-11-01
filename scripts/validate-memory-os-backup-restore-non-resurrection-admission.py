@@ -237,9 +237,15 @@ def run_validator(path: Path, label: str) -> None:
     repo_relative(path)
     require(path.is_file() and not path.is_symlink(),
             "typed admission child validator must be a regular canonical file")
+    # Child validation must not inherit Python import, loader or Git overrides:
+    # an injected import can exit zero before any reviewed assertions execute.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)], cwd=ROOT,
+            [sys.executable, str(path)], cwd=ROOT, env=child_env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             check=False, timeout=180,
         )
