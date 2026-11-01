@@ -328,7 +328,7 @@ def run_post_validator(path: Path, label: str) -> None:
             check=False,
             timeout=120,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail(f"post-reconcile {label} validator unavailable or timed out (raw output withheld)") from None
     require(
         isinstance(completed, subprocess.CompletedProcess)

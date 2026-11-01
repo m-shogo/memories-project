@@ -784,7 +784,8 @@ def prove_post_validator_transport(reconciler: Any) -> None:
                     require(marker not in str(exc), "post-validator private output leaked")
                 else:
                     raise Fail("post-validator nonzero/bool status accepted")
-            for failure in (OSError(marker), subprocess.TimeoutExpired(["synthetic"], 120)):
+            for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                            subprocess.TimeoutExpired(["synthetic"], 120)):
                 def raise_failure(*_args, **_kwargs):
                     raise failure
                 reconciler.subprocess.run = raise_failure
