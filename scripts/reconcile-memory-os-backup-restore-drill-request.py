@@ -165,6 +165,7 @@ def write_text(path: Path, text: str) -> None:
     except (OSError, UnicodeError, ValueError):
         raise Fail("cannot atomically write drill request authority (raw error withheld)") from None
     finally:
+        primary_failure = sys.exc_info()[0] is not None
         cleanup_failed = False
         if fd is not None:
             try:
@@ -178,7 +179,9 @@ def write_text(path: Path, text: str) -> None:
                 pass
             except OSError:
                 cleanup_failed = True
-        if cleanup_failed:
+        # Preserve the original fixed-class write failure if cleanup also fails.
+        # A remaining private temp is detected by existing clean-source guards.
+        if cleanup_failed and not primary_failure:
             raise Fail("drill request reconcile atomic cleanup incomplete (raw error withheld)") from None
 
 

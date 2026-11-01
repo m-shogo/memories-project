@@ -541,6 +541,63 @@ def prove_atomic_write_failure(reconciler: Any, contract_before: bytes, registry
     print("PASS boundary: drill-request atomic write preserves mode; failed replace preserves bytes/mode and cleans temporary files")
 
 
+def prove_atomic_cleanup_preserves_primary(reconciler: Any) -> None:
+    canonical_contract, canonical_registry, canonical_status = (
+        CONTRACT.read_bytes(), REGISTRY.read_bytes(), STATUS.read_bytes()
+    )
+    original_replace = reconciler.os.replace
+    original_unlink = reconciler.os.unlink
+    with guarded_temporary_directory(".memory-os-drill-request-cleanup-", ROOT) as tmp:
+        fixture = Path(tmp) / CONTRACT.name
+        shutil.copy2(CONTRACT, fixture)
+        fixture.chmod(0o640)
+        before_bytes = fixture.read_bytes()
+        before_mode = mode(fixture)
+        before_temps = set(fixture.parent.glob(f".{fixture.name}.*.tmp"))
+        seen_cleanup = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic-private-primary-drill-replace")
+
+        def reject_cleanup(path, *args, **kwargs):
+            require(Path(path).parent == fixture.parent
+                    and Path(path).name.startswith(f".{fixture.name}."),
+                    "drill request cleanup targeted unexpected path")
+            seen_cleanup.append(Path(path))
+            raise OSError("synthetic-private-secondary-drill-unlink")
+
+        try:
+            reconciler.os.replace = reject_replace
+            reconciler.os.unlink = reject_cleanup
+            try:
+                reconciler.write_text(fixture, before_bytes.decode("utf-8") + " ")
+            except reconciler.Fail as exc:
+                require(str(exc) == "cannot atomically write drill request authority (raw error withheld)",
+                        f"drill request secondary cleanup masked primary failure: {exc}")
+                require("synthetic-private" not in str(exc),
+                        "drill request double-fault diagnostic leaked private details")
+            else:
+                raise Fail("drill request double-fault write unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+            created = set(fixture.parent.glob(f".{fixture.name}.*.tmp")) - before_temps
+            for path in created:
+                original_unlink(path)
+
+        require(len(seen_cleanup) == 1 and seen_cleanup[0] in created,
+                "drill request cleanup double fault not exercised")
+        require(fixture.read_bytes() == before_bytes and mode(fixture) == before_mode,
+                "drill request cleanup double fault mutated fixture authority")
+        require(set(fixture.parent.glob(f".{fixture.name}.*.tmp")) == before_temps,
+                "drill request cleanup double fault left synthetic temporary authority")
+    require(CONTRACT.read_bytes() == canonical_contract
+            and REGISTRY.read_bytes() == canonical_registry
+            and STATUS.read_bytes() == canonical_status,
+            "drill request cleanup double fault changed canonical authorities")
+    print("PASS boundary: drill request primary atomic failure survives secondary cleanup OSError")
+
+
 def prove_atomic_descriptor_cleanup(reconciler: Any) -> None:
     """Pre-fdopen errors must close descriptors and remove private temp files."""
     with guarded_temporary_directory(".memory-os-drill-request-atomic-fd-", ROOT) as tmp:
@@ -878,6 +935,7 @@ def main() -> int:
         )
 
     prove_atomic_write_failure(reconciler, canonical_contract, canonical_registry, canonical_status)
+    prove_atomic_cleanup_preserves_primary(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
     prove_primary_and_rollback_diagnostics(reconciler)
