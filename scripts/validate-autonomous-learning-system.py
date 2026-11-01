@@ -78,6 +78,12 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             raise ValidationFailure(f"unreadable authority: {path}")
         if not stat.S_ISREG(preflight.st_mode):
             raise ValidationFailure(diagnostic)
+        # A regular-file mode alone does not establish a usable metadata
+        # snapshot. Reject incomplete or non-integer identity before open.
+        for field in ("st_mode", "st_dev", "st_ino", "st_size",
+                      "st_mtime_ns", "st_ctime_ns"):
+            if type(getattr(preflight, field)) is not int:
+                raise ValidationFailure(f"unreadable authority: {path}")
     except (OSError, ValueError, TypeError, AttributeError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
