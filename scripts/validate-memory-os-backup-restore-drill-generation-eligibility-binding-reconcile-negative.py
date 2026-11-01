@@ -590,9 +590,18 @@ def prove_post_validator_private_transport(reconciler: Any) -> None:
 
     def fake_run(exit_code):
         def run(argv, **kwargs):
-            require(argv[0] == reconciler.sys.executable
-                    and argv[1] in [str(path) for path, _, _ in targets],
+            require(len(argv) == 4
+                    and argv[0] == reconciler.sys.executable
+                    and argv[1] == "-c"
+                    and argv[3] in [str(path) for path, _, _ in targets],
                     "drill generation binding post-validator child target drift")
+            require("sys.stdin.buffer.read()" in argv[2]
+                    and "exec(compile(" in argv[2]
+                    and "sys.argv[:] = [path]" in argv[2],
+                    "drill generation binding pinned child bootstrap drift")
+            source = kwargs.get("input")
+            require(type(source) is bytes and source == Path(argv[3]).read_bytes(),
+                    "drill generation binding child source was not pinned")
             require(kwargs.get("cwd") == reconciler.ROOT,
                     "drill generation binding post-validator cwd drift")
             require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
@@ -654,7 +663,7 @@ def prove_post_validator_private_transport(reconciler: Any) -> None:
                 "drill generation binding unreviewed validator rejected at wrong boundary")
     else:
         raise Fail("drill generation binding unreviewed repository validator accepted")
-    print("PASS: drill generation binding post-validators use isolated bounded private transport and closed targets")
+    print("PASS: drill generation binding post-validators execute pinned stdin source with isolated bounded private transport and closed targets")
 
 
 def prove_atomic_writer_double_fault_and_fd_ownership(reconciler: Any) -> None:

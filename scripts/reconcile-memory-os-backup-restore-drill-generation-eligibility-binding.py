@@ -205,8 +205,10 @@ def load(path: Path, *, include_raw: bool = False) -> dict[str, Any] | tuple[dic
     return (value, raw) if include_raw else value
 
 
-def load_module(path: Path, expected_relative: Path, name: str, field: str):
-    """Execute only a bounded source snapshot opened beneath pinned no-follow directories."""
+def load_module(path: Path, expected_relative: Path, name: str, field: str,
+                *, source_only: bool = False):
+    """Read pinned canonical module bytes; execute only when explicitly requested."""
+    require(type(source_only) is bool, f"{field} module source option invalid")
     require_exact_repo_file(path, expected_relative, field)
     owned: list[int] = []
     source: bytes
@@ -302,6 +304,9 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         if cleanup_failed and not primary_failure:
             raise Fail(f"{field} module descriptor cleanup failed") from None
 
+    if source_only:
+        return source
+
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -316,14 +321,32 @@ def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
     }
     require(reviewed.get(field) == (path, expected_relative),
             "unreviewed drill generation binding post-validator")
-    require_exact_repo_file(path, expected_relative, field)
+    # Reuse the same bounded, no-follow, stable-source admission as imports.
+    # Never let a later child process re-open a mutable script pathname.
+    source = load_module(
+        path, expected_relative, "pinned_post_validator_source", field,
+        source_only=True,
+    )
+    require(type(source) is bytes, f"post-reconcile {field} invalid pinned source")
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
     }
+    # Execute exactly the verified bytes through stdin. Preserve direct-script
+    # __file__, __name__, sys.argv and sibling import-path semantics; compiling
+    # separately retains the source's __future__ imports.
+    bootstrap = (
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+    )
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, "-c", bootstrap, str(path)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
