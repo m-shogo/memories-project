@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import stat
 import subprocess
@@ -65,12 +66,47 @@ def enforce_runtime_authorities() -> None:
         require_exact_repo_file(path, expected, field)
 
 
+MAX_BINDING_AUTHORITY_BYTES = 1024 * 1024
+
+
 def load(path: Path) -> dict[str, Any]:
+    """Reject ambiguous or oversized planning authority before reconciliation."""
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, "drill generation binding JSON duplicate key refused")
+            result[key] = value
+        return result
+
+    def reject_nonfinite(_value: str) -> None:
+        raise Fail("drill generation binding JSON nonfinite number refused")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), "drill generation binding JSON nonfinite number refused")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128,
+                "drill generation binding JSON oversized integer refused")
+        return int(value)
+
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise Fail(f"cannot load {path.relative_to(ROOT)}: {exc}") from exc
-    require(isinstance(value, dict), f"root must be object: {path.relative_to(ROOT)}")
+        with path.open("rb") as source:
+            raw = source.read(MAX_BINDING_AUTHORITY_BYTES + 1)
+        require(len(raw) <= MAX_BINDING_AUTHORITY_BYTES,
+                "drill generation binding JSON oversized authority refused")
+        value = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=unique_keys,
+            parse_constant=reject_nonfinite,
+            parse_float=finite_float,
+            parse_int=bounded_int,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError,
+            OverflowError, RecursionError):
+        raise Fail("drill generation binding JSON unreadable or invalid") from None
+    require(isinstance(value, dict), "drill generation binding JSON root must be object")
     return value
 
 

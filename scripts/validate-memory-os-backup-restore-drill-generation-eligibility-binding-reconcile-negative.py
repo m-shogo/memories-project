@@ -434,6 +434,38 @@ def prove_rollback_double_fault_diagnostic(reconciler: Any) -> None:
     print("PASS: binding rollback failure preserves primary exception and private-safe incomplete marker")
 
 
+def prove_reconciler_strict_json_loader(reconciler: Any) -> None:
+    canonical_contract, canonical_registry = canonical_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-drill-generation-binding-json-", dir=TMP_PARENT) as raw:
+        authority = Path(raw) / "binding-json.json"
+        authority.write_bytes(b'{"safe":true}')
+        require(reconciler.load(authority) == {"safe": True},
+                "binding strict JSON positive control rejected")
+        cases = (
+            ("duplicate", b'{"safe":true,"safe":false}',
+             "drill generation binding JSON duplicate key refused"),
+            ("nonfinite", b'{"safe":NaN}',
+             "drill generation binding JSON nonfinite number refused"),
+            ("overflow float", b'{"safe":1e9999}',
+             "drill generation binding JSON nonfinite number refused"),
+            ("oversized integer", b'{"safe":' + b'9' * 129 + b'}',
+             "drill generation binding JSON oversized integer refused"),
+            ("oversized bytes", b'x' * (reconciler.MAX_BINDING_AUTHORITY_BYTES + 1),
+             "drill generation binding JSON oversized authority refused"),
+        )
+        for label, payload, expected in cases:
+            authority.write_bytes(payload)
+            try:
+                reconciler.load(authority)
+            except reconciler.Fail as exc:
+                require(str(exc) == expected,
+                        f"binding JSON {label} rejected at wrong boundary: {exc}")
+            else:
+                raise Fail(f"binding JSON {label} ambiguity unexpectedly accepted")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, "binding strict JSON loader")
+    print("PASS: binding reconciler strict JSON positive and five ambiguity/size negatives")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
@@ -443,6 +475,7 @@ def main() -> int:
     prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_reconciler_execution_identity(reconciler)
+    prove_reconciler_strict_json_loader(reconciler)
     prove_atomic_writer_double_fault_and_fd_ownership(reconciler)
     prove_rollback_double_fault_diagnostic(reconciler)
 
