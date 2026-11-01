@@ -3191,7 +3191,7 @@ def require_no_upload_route_testmain(package_tests: dict[str, str]) -> None:
     if (not package_tests or
             any(not name.endswith("_test.go") or type(source) is not str
                 for name, source in package_tests.items()) or
-            any(re.search(r"\bfunc[ \t\r\n]+TestMain[ \t\r\n]*\(", source)
+            any(re.search(r"\bTestMain\b", source)
                 for source in package_tests.values())):
         raise RuntimeError(failure)
 
@@ -3311,18 +3311,24 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     if not {"route_authority_test.go", "server_live_test.go"} <= set(package_tests):
         raise RuntimeError("unreviewed Upload Route package TestMain bypass")
     require_no_upload_route_testmain(package_tests)
-    for label, name in (
-            ("existing test file", "route_authority_test.go"),
-            ("new package test file", "shadow_test.go")):
+    for label, name, declaration in (
+            ("existing test file", "route_authority_test.go",
+             "func TestMain(m *testing.M) {}"),
+            ("new package test file", "shadow_test.go",
+             "func TestMain(m *testing.M) {}"),
+            ("comment between name and params", "route_authority_test.go",
+             "func TestMain /* split */ (m *testing.M) {}"),
+            ("comment between func and name", "shadow_test.go",
+             "func /* split */ TestMain (m *testing.M) {}")):
         changed_tests = dict(package_tests)
-        if name in changed_tests and label == "new package test file":
+        if name in changed_tests and name == "shadow_test.go":
             raise RuntimeError("focused Go TestMain fixture name collision")
         if name in changed_tests:
-            changed_tests[name] += "\nfunc TestMain(m *testing.M) {}\n"
+            changed_tests[name] += "\n" + declaration + "\n"
         else:
             changed_tests[name] = (
                 'package httpserver\nimport "testing"\n'
-                'func TestMain(m *testing.M) {}\n'
+                + declaration + '\n'
             )
         try:
             require_no_upload_route_testmain(changed_tests)
