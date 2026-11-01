@@ -142,6 +142,11 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             live = path.lstat()
             for parent, prior in parents:
                 current = parent.lstat()
+                # The post-read snapshot must be a real integer metadata
+                # interface too; equality alone accepts int subclasses.
+                for field in ("st_mode", "st_dev", "st_ino", "st_ctime_ns"):
+                    if type(getattr(current, field)) is not int:
+                        raise ValidationFailure(f"unreadable authority: {path}")
                 if ((current.st_dev, current.st_ino, stat.S_IFMT(current.st_mode),
                      stat.S_IMODE(current.st_mode), current.st_ctime_ns) !=
                         (prior.st_dev, prior.st_ino, stat.S_IFMT(prior.st_mode),
