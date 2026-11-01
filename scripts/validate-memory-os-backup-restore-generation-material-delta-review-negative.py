@@ -314,6 +314,75 @@ def prove_material_delta_json_reader(module) -> None:
     print("PASS: actual material-delta JSON reader positive and 16 fail-closed negatives")
 
 
+def require_trusted_git_env(module, kwargs) -> None:
+    env = kwargs.get("env")
+    require(module.TRUSTED_GIT == "/usr/bin/git"
+            and type(env) is dict
+            and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+            and env.get("GIT_CONFIG_NOSYSTEM") == "1"
+            and env.get("GIT_CONFIG_GLOBAL") == os.devnull
+            and not any(key.startswith(("LD_", "DYLD_")) for key in env)
+            and not any(key.startswith("GIT_") and key not in (
+                "GIT_NO_REPLACE_OBJECTS", "GIT_CONFIG_NOSYSTEM",
+                "GIT_CONFIG_GLOBAL"
+            ) for key in env),
+            "material-delta Git executable or inherited environment drift")
+
+
+def exercise_git_path_and_loader_negative(module) -> None:
+    ref = "docs/evidence/backup-restore/material-delta/synthetic-git-path-decoy.json"
+    with tempfile.TemporaryDirectory(prefix="material-delta-git-decoy-") as temp:
+        fake = Path(temp) / "git"
+        fake.write_text("#!/bin/sh\necho " + "a" * 40 + "\n", encoding="utf-8")
+        fake.chmod(0o755)
+        previous = os.environ.get("PATH")
+        try:
+            os.environ["PATH"] = temp + os.pathsep + (previous or "")
+            decoy = subprocess.run(
+                ["git", "log", "--format=%H", "--max-count=2",
+                 "--follow", "--", ref], cwd=ROOT, capture_output=True,
+                text=True, check=False, timeout=10,
+            )
+            require(decoy.returncode == 0 and decoy.stdout == "a" * 40 + "\n",
+                    "material-delta Git PATH decoy positive control ineffective")
+            try:
+                module.git_history(ref, "materialDeltaReviewRef")
+            except module.Fail as exc:
+                require(str(exc) == "materialDeltaReviewRef must be committed material-delta review evidence",
+                        "material-delta Git PATH decoy rejected for unrelated reason")
+            else:
+                raise Fail("material-delta Git PATH decoy admitted fabricated review")
+        finally:
+            if previous is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = previous
+    overrides = {
+        "GIT_DIR": "/tmp/unreviewed-git-dir",
+        "LD_PRELOAD": "/tmp/unreviewed-git-loader.so",
+        "DYLD_INSERT_LIBRARIES": "/tmp/unreviewed-git-loader.dylib",
+    }
+    previous = {key: os.environ.get(key) for key in overrides}
+    original_run = module.subprocess.run
+    def fake_git(args, **kwargs):
+        require(args[0] == module.TRUSTED_GIT,
+                "material-delta Git trusted executable drift")
+        require_trusted_git_env(module, kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="a" * 40 + "\n")
+    try:
+        os.environ.update(overrides)
+        module.subprocess.run = fake_git
+        require(module.git_history(ref, "materialDeltaReviewRef") == ["a" * 40],
+                "material-delta Git sanitized positive control invalid")
+    finally:
+        module.subprocess.run = original_run
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def exercise_bounded_material_delta_git_history(module) -> None:
     """Exercise the real history consumer with private-output and timeout negatives."""
     original_run = module.subprocess.run
@@ -323,7 +392,7 @@ def exercise_bounded_material_delta_git_history(module) -> None:
     calls = []
 
     def fake_git(args, **kwargs):
-        require(args == ["git", "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
+        require(args == [module.TRUSTED_GIT, "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
                 "material-delta review Git history must use bounded canonical pathspec")
         require(kwargs.get("cwd") == module.ROOT and kwargs.get("text") is True,
                 "material-delta review Git history execution context drift")
@@ -331,6 +400,7 @@ def exercise_bounded_material_delta_git_history(module) -> None:
                 "material-delta review Git history output privacy drift")
         require(kwargs.get("timeout") == 20 and kwargs.get("check") is False,
                 "material-delta review Git history timeout/check drift")
+        require_trusted_git_env(module, kwargs)
         calls.append(args)
         if state["error"] is not None:
             raise state["error"]
@@ -493,6 +563,7 @@ def main() -> int:
         "material-delta promotion boundary disabled", "material-delta promotion boundary drift",
     )
 
+    exercise_git_path_and_loader_negative(module)
     exercise_bounded_material_delta_git_history(module)
 
     original_history = module.git_history
@@ -531,16 +602,17 @@ def main() -> int:
                     and kwargs.get("check") is False and kwargs.get("timeout") == 20,
                     "append-only review Git transport privacy/timeout drift",
                 )
+                require_trusted_git_env(module, kwargs)
                 calls.append(args[1])
                 if args[1] == "cat-file":
-                    require(args == ["git", "cat-file", "-s", object_ref]
+                    require(args == [module.TRUSTED_GIT, "cat-file", "-s", object_ref]
                             and kwargs.get("text") is True,
                             "append-only review Git size preflight drift")
                     if state["size_error"] is not None:
                         raise state["size_error"]
                     return subprocess.CompletedProcess(
                         args, state["size_exit"], stdout=state["size"], stderr=None)
-                require(args == ["git", "show", object_ref]
+                require(args == [module.TRUSTED_GIT, "show", object_ref]
                         and kwargs.get("text") is None,
                         "append-only review Git show drift")
                 if state["show_error"] is not None:
