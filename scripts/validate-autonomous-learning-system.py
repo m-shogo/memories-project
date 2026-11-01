@@ -75,7 +75,7 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         preflight = path.lstat()
         # Reject malformed/nonregular leaf metadata before opening any FD.
         if not stat.S_ISREG(preflight.st_mode):
-            raise ValidationFailure(diagnostic)
+            raise ValidationFailure(f"unreadable authority: {path}")
     except (OSError, ValueError, TypeError, AttributeError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
