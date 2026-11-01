@@ -1319,7 +1319,9 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         for label, payload, expected in (
                 ("close after effect", b"stable", f"unreadable authority: {target}"),
                 ("original error after close", b"x" * 11, "reviewed source oversized")):
-            target.write_bytes(payload)
+            # The oversized error must originate after descriptor acquisition:
+            # a pre-existing oversized leaf is now rejected before os.open.
+            target.write_bytes(b"stable")
             guard_fd = real_open(canary, os.O_RDONLY)
             opened.clear()
             recycled: list[int] = []
@@ -1327,7 +1329,21 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(descriptor)
                 recycled.append(os.dup2(guard_fd, descriptor))
                 raise OSError(errno.EIO, "synthetic close-after-effect")
+            def postopen_payload_stream(descriptor, mode, **kwargs):
+                underlying = actual_fdopen(descriptor, mode, **kwargs)
+                if len(payload) <= 10:
+                    return underlying
+                class SyntheticOverlimitStream:
+                    def fileno(self):
+                        return underlying.fileno()
+                    def read(self, size=-1):
+                        return payload
+                    def close(self):
+                        underlying.close()
+                return SyntheticOverlimitStream()
             with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                 mock.patch.object(module.os, "fdopen",
+                                   side_effect=postopen_payload_stream), \
                  mock.patch.object(module.os, "close", side_effect=close_then_reuse):
                 reject(label, expected)
             if len(opened) != 1 or recycled != opened:
@@ -1348,7 +1364,9 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                  f"unreadable authority: {target}"),
                 ("stream close after original error", b"x" * 11, True, ValueError,
                  "reviewed source oversized")):
-            target.write_bytes(payload)
+            # Keep the leaf preflight-valid; synthesize an oversized read
+            # only after the non-owning stream has been acquired.
+            target.write_bytes(b"stable")
             opened.clear()
             stream_instances = []
             guard_fd = real_open(canary, os.O_RDONLY)
@@ -1361,7 +1379,7 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                     def fileno(self):
                         return underlying.fileno()
                     def read(self, size=-1):
-                        return underlying.read(size)
+                        return payload if len(payload) > 10 else underlying.read(size)
                     def close(self):
                         self.close_calls += 1
                         if after_effect:
