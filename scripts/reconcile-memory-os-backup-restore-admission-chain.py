@@ -193,17 +193,26 @@ def run_validator(path: Path, label: str) -> None:
         require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
     else:
         require_repo_file(path, f"{label} validator missing")
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        raise Fail(f"post-reconcile {label} unavailable or timed out (raw output withheld)") from None
     require(
-        completed.returncode == 0,
-        f"post-reconcile {label} failed:\n{completed.stdout[-8000:]}{completed.stderr[-8000:]}",
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        f"post-reconcile {label} failed (raw output withheld)",
     )
 
 

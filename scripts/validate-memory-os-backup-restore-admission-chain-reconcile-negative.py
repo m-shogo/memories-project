@@ -7,10 +7,12 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
 import stat
 import tempfile
 from pathlib import Path
 from typing import Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-admission-chain.py"
@@ -714,6 +716,88 @@ def prove_rollback_failure_preserves_primary_diagnostic(reconciler: object) -> N
     print("PASS rollback: admission-chain rollback failure reports both primary rejection and incomplete rollback without canonical mutation")
 
 
+
+def prove_post_validator_private_transport(reconciler: object) -> None:
+    """Require bounded, isolated post-validation and exact failure classes."""
+    original_run = reconciler.subprocess.run
+    marker = "synthetic-private-admission-chain-post-validator-output"
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_ADMISSION_POST_VALIDATOR_ENV": "preserved",
+    }
+    targets = (
+        (reconciler.VALIDATOR, "admission-chain validator"),
+        (reconciler.OPERABILITY_VALIDATOR, "operability validator"),
+    )
+    seen: list[int | bool | None] = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv[0] == reconciler.sys.executable
+                    and argv[1] in [str(path) for path, _ in targets],
+                    "admission-chain post-validator child target drift")
+            require(kwargs.get("cwd") == reconciler.ROOT,
+                    "admission-chain post-validator cwd drift")
+            require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                    and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
+                    "admission-chain post-validator raw diagnostics captured")
+            require(kwargs.get("timeout") == 120 and kwargs.get("check") is False,
+                    "admission-chain post-validator runtime budget drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "admission-chain child environment missing")
+            require(child_env.get("SAFE_ADMISSION_POST_VALIDATOR_ENV") == "preserved",
+                    "admission-chain benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "admission-chain inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in reconciler.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "admission-chain post-validator child environment drift")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return run
+
+    with patch.dict(reconciler.os.environ, poisoned):
+        try:
+            for path, label in targets:
+                reconciler.subprocess.run = fake_run(0)
+                reconciler.run_validator(path, label)
+                for code in (1, False, None):
+                    reconciler.subprocess.run = fake_run(code)
+                    try:
+                        reconciler.run_validator(path, label)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == f"post-reconcile {label} failed (raw output withheld)",
+                                "admission-chain post-validator failure class drift")
+                        require(marker not in str(exc), "admission-chain private output leaked")
+                    else:
+                        raise Fail("admission-chain post-validator invalid return accepted")
+                for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                                subprocess.TimeoutExpired(["synthetic"], 120, output=marker, stderr=marker)):
+                    def raise_failure(*_args, **_kwargs):
+                        raise failure
+                    reconciler.subprocess.run = raise_failure
+                    try:
+                        reconciler.run_validator(path, label)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == f"post-reconcile {label} unavailable or timed out (raw output withheld)",
+                                "admission-chain unavailable class drift")
+                        require(marker not in str(exc), "admission-chain exception details leaked")
+                    else:
+                        raise Fail("admission-chain post-validator unavailable accepted")
+        finally:
+            reconciler.subprocess.run = original_run
+    require(seen == [0, 1, False, None] * 2,
+            "admission-chain post-validator positive/negative controls incomplete")
+    print("PASS: admission-chain post-validators use isolated bounded private transport")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "admission-chain validator missing")
     require(RECONCILER.is_file(), "admission-chain reconciler missing")
@@ -728,6 +812,7 @@ def main() -> int:
     validator = load_module(VALIDATOR, "memory_os_admission_chain_validator_negative")
     reconciler = load_module(RECONCILER, "memory_os_admission_chain_reconcile_negative")
 
+    prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_shared_registry_fail_closed(reconciler)
 
