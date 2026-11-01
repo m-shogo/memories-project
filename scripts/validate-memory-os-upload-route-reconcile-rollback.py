@@ -950,7 +950,8 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
     # An ambiguous parent close cannot replace the primary publication error.
     # The disposable harness explicitly reclaims an FD when the fault fires
     # before close, and verifies EBADF when it fires after actual close.
-    for close_scenario in ("before-close", "after-close"):
+    for close_scenario in ("before-close", "after-close",
+                           "before-close-valueerror", "after-close-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-parent-close-final-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -975,8 +976,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_parent_close(fd):
                 if captured_parents and fd == captured_parents[0] and not close_tripped[0]:
                     close_tripped[0] = True
-                    if close_scenario == "after-close":
+                    if close_scenario.startswith("after-close"):
                         original_close(fd)
+                    if close_scenario.endswith("valueerror"):
+                        raise ValueError("synthetic final parent close ValueError")
                     raise OSError("synthetic pinned parent close failure")
                 return original_close(fd)
 
@@ -992,6 +995,9 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     require(any("pinned parent descriptor close status unknown" in note
                                 for note in getattr(exc, "__notes__", [])),
                             "parent close failure lacked bounded uncertainty diagnostic")
+                    if close_scenario.endswith("valueerror"):
+                        require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                "non-OSError final parent close lost fault type diagnostic")
                 else:
                     raise Fail("parent close failure unexpectedly published")
             finally:
@@ -1000,7 +1006,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 module.os.replace = original_replace
             require(close_tripped[0] and len(captured_parents) == 1,
                     "final parent close fault did not reach pinned descriptor")
-            if close_scenario == "before-close":
+            if close_scenario.startswith("before-close"):
                 os.fstat(captured_parents[0])
                 os.close(captured_parents[0])
             else:
