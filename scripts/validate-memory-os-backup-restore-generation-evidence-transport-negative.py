@@ -101,11 +101,11 @@ def prove_private_bounded_child_execution(module: Any) -> None:
             module.subprocess.run = fake_run
             if case == "success":
                 module.run_validator(module.INDEPENDENT_REVIEW_VALIDATOR,
-                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "independent review")
+                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "generation independent-review validator")
                 continue
             try:
                 module.run_validator(module.INDEPENDENT_REVIEW_VALIDATOR,
-                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "independent review")
+                                     module.INDEPENDENT_REVIEW_VALIDATOR_REL, "generation independent-review validator")
             except module.Fail as exc:
                 require(str(exc) == "generation evidence child validator failed",
                         "generation evidence child exposed non-private diagnostic")
