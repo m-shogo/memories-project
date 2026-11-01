@@ -1012,6 +1012,12 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         alias.symlink_to(candidate)
         rejected(alias, "drill request reconcile authority read invalid or unavailable", "symlink")
         rejected(directory, "drill request reconcile authority not regular file", "directory")
+        parent_link = directory / "parent-link"
+        parent_link.symlink_to(directory, target_is_directory=True)
+        rejected(parent_link / "candidate.json",
+                 "drill request reconcile authority symlinked parent refused",
+                 "symlinked ancestor inside repository")
+
         fifo = directory / "fifo.json"
         os.mkfifo(fifo)
         rejected(fifo, "drill request reconcile authority not regular file", "FIFO")
@@ -1149,7 +1155,7 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         require(candidate.read_bytes() == positive, "drill reconcile reader mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected) == before,
             "drill reconcile reader mutated protected authorities")
-    print("PASS: drill reconcile reader positive, invalid-FD/read, early-EOF, mode/link and close-fault negatives")
+    print("PASS: drill reconcile reader positive, symlink-parent, invalid-FD/read, early-EOF and close-fault negatives")
 
 
 def prove_reconciler_strict_json(reconciler) -> None:

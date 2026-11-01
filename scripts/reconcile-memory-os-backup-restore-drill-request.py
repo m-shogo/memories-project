@@ -115,6 +115,14 @@ MAX_AUTHORITY_BYTES = 1024 * 1024
 def read_text(path: Path) -> str:
     """Read only bounded regular authority bytes from a no-follow descriptor."""
     repo_relative(path)
+    # A no-follow leaf does not reject a symlinked ancestor; require the
+    # lexical checkout path to match the resolved authority path.
+    try:
+        lexical = path.relative_to(ROOT)
+    except (TypeError, ValueError):
+        raise Fail("drill request reconcile authority symlinked parent refused") from None
+    require(path.is_absolute() and lexical == repo_relative(path),
+            "drill request reconcile authority symlinked parent refused")
     require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
             "drill request reconcile safe authority reader unsupported")
     fd = None
