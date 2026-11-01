@@ -678,36 +678,27 @@ def prove_rollback_attempts_all_restores(reconciler: Any) -> None:
 
 
 def prove_private_reconciler_helper_import(reconciler: Any) -> None:
-    """Suppress Python import output and never chain private loader failures."""
+    """Pin reviewed helper bytes and suppress private import output/errors."""
     positive = reconciler.load_module(reconciler.WRITER, "memory_os_drill_reconcile_import_positive")
     require(callable(getattr(positive, "require_cli_authorities", None)),
             "drill reconcile canonical writer positive import failed")
 
-    original_spec = reconciler.importlib.util.spec_from_file_location
-    original_module = reconciler.importlib.util.module_from_spec
     marker = "synthetic-secret-drill-reconcile-import"
-
-    class LoudLoader:
-        def __init__(self, should_fail):
-            self.should_fail = should_fail
-
-        def exec_module(self, module):
-            print(marker)
-            print(marker, file=sys.stderr)
-            module.positive = True
-            if self.should_fail:
-                raise OSError(marker)
-
+    original_source = reconciler.pinned_reviewed_source
     try:
         for should_fail in (False, True):
-            spec = types.SimpleNamespace(loader=LoudLoader(should_fail))
-            reconciler.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: spec
-            reconciler.importlib.util.module_from_spec = lambda _spec: types.SimpleNamespace()
+            source = (
+                f"print({marker!r})\n"
+                f"import sys\nprint({marker!r}, file=sys.stderr)\n"
+                "positive = True\n"
+                + (f"raise OSError({marker!r})\n" if should_fail else "")
+            ).encode("utf-8")
+            reconciler.pinned_reviewed_source = lambda *_args, _source=source, **_kwargs: _source
             output, errors = io.StringIO(), io.StringIO()
             with redirect_stdout(output), redirect_stderr(errors):
                 if should_fail:
                     try:
-                        reconciler.load_module(reconciler.WRITER, "memory_os_drill_reconcile_import_negative")
+                        reconciler.load_module(reconciler.WRITER, "memory_os_drill_import_negative")
                     except reconciler.Fail as exc:
                         require(str(exc) == "drill request reconciler helper import failed",
                                 "drill reconcile import failure class drift")
@@ -715,14 +706,44 @@ def prove_private_reconciler_helper_import(reconciler: Any) -> None:
                     else:
                         raise Fail("drill reconcile noisy import failure accepted")
                 else:
-                    imported = reconciler.load_module(reconciler.WRITER, "memory_os_drill_reconcile_import_success")
+                    imported = reconciler.load_module(reconciler.WRITER, "memory_os_drill_import_success")
                     require(imported.positive is True, "drill reconcile noisy positive import failed")
             require(marker not in output.getvalue() + errors.getvalue(),
                     "drill reconcile import disclosed private stdout/stderr")
     finally:
-        reconciler.importlib.util.spec_from_file_location = original_spec
-        reconciler.importlib.util.module_from_spec = original_module
-    print("PASS: drill reconcile helper import suppresses Python output and private exceptions")
+        reconciler.pinned_reviewed_source = original_source
+
+    # An unreviewed repository file cannot be imported as a helper.
+    try:
+        reconciler.load_module(reconciler.CONTRACT, "unreviewed_drill_helper")
+    except reconciler.Fail as exc:
+        require(str(exc) == "unreviewed drill request reconciler helper",
+                "drill reconcile unreviewed helper rejected at wrong boundary")
+    else:
+        raise Fail("drill reconcile unreviewed helper accepted")
+
+    # An unreviewed descriptor substituted for the canonical writer leaf
+    # must fail before Python can execute the substituted bytes.
+    with tempfile.TemporaryDirectory(prefix="drill-reconcile-helper-source-") as tmp:
+        injected = Path(tmp) / "substituted.py"
+        injected.write_text("raise RuntimeError('synthetic substituted helper')\n",
+                            encoding="utf-8")
+        real_open = reconciler.os.open
+
+        def swapped_leaf_open(path, flags, *args, **kwargs):
+            if path == reconciler.WRITER.name and "dir_fd" in kwargs:
+                return real_open(injected, reconciler.os.O_RDONLY)
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch.object(reconciler.os, "open", side_effect=swapped_leaf_open):
+            try:
+                reconciler.load_module(reconciler.WRITER, "swapped_drill_helper")
+            except reconciler.Fail as exc:
+                require(str(exc) == "drill request reconciler helper import failed",
+                        "drill reconcile substituted helper leaked or changed failure class")
+            else:
+                raise Fail("drill reconcile substituted helper FD accepted")
+    print("PASS: drill reconcile helper import executes pinned source, rejects unreviewed targets and substituted FDs, suppresses private errors")
 
 
 def prove_post_validator_transport(reconciler: Any) -> None:

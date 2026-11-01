@@ -262,15 +262,22 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def load_module(path: Path, name: str):
-    require_repo_file(path, "drill request reconciler helper missing")
+    reviewed = {
+        WRITER: WRITER_REL,
+        ELIGIBILITY_HELPER: ELIGIBILITY_HELPER_REL,
+        OBJECTIVES_WRITER: OBJECTIVES_WRITER_REL,
+    }
+    require(path in reviewed, "unreviewed drill request reconciler helper")
     try:
+        source = pinned_reviewed_source(path, reviewed[path])
         with open(os.devnull, "w", encoding="utf-8") as private_sink:
             with redirect_stdout(private_sink), redirect_stderr(private_sink):
                 spec = importlib.util.spec_from_file_location(name, path)
                 require(spec is not None and spec.loader is not None,
                         "drill request reconciler helper import failed")
                 module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                # Do not ask SourceFileLoader to re-open a mutable pathname.
+                exec(compile(source, str(path), "exec"), module.__dict__)
     except Exception:
         raise Fail("drill request reconciler helper import failed") from None
     return module
@@ -308,7 +315,7 @@ def expected_decision(
     return "AWAITING_REVIEWED_DRILL_REQUEST"
 
 
-def pinned_post_validator_source(path: Path, relative: Path) -> bytes:
+def pinned_reviewed_source(path: Path, relative: Path) -> bytes:
     """Pin reviewed child bytes across no-follow parent/leaf and identity checks."""
     require_exact_repo_file(path, relative, "drill request post-validator")
     owned: list[int] = []
@@ -392,7 +399,7 @@ def run_post_validator(path: Path, label: str) -> None:
     require(reviewed.get(label) == path, "unreviewed drill request post-validator")
     require_exact_repo_file(path, VALIDATOR_REL if label == "drill request" else OPERABILITY_VALIDATOR_REL,
                             "drill request post-validator")
-    source = pinned_post_validator_source(
+    source = pinned_reviewed_source(
         path, VALIDATOR_REL if label == "drill request" else OPERABILITY_VALIDATOR_REL,
     )
     child_env = {
