@@ -1,0 +1,25 @@
+# Supplemental OPS learning — focused Go case and comparison coverage (2026-11-01)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, reviewed-request, request-bound evidence, typed eight-domain non-resurrection, independent-review, final-candidate or human promotion evidence.
+
+## Material failure
+
+- **symptom:** A reviewed, named Upload Route Go test could retain an executable `t.Fatalf` assertion yet stop checking a critical registered/unknown route, iterate zero test cases, or compare a result against itself.
+- **evidence:** The pre-change `require_reviewed_upload_route_focused_go_tests` inspected test names, signatures, skip/return tokens and assertion presence but did not bind the seven route-template cases, three prefilter cases, table iteration, `ServeHTTP` invocation or result-versus-expected predicates. This is an observed **static guard admission gap**, not an observed runtime or production defect.
+- **rootCauseOrUnknown:** Verified by source inspection: the previous lexical predicate established only test/assertion presence, not the case set or executable comparison semantics. Actual focused Go execution remains unverified.
+- **failedApproach:** Treating a syntactically present test and anchored failure assertion as proof of meaningful route regression coverage.
+- **correction:** [`f8bc1fa`](https://github.com/m-shogo/memories-project/commit/f8bc1fa24708f3c1934195fdef209e65a8b8572e) requires all seven reviewed route cases and three prefilter cases, table iteration, route-template and known-shape comparisons, `New(Config{})`, `httptest` request/recorder, `ServeHTTP`, and response-versus-expected comparison. Reviewed source changes require explicit guard review rather than silent acceptance.
+- **recurrenceGuard:** Six executable negative mutations in the existing CI-reachable `scripts/validate-autonomous-learning-system-negative.py` reject commented-out issue/unknown/prefilter cases, zero-iteration route table and two tautological comparisons. The existing canonical negative harness checks the precise rejection path.
+- **retryCondition:** Revalidate if route test cases, test selectors, Go source layout, CI guard or pre-MinIO execution availability changes. Do not retry unchanged Quay MinIO HTTP 401 or workflow-write permission blockers.
+
+## Material success
+
+- **outcome:** Focused route Go test **source admission** now fails closed on the six new coverage-bypass classes; no Go runtime implementation or reviewed workflow was changed.
+- **evidence:** [Autonomous Learning Guard #41272132960](https://github.com/m-shogo/memories-project/actions/runs/41272132960) completed **SUCCESS** on exact code HEAD `f8bc1fa24708f3c1934195fdef209e65a8b8572e`. Its job logs show canonical learning positive PASS, 601 fail-closed negatives PASS, 39 supplemental-history fixtures PASS, upload-route append-only/symlink negatives PASS, 195 fanout synthetic cases PASS, helper ancestor reachability and 1,186 negatives PASS, and read-only/clean-source checks. GitHub compare from `ca0bd263` to `f8bc1fa` reports exactly one changed file: the existing negative validator, 55 added lines, zero deletions.
+- **whySafe:** Only a CI-executed read-only negative validator changed. Existing Go code, workflow files, protected authorities, external services, credentials, production traffic, recovery evidence and human decisions were untouched.
+- **reusableMechanism:** Bind test identities to reviewed case tables, actual invocation statements and non-tautological expected-value comparisons; add negative fixtures for every bypass class. Keep source-level proof separate from actual Go execution proof.
+- **protectedAuthorityCheck:** The single-path GitHub compare proves no protected authority drift for this commit. Canonical learning SHA `b809c69d`, mandatory contract SHA `87712ea9`, production status SHA `b55ee4ad` with `productionDecision=NO_GO`, and the other protected production/recovery registries remain unchanged. OPS-P0-007 stays `PREREQUISITES_BLOCKED`. Registered generations and semantically eligible unsuperseded distinct-environment generations remain distinct; a current human-approved objective, executable reviewed request, request-bound generation evidence, complete typed eight-domain non-resurrection, independent review and separate non-automatic human promotion remain required.
+
+## Scoped blocker / next safe target
+
+This successful static CI run is **not** a focused Go test run. The Upload Route publisher/PR workflows still start MinIO before the Go tests; the known Quay HTTP 401 and workflow-write permission limitations are unchanged. Next audit Go assertion reachability inside constant-false branches and test-loop bypasses, or obtain an authorized exact-source pre-MinIO Go test with explicit non-skip proof when a genuine execution path becomes available.
