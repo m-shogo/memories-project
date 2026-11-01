@@ -1200,6 +1200,95 @@ def prove_generation_child_target_allowlist(validator) -> None:
     print("PASS: generation evidence child validator reviewed label/path allowlist")
 
 
+def prove_generation_writer_pinned_import() -> None:
+    """The production writer importer must not execute a post-check path swap."""
+    validator = load_module(VALIDATOR, "generation_evidence_writer_pinned_negative")
+    original_root = validator.ROOT
+    original_writer = validator.WRITER
+    original_relative = validator.WRITER_REL
+    original_check = validator.require_exact_repo_file
+    original_read = validator.os.read
+    with tempfile.TemporaryDirectory(prefix=".generation-writer-pinned-", dir=TMP_PARENT) as raw:
+        root = Path(raw) / "repo"
+        scripts = root / "scripts"
+        scripts.mkdir(parents=True)
+        approved = scripts / "writer.py"
+        approved.write_text("VALUE = 42\n", encoding="utf-8")
+        outside = Path(raw) / "outside.py"
+        marker = Path(raw) / "unreviewed-writer-executed"
+        outside.write_text("from pathlib import Path\nPath(" + repr(str(marker))
+                           + ").write_text('unsafe')\n", encoding="utf-8")
+        validator.ROOT = root
+        validator.WRITER = approved
+        validator.WRITER_REL = Path("scripts/writer.py")
+        try:
+            require(validator.load_writer().VALUE == 42,
+                    "generation writer pinned positive source failed")
+
+            def swap_after_check(path, expected, field):
+                result = original_check(path, expected, field)
+                if not approved.is_symlink():
+                    approved.rename(scripts / "original.py")
+                    approved.symlink_to(outside)
+                return result
+
+            validator.require_exact_repo_file = swap_after_check
+            try:
+                validator.load_writer()
+            except validator.Fail:
+                pass
+            else:
+                raise Fail("generation writer post-check symlink swap executed")
+            validator.require_exact_repo_file = original_check
+            approved.unlink()
+            (scripts / "original.py").rename(approved)
+            require(not marker.exists(), "generation writer unreviewed source executed")
+
+            scripts.chmod(0o777)
+            try:
+                try:
+                    validator.load_writer()
+                except validator.Fail as exc:
+                    require(str(exc) == "generation evidence writer source parent unsafe",
+                            "generation writer writable parent rejected at wrong boundary")
+                else:
+                    raise Fail("generation writer writable parent accepted")
+            finally:
+                scripts.chmod(0o755)
+
+            changed = False
+            def mutate_during_read(fd, count):
+                nonlocal changed
+                if not changed:
+                    changed = True
+                    with approved.open("ab") as writer:
+                        writer.write(b"# synthetic mid-read mutation\n")
+                return original_read(fd, count)
+
+            validator.os.read = mutate_during_read
+            try:
+                try:
+                    validator.load_writer()
+                except validator.Fail as exc:
+                    require(str(exc) == "generation evidence writer source changed during read",
+                            "generation writer mid-read mutation rejected at wrong boundary")
+                else:
+                    raise Fail("generation writer mid-read mutation accepted")
+            finally:
+                validator.os.read = original_read
+            require(changed and not marker.exists(),
+                    "generation writer mutation fixture not reached or executed marker")
+            require(validator.load_writer().VALUE == 42,
+                    "generation writer pinned source did not recover after negatives")
+        finally:
+            validator.ROOT = original_root
+            validator.WRITER = original_writer
+            validator.WRITER_REL = original_relative
+            validator.require_exact_repo_file = original_check
+            validator.os.read = original_read
+    print("PASS: generation evidence writer import uses pinned source, rejects symlink swap, writable parent and read race")
+
+
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
     require(VALIDATOR.is_file(), "generation evidence validator missing")
@@ -1230,6 +1319,7 @@ def main() -> int:
     prove_pinned_module_fd_cleanup()
     writer = load_module(WRITER, "memory_os_generation_evidence_writer_load_negative")
     validator = load_module(VALIDATOR, "memory_os_generation_evidence_validator_load_negative")
+    prove_generation_writer_pinned_import()
     prove_generation_evidence_writer_json_reader(writer)
     prove_generation_evidence_json_reader(validator)
     prove_generation_private_authority_path_diagnostics(validator)

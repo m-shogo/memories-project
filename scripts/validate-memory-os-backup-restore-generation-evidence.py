@@ -206,14 +206,97 @@ def load(path: Path) -> dict[str, Any]:
     require(isinstance(value, dict), "generation recovery JSON root must be object")
     return value
 
-def load_writer():
+MAX_WRITER_SOURCE_BYTES = 1024 * 1024
+
+
+def read_pinned_writer_source() -> bytes:
+    """Pin reviewed writer bytes and parent directories before any execution."""
     require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+    owned: list[int] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        file_flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0,
+                "generation evidence writer source invalid descriptor")
+        owned.append(parent_fd)
+        for component in WRITER_REL.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    "generation evidence writer source invalid descriptor")
+            owned.append(parent_fd)
+        parent_before = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in parent_before),
+                "generation evidence writer source parent unsafe")
+        source_fd = os.open(WRITER_REL.name, file_flags, dir_fd=parent_fd)
+        require(type(source_fd) is int and source_fd >= 0,
+                "generation evidence writer source invalid descriptor")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 <= before.st_size <= MAX_WRITER_SOURCE_BYTES,
+                "generation evidence writer source type/size unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_WRITER_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes,
+                    "generation evidence writer source invalid read result")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
+            item.st_size, item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) <= MAX_WRITER_SOURCE_BYTES
+                and len(source) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "generation evidence writer source changed during read")
+        for index, directory_fd in enumerate(owned[:-1]):
+            opened = os.fstat(directory_fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            pathname = os.lstat(lexical)
+            require(stat.S_ISDIR(pathname.st_mode)
+                    and parent_identity(parent_before[index])
+                    == parent_identity(opened) == parent_identity(pathname),
+                    "generation evidence writer source parent changed during read")
+        require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+        require(identity(WRITER.stat()) == identity(after),
+                "generation evidence writer source pathname changed during read")
+        return source
+    except (OSError, ValueError, TypeError, OverflowError):
+        raise Fail("generation evidence writer source unavailable or unsafe") from None
+    finally:
+        pending_error = sys.exc_info()[0] is not None
+        cleanup_failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                cleanup_failed = True
+        if cleanup_failed and not pending_error:
+            raise Fail("generation evidence writer source cleanup failed") from None
+
+
+def load_writer():
+    source = read_pinned_writer_source()
     try:
         spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_writer", WRITER)
         require(spec is not None and spec.loader is not None, "generation evidence writer import unavailable")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (OSError, UnicodeError):
+        # SourceFileLoader must never re-open a pathname after verified acquisition.
+        exec(compile(source, str(WRITER), "exec"), module.__dict__)
+    except (OSError, UnicodeError, ValueError, TypeError, SyntaxError):
         raise Fail("generation evidence writer import unavailable") from None
     return module
 
