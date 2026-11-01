@@ -32,7 +32,7 @@ def load_module():
 
 
 def prove_atomic_replace_failure(module) -> None:
-    for replace_scenario in ("before-effect", "after-effect", "after-effect-probe-failure"):
+    for replace_scenario in ("before-effect", "after-effect", "after-effect-probe-failure", "after-effect-probe-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
             target = Path(temp_dir) / "authority.txt"
             original = b"exact-original-bytes\n"
@@ -56,9 +56,11 @@ def prove_atomic_replace_failure(module) -> None:
                 original_replace(source, destination, *args, **kwargs)
 
             def reject_probe_stat(candidate, *args, **kwargs):
-                if (replace_scenario == "after-effect-probe-failure"
+                if (replace_scenario in ("after-effect-probe-failure", "after-effect-probe-valueerror")
                         and replace_fault_seen[0] and candidate == target.name
                         and kwargs.get("dir_fd") is not None):
+                    if replace_scenario == "after-effect-probe-valueerror":
+                        raise ValueError("synthetic post-replace stat ValueError")
                     raise OSError("synthetic post-replace stat rejection")
                 return original_stat(candidate, *args, **kwargs)
 
@@ -78,6 +80,10 @@ def prove_atomic_replace_failure(module) -> None:
                         require(any("atomic replace outcome unknown; post-error probe unavailable (OSError)" in note
                                     for note in getattr(exc, "__notes__", [])),
                                 "post-effect replace probe failure masked primary error or lacked uncertainty diagnostic")
+                    elif replace_scenario == "after-effect-probe-valueerror":
+                        require(any("atomic replace outcome unknown; post-error probe unavailable (ValueError)" in note
+                                    for note in getattr(exc, "__notes__", [])),
+                                "post-effect replace probe ValueError lost primary error or uncertainty diagnostic")
                 else:
                     raise Fail("upload-route atomic writer accepted replacement failure")
                 expected = original if replace_scenario == "before-effect" else b"partial-mutation\n"
