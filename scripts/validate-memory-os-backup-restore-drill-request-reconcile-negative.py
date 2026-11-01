@@ -733,9 +733,19 @@ def prove_post_validator_transport(reconciler: Any) -> None:
 
     def fake_run(exit_code):
         def run(argv, **kwargs):
-            require(argv in ([reconciler.sys.executable, str(reconciler.VALIDATOR)],
-                             [reconciler.sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
-                    "post-validator target drift")
+            require(len(argv) == 4 and argv[0] == reconciler.sys.executable
+                    and argv[1] == "-c"
+                    and argv[3] in (str(reconciler.VALIDATOR),
+                                    str(reconciler.OPERABILITY_VALIDATOR)),
+                    "post-validator pinned child target drift")
+            require("sys.stdin.buffer.read()" in argv[2]
+                    and "exec(compile(" in argv[2]
+                    and "sys.argv[:] = [path]" in argv[2]
+                    and "sys.path.insert(0, os.path.dirname(path))" in argv[2],
+                    "post-validator pinned bootstrap drift")
+            require(type(kwargs.get("input")) is bytes
+                    and kwargs["input"] == Path(argv[3]).read_bytes(),
+                    "post-validator pinned source transport drift")
             require(kwargs.get("cwd") == reconciler.ROOT,
                     "post-validator cwd drift")
             child_env = kwargs.get("env")
@@ -812,6 +822,28 @@ def prove_post_validator_transport(reconciler: Any) -> None:
                         "drill post-validator unreviewed target rejected at wrong boundary")
             else:
                 raise Fail("drill post-validator unreviewed repository target accepted")
+    # A substituted FD after a valid pathname check must never execute.
+    with tempfile.TemporaryDirectory(prefix="drill-post-validator-source-") as tmp:
+        injected = Path(tmp) / "substituted.py"
+        injected.write_text("raise RuntimeError('synthetic substituted child')\n", encoding="utf-8")
+        real_open = reconciler.os.open
+
+        def swapped_leaf_open(path, flags, *args, **kwargs):
+            if path == reconciler.VALIDATOR.name and "dir_fd" in kwargs:
+                return real_open(injected, reconciler.os.O_RDONLY)
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch.object(reconciler.os, "open", side_effect=swapped_leaf_open), \
+             patch.object(reconciler.subprocess, "run",
+                          side_effect=Fail("substituted child reached subprocess")):
+            try:
+                reconciler.run_post_validator(reconciler.VALIDATOR, "drill request")
+            except reconciler.Fail as exc:
+                require("substituted child reached subprocess" not in str(exc),
+                        "post-validator executed a substituted child source")
+            else:
+                raise Fail("post-validator accepted a substituted source FD")
+    print("PASS: drill request post-validators reject substituted source FD before child execution")
     print("PASS: drill request post-validators use bounded class-only transport and closed targets")
 
 
