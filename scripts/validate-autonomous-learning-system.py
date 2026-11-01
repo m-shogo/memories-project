@@ -104,7 +104,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                 raise ValidationFailure(f"unreadable authority: {path}")
             if len(raw) > max_bytes:
                 raise ValidationFailure(too_large)
-            after = os.fstat(stream.fileno())
+            after_fd = stream.fileno()
+            if type(after_fd) is not int or after_fd != fd:
+                raise ValidationFailure(f"unreadable authority: {path}")
+            after = os.fstat(fd)
             live = path.lstat()
             for parent, prior in parents:
                 current = parent.lstat()
