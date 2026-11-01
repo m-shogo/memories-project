@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-drill-generation-eligibility-binding.py"
@@ -195,12 +196,95 @@ def prove_reconciler_execution_identity(reconciler: Any) -> None:
     print(f"PASS boundary: direct semantic-binding reconcile execution helper substitutions rejected: {len(helper_cases)}")
 
 
+
+def prove_post_validator_private_transport(reconciler: Any) -> None:
+    """Pin both canonical child validators to isolated, bounded, private execution."""
+    original_run = reconciler.subprocess.run
+    marker = "synthetic-private-drill-generation-binding-post-validator-output"
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_BINDING_POST_VALIDATOR_ENV": "preserved",
+    }
+    targets = (
+        (reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "drill generation binding validator"),
+        (reconciler.OPERABILITY_VALIDATOR, reconciler.OPERABILITY_VALIDATOR_REL, "operability validator"),
+    )
+    seen: list[int | bool | None] = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv[0] == reconciler.sys.executable
+                    and argv[1] in [str(path) for path, _, _ in targets],
+                    "drill generation binding post-validator child target drift")
+            require(kwargs.get("cwd") == reconciler.ROOT,
+                    "drill generation binding post-validator cwd drift")
+            require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                    and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
+                    "drill generation binding post-validator raw diagnostics captured")
+            require(kwargs.get("timeout") == 120 and kwargs.get("check") is False,
+                    "drill generation binding post-validator runtime budget drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "drill generation binding child environment missing")
+            require(child_env.get("SAFE_BINDING_POST_VALIDATOR_ENV") == "preserved",
+                    "drill generation binding benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "drill generation binding inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in reconciler.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "drill generation binding post-validator child environment drift")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return run
+
+    with patch.dict(reconciler.os.environ, poisoned):
+        try:
+            for path, relative, field in targets:
+                reconciler.subprocess.run = fake_run(0)
+                reconciler.run_post_validator(path, relative, field)
+                for code in (1, False, None):
+                    reconciler.subprocess.run = fake_run(code)
+                    try:
+                        reconciler.run_post_validator(path, relative, field)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == f"post-reconcile {field} failed (raw output withheld)",
+                                "drill generation binding post-validator failure class drift")
+                        require(marker not in str(exc), "drill generation binding private output leaked")
+                    else:
+                        raise Fail("drill generation binding post-validator invalid return accepted")
+                for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                                subprocess.TimeoutExpired(["synthetic"], 120, output=marker, stderr=marker)):
+                    def raise_failure(*_args, **_kwargs):
+                        raise failure
+                    reconciler.subprocess.run = raise_failure
+                    try:
+                        reconciler.run_post_validator(path, relative, field)
+                    except reconciler.Fail as exc:
+                        require(str(exc) == f"post-reconcile {field} unavailable or timed out (raw output withheld)",
+                                "drill generation binding unavailable class drift")
+                        require(marker not in str(exc), "drill generation binding exception details leaked")
+                    else:
+                        raise Fail("drill generation binding post-validator unavailable accepted")
+        finally:
+            reconciler.subprocess.run = original_run
+    require(seen == [0, 1, False, None] * 2,
+            "drill generation binding post-validator positive/negative controls incomplete")
+    print("PASS: drill generation binding post-validators use isolated bounded private transport")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_validator_execution_identity()
     reconciler = load_reconciler()
+    prove_post_validator_private_transport(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_reconciler_execution_identity(reconciler)
 

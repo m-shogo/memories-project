@@ -85,17 +85,26 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
 
 def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
     require_exact_repo_file(path, expected_relative, field)
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=120,
+        )
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        raise Fail(f"post-reconcile {field} unavailable or timed out (raw output withheld)") from None
     require(
-        completed.returncode == 0,
-        f"post-reconcile {field} failed:\n{completed.stdout[-9000:]}{completed.stderr[-9000:]}",
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        f"post-reconcile {field} failed (raw output withheld)",
     )
 
 
