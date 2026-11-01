@@ -68,7 +68,7 @@ def expect_validator_substitution_rejected(validator: Any, attribute: str, repla
         setattr(validator, attribute, original)
 
 
-def prove_validator_pinned_module_import() -> None:
+def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
     """A post-check symlink swap must not execute external module bytes."""
     with tempfile.TemporaryDirectory(prefix="binding-module-source-") as temporary:
         root = Path(temporary) / "repo"
@@ -82,7 +82,7 @@ def prove_validator_pinned_module_import() -> None:
             "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('unsafe')\n",
             encoding="utf-8",
         )
-        validator = load_module(VALIDATOR, "memory_os_binding_pinned_module_negative")
+        validator = load_module(module_path, "memory_os_binding_pinned_module_negative")
         original_root = validator.ROOT
         original_check = validator.require_exact_repo_file
         validator.ROOT = root
@@ -141,7 +141,7 @@ def prove_validator_pinned_module_import() -> None:
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: positive control, post-check leaf and parent swaps")
+    print("PASS pinned module import: " + module_path.name + " positive control, post-check leaf and parent swaps")
 
 
 def prove_validator_execution_identity() -> None:
@@ -652,6 +652,7 @@ def main() -> int:
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_validator_execution_identity()
     prove_validator_pinned_module_import()
+    prove_validator_pinned_module_import(RECONCILER)
     prove_validator_strict_json_loader()
     prove_validator_negative_suite_private_transport()
     reconciler = load_reconciler()
