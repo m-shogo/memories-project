@@ -1167,17 +1167,25 @@ def prove_generation_child_target_allowlist(validator) -> None:
     launched = []
 
     def fake_run(argv, **kwargs):
-        launched.append(argv)
+        require(len(argv) == 4 and argv[0] == validator.sys.executable
+                and argv[1] == "-c" and "sys.stdin.buffer.read()" in argv[2],
+                "generation child reviewed source bootstrap drift")
+        require(kwargs.get("input") == Path(argv[3]).read_bytes(),
+                "generation child reviewed pinned bytes drift")
+        require(kwargs.get("timeout") == 90
+                and kwargs.get("stdout") == validator.subprocess.DEVNULL
+                and kwargs.get("stderr") == validator.subprocess.DEVNULL,
+                "generation child bounded private transport drift")
         require(kwargs.get("cwd") == validator.ROOT,
                 "generation child positive control cwd drift")
+        launched.append(argv[3])
         return validator.subprocess.CompletedProcess(argv, 0)
 
     validator.subprocess.run = fake_run
     try:
         for path, relative, label in reviewed:
             validator.run_validator(path, relative, label)
-        require(launched == [[validator.sys.executable, str(path)]
-                             for path, _, _ in reviewed],
+        require(launched == [str(path) for path, _, _ in reviewed],
                 "generation child reviewed positive target set drift")
         before = len(launched)
         for path, relative, label in (
@@ -1198,6 +1206,70 @@ def prove_generation_child_target_allowlist(validator) -> None:
     finally:
         validator.subprocess.run = original_run
     print("PASS: generation evidence child validator reviewed label/path allowlist")
+
+
+def prove_generation_child_pinned_source() -> None:
+    """A swapped child pathname must never reach subprocess after source pinning."""
+    validator = load_module(VALIDATOR, "generation_child_pinned_negative")
+    original_root = validator.ROOT
+    original_child = validator.NEGATIVE_VALIDATOR
+    original_relative = validator.NEGATIVE_VALIDATOR_REL
+    original_run = validator.subprocess.run
+    original_read = validator.os.read
+    with tempfile.TemporaryDirectory(prefix=".generation-child-pinned-", dir=TMP_PARENT) as raw:
+        root = Path(raw) / "repo"
+        scripts = root / "scripts"
+        scripts.mkdir(parents=True)
+        approved = scripts / "child.py"
+        approved.write_bytes(b"SAFE = True\n")
+        outside = Path(raw) / "unreviewed.py"
+        outside.write_bytes(b"UNREVIEWED = True\n")
+        launched = []
+
+        def fake_run(argv, **kwargs):
+            require(len(argv) == 4 and argv[1] == "-c"
+                    and "sys.stdin.buffer.read()" in argv[2],
+                    "generation child pinned bootstrap missing")
+            require(kwargs.get("input") == b"SAFE = True\n",
+                    "generation child source not pinned to approved bytes")
+            launched.append(argv)
+            return validator.subprocess.CompletedProcess(argv, 0)
+
+        validator.ROOT = root
+        validator.NEGATIVE_VALIDATOR = approved
+        validator.NEGATIVE_VALIDATOR_REL = Path("scripts/child.py")
+        validator.subprocess.run = fake_run
+        try:
+            validator.run_validator(approved, validator.NEGATIVE_VALIDATOR_REL,
+                                    "negative admission suite")
+            require(len(launched) == 1, "generation child positive pin not executed")
+            swapped = False
+
+            def swap_during_read(fd, count):
+                nonlocal swapped
+                if not swapped:
+                    swapped = True
+                    approved.rename(scripts / "original.py")
+                    approved.symlink_to(outside)
+                return original_read(fd, count)
+
+            validator.os.read = swap_during_read
+            try:
+                validator.run_validator(approved, validator.NEGATIVE_VALIDATOR_REL,
+                                        "negative admission suite")
+            except validator.Fail:
+                pass
+            else:
+                raise Fail("generation child pathname swap reached subprocess")
+            require(swapped and len(launched) == 1,
+                    "generation child pathname swap was not rejected before launch")
+        finally:
+            validator.os.read = original_read
+            validator.subprocess.run = original_run
+            validator.NEGATIVE_VALIDATOR = original_child
+            validator.NEGATIVE_VALIDATOR_REL = original_relative
+            validator.ROOT = original_root
+    print("PASS: generation child validator source pinned before subprocess and swap refused")
 
 
 def prove_generation_writer_pinned_import() -> None:
@@ -1324,6 +1396,7 @@ def main() -> int:
     prove_generation_evidence_json_reader(validator)
     prove_generation_private_authority_path_diagnostics(validator)
     prove_generation_child_target_allowlist(validator)
+    prove_generation_child_pinned_source()
     reconciler = load_module(RECONCILER, "memory_os_generation_evidence_reconciler_load_negative")
 
     require(writer.canonical_repo_file(WRITER, "generation evidence writer") == WRITER, "canonical writer path rejected")
