@@ -17,6 +17,7 @@ import os
 import tempfile
 from unittest.mock import patch
 import re
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -52,14 +53,53 @@ def require(condition: bool, message: str) -> None:
 
 
 def read_bounded_bytes(path: Path, field: str) -> bytes:
-    require(isinstance(path, Path) and not path.is_symlink() and path.is_file(),
+    require(isinstance(path, Path), f"{field} file unsafe")
+    require(type(getattr(os, "O_NOFOLLOW", None)) is int and os.O_NOFOLLOW > 0,
             f"{field} file unsafe")
     try:
-        with path.open("rb") as stream:
-            raw = stream.read(MAX_JSON_BYTES + 1)
+        preflight = path.lstat()
+    except (OSError, ValueError):
+        raise Fail(f"{field} file unsafe") from None
+    require(stat.S_ISREG(preflight.st_mode) and preflight.st_nlink == 1,
+            f"{field} file unsafe")
+    require(preflight.st_size >= 0, f"{field} file unsafe")
+    require(preflight.st_size <= MAX_JSON_BYTES,
+            f"{field} bytes invalid or oversized")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
+    try:
+        fd = os.open(path, flags)
     except (OSError, ValueError):
         raise Fail(f"{field} unreadable") from None
-    require(type(raw) is bytes and len(raw) <= MAX_JSON_BYTES,
+    if type(fd) is not int or fd < 0:
+        raise Fail(f"{field} unreadable")
+    try:
+        opened = os.fstat(fd)
+        identity = lambda st: (st.st_dev, st.st_ino, st.st_size,
+                               st.st_mtime_ns, st.st_ctime_ns)
+        require(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1
+                and identity(opened) == identity(preflight),
+                f"{field} file unsafe")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            require(type(stream.fileno()) is int and stream.fileno() == fd,
+                    f"{field} unreadable")
+            raw = stream.read(MAX_JSON_BYTES + 1)
+            require(type(stream.fileno()) is int and stream.fileno() == fd,
+                    f"{field} unreadable")
+        after = os.fstat(fd)
+        live = path.lstat()
+        require(stat.S_ISREG(after.st_mode) and stat.S_ISREG(live.st_mode)
+                and after.st_nlink == 1 and live.st_nlink == 1
+                and identity(opened) == identity(after) == identity(live),
+                f"{field} file unsafe")
+    except (OSError, ValueError, TypeError, AttributeError):
+        raise Fail(f"{field} unreadable") from None
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            raise Fail(f"{field} unreadable") from None
+    require(type(raw) is bytes and len(raw) <= MAX_JSON_BYTES
+            and len(raw) == opened.st_size,
             f"{field} bytes invalid or oversized")
     return raw
 
@@ -612,7 +652,50 @@ def bounded_review_bytes_self_test() -> None:
                 "promotion review bounded bytes recovery positive invalid")
 
 
+def fd_identity_self_test() -> None:
+    field = "self-test"
+    positive = b'{"reviewResult":"APPROVED"}\n'
+    with tempfile.TemporaryDirectory(prefix="promotion-fd-identity-negative-") as temp:
+        root = Path(temp)
+        path = root / "review.json"
+        moved = root / "moved.json"
+        alternate = root / "alternate.json"
+        path.write_bytes(positive)
+        alternate.write_bytes(b'{"reviewResult":"REJECTED"}\n')
+        real_open = os.open
+        def swap_before_open(target, flags, *args, **kwargs):
+            require(Path(target) == path, "promotion FD swap targeted wrong path")
+            path.rename(moved)
+            path.symlink_to(alternate)
+            return real_open(target, flags, *args, **kwargs)
+        with patch.object(os, "open", side_effect=swap_before_open):
+            try:
+                read_bounded_bytes(path, field)
+            except Fail as exc:
+                require(str(exc) == f"{field} unreadable",
+                        "promotion FD symlink swap rejected at wrong boundary")
+            else:
+                raise Fail("promotion FD symlink swap unexpectedly accepted")
+        path.unlink()
+        moved.rename(path)
+        require(read_bounded_bytes(path, field) == positive,
+                "promotion FD swap recovery positive invalid")
+        hardlink = root / "hardlink.json"
+        os.link(path, hardlink)
+        try:
+            read_bounded_bytes(path, field)
+        except Fail as exc:
+            require(str(exc) == f"{field} file unsafe",
+                    "promotion FD hardlink rejected at wrong boundary")
+        else:
+            raise Fail("promotion FD hardlink unexpectedly accepted")
+        hardlink.unlink()
+        require(read_bounded_bytes(path, field) == positive,
+                "promotion FD hardlink recovery positive invalid")
+
+
 def self_test() -> None:
+    fd_identity_self_test()
     bounded_review_bytes_self_test()
     creation_blob_transport_self_test()
     commit_ancestry_transport_self_test()
