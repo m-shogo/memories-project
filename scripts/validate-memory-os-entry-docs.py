@@ -2900,6 +2900,9 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
     if (len(functions) != 1 or len(functions[0].body) < 2
             or sum(ast.unparse(n) == "TRUSTED_GIT = '/usr/bin/git'" for n in tree.body) != 1
             or sum(isinstance(n, ast.Name) and n.id == "TRUSTED_GIT" and isinstance(n.ctx, ast.Store) for n in ast.walk(tree)) != 1
+            or not any(ast.unparse(n) == "env = {key: value for key, value in os.environ.items() if not key.startswith(('GIT_', 'LD_', 'DYLD_'))}" for n in functions[0].body)
+            or sum(isinstance(n, ast.Name) and n.id == "env" and isinstance(n.ctx, ast.Store) for n in ast.walk(functions[0])) != 1
+            or not any(isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run" and any(k.arg == "env" and ast.unparse(k.value) == "env" for k in n.keywords) for n in ast.walk(functions[0]))
             or not any(isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run" and n.args and ast.unparse(n.args[0]).startswith("[TRUSTED_GIT, '-C'") for n in ast.walk(functions[0]))):
         return False
     guarded, returned = functions[0].body[-2:]
@@ -3085,7 +3088,7 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
-        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes", 'TRUSTED_GIT = "/usr/bin/git"',
+        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes", 'TRUSTED_GIT = "/usr/bin/git"', '"LD_"', '"DYLD_"', "env=env",
     ):
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
@@ -3379,7 +3382,6 @@ def has_upload_route_symlink_negative_binding(source: str) -> bool:
                 return False
     return True
 
-
 def has_upload_route_pinned_text_read_binding(source: str) -> bool:
     """The reconciler's text reader must decode the pinned byte snapshot."""
     try:
@@ -3408,7 +3410,6 @@ def has_upload_route_pinned_text_read_binding(source: str) -> bool:
         and node.func.attr in {"read_text", "read_bytes", "open"}
     ]
     return len(pinned) == 1 and not unsafe
-
 
 def has_upload_route_reader_open_failure_binding(source: str) -> bool:
     """Bind a pinned reader's no-follow open race to a fixed private error."""
@@ -3447,7 +3448,6 @@ def has_upload_route_reader_open_failure_binding(source: str) -> bool:
         if len(raises) == 1:
             matches.append(node)
     return len(matches) == 1
-
 
 def has_upload_route_bounded_read_binding(source: str) -> bool:
     """Require both preflight and streaming bounds in the live pinned reader."""
@@ -3488,7 +3488,6 @@ def has_upload_route_bounded_read_binding(source: str) -> bool:
         for node in checks
     )
     return preflight and streaming and all(fragment in ast.unparse(definitions[0]) for fragment in ("read_failure = sys.exception()", "except Exception as read_close_exc:", "pinned reader descriptor close status unknown"))
-
 
 def has_upload_route_single_link_binding(source: str) -> bool:
     """Require single-link identity at preflight, pinned FD and final live leaf."""
