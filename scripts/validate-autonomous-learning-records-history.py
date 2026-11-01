@@ -348,7 +348,8 @@ def self_test() -> None:
             with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
                 args=["git"], returncode=0, stdout=invalid, stderr=b""
             )):
-                expect_guard_failure(lambda: git(Path("."), *command), reason,
+                expect_guard_failure(lambda: git(Path("."), *command),
+                                     "invalid supplemental Git byte transport" if type(invalid) is not bytes else reason,
                                      "malformed-git-transport-" + str(index))
         with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
             args=["git"], returncode=0, stdout=valid, stderr=b""

@@ -2955,7 +2955,7 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
                 "malformed supplemental commit enumeration",
                 "malformed supplemental parent enumeration",
                 "malformed supplemental parent inventory"}
-            and len(type_checks) == 4 and all(any(isinstance(n, ast.If) and ast.unparse(n.test) == test and len(n.body) == 1 and ast.unparse(n.body[0]) == f"raise GuardFailure({reason!r})" for n in functions[0].body[:-2]) for test, reason in (("type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git exit status"), ("type(result.stdout) is not bytes or type(result.stderr) is not bytes", "invalid supplemental Git byte transport"))))
+            and len(type_checks) == 4 and any(isinstance(n, ast.IfExp) and ast.unparse(n.test) == "type(invalid) is not bytes" for n in ast.walk(tree)) and all(any(isinstance(n, ast.If) and ast.unparse(n.test) == test and len(n.body) == 1 and ast.unparse(n.body[0]) == f"raise GuardFailure({reason!r})" for n in functions[0].body[:-2]) for test, reason in (("type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git exit status"), ("type(result.stdout) is not bytes or type(result.stderr) is not bytes", "invalid supplemental Git byte transport"))))
 
 def supplemental_history_enumeration_bound(source: str) -> bool:
     """Independently bind complete-range count and terminal HEAD proof."""
@@ -3087,7 +3087,7 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
-        "malformed supplemental parent enumeration", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes",
+        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes",
     ):
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
