@@ -7,6 +7,7 @@ import importlib.util
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
@@ -53,6 +54,17 @@ def prove_private_bounded_child_execution(module: Any) -> None:
     original_run = module.subprocess.run
     canary = "private-generation-evidence-child-canary"
     cases = ("success", "nonzero", "timeout", "oserror", "missing-result", "boolean-code")
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_GENERATION_CHILD_ENV": "preserved",
+    }
+    patcher = patch.dict(module.os.environ, poisoned)
+    patcher.start()
     try:
         for case in cases:
             def fake_run(argv: list[str], **kwargs: Any) -> Any:
@@ -64,6 +76,17 @@ def prove_private_bounded_child_execution(module: Any) -> None:
                         "generation evidence child output not private")
                 require(kwargs.get("timeout") == 90 and kwargs.get("check") is False,
                         "generation evidence child execution not bounded")
+                child_env = kwargs.get("env")
+                require(isinstance(child_env, dict), "generation evidence child environment missing")
+                require(child_env.get("SAFE_GENERATION_CHILD_ENV") == "preserved",
+                        "generation evidence child benign environment lost")
+                for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                            "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                    require(key not in child_env, "generation evidence child inherited override: " + key)
+                require(child_env == {
+                    key: value for key, value in module.os.environ.items()
+                    if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+                }, "generation evidence child environment authority drift")
                 if case == "timeout":
                     raise module.subprocess.TimeoutExpired(argv, 90, output=canary, stderr=canary)
                 if case == "oserror":
@@ -92,6 +115,7 @@ def prove_private_bounded_child_execution(module: Any) -> None:
                 raise Fail("generation evidence child accepted invalid outcome: " + case)
     finally:
         module.subprocess.run = original_run
+        patcher.stop()
 
 
 

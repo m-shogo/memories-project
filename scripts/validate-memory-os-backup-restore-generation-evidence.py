@@ -221,10 +221,17 @@ def load_writer():
 def run_validator(path: Path, expected_relative: Path, label: str) -> None:
     """Execute a canonical child without publishing its output or hanging indefinitely."""
     require_exact_repo_file(path, expected_relative, label)
+    # Never let inherited import/loader/Git overrides manufacture a child
+    # validator exit zero before reviewed generation-evidence checks run.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(path)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             timeout=90,
