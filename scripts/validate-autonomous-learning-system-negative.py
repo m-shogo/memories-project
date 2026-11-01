@@ -3211,7 +3211,7 @@ def require_reviewed_upload_route_package_init(package_tests: dict[str, str]) ->
     # even when no func init() is declared. A reviewed SIGKILL child helper is
     # the only direct-package exit reference; additional exits are fail-closed.
     exit_reference = re.compile(
-        r"\b(?:os|log)\s*(?:/\*.*?\*/\s*)?\.\s*"
+        r"\b(?:os|log|syscall)\s*(?:/\*.*?\*/\s*)?\.\s*"
         r"(?:/\*.*?\*/\s*)?(?:Exit|Fatal|Fatalf|Fatalln)\b",
         flags=re.DOTALL,
     )
@@ -3407,6 +3407,9 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
             ("new production variable initializer exit", "shadow.go",
              'package httpserver\nimport "os"\n'
              'var _ = func() int { os.Exit(0); return 0 }()\n'),
+            ("syscall variable initializer exit", "shadow.go",
+             'package httpserver\nimport "syscall"\n'
+             'var _ = func() int { syscall.Exit(0); return 0 }()\n'),
             ("comment-split variable initializer exit", "shadow.go",
              'package httpserver\nimport "os"\n'
              'var _ = func() int { os /* gap */ . Exit(0); return 0 }()\n'),
