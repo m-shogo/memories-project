@@ -5,12 +5,18 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
+import re
+import subprocess
+import tempfile
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NORMALIZER = ROOT / "scripts/reconcile-memory-os-backup-authority.py"
 COHERENT = ROOT / "scripts/reconcile-memory-os-backup-coherent-authority.py"
 SEMANTIC = ROOT / "scripts/reconcile-memory-os-backup-semantic-overlay.py"
+LOCAL_FOUNDATION = ROOT / "scripts/validate-memory-os-backup-local-foundations.py"
 
 
 class Fail(RuntimeError):
@@ -472,10 +478,62 @@ def coherent_atomic_rollback(module) -> None:
         module.STATUS.chmod(original_mode)
 
 
+def local_foundation_git_ancestry(module) -> None:
+    """A PATH decoy must not make an invented local evidence SHA an ancestor."""
+    actual_head = subprocess.check_output(
+        ["/usr/bin/git", "rev-parse", "HEAD"], cwd=ROOT, text=True, timeout=10
+    ).strip()
+    require(re.fullmatch(r"[0-9a-f]{40}", actual_head) is not None,
+            "local foundation Git positive source SHA invalid")
+    require(module.source_is_ancestor(actual_head),
+            "local foundation Git positive ancestry rejected")
+    with tempfile.TemporaryDirectory(prefix="local-foundation-git-decoy-") as temp:
+        fake = Path(temp) / "git"
+        fake.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        fake.chmod(0o755)
+        previous = os.environ.get("PATH")
+        try:
+            os.environ["PATH"] = temp + os.pathsep + (previous or "")
+            decoy = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", "0" * 40, "HEAD"],
+                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False, timeout=10,
+            )
+            require(decoy.returncode == 0,
+                    "local foundation Git PATH decoy control ineffective")
+            require(not module.source_is_ancestor("0" * 40),
+                    "local foundation Git PATH decoy admitted false ancestry")
+        finally:
+            if previous is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = previous
+    with patch.dict(os.environ, {
+        "GIT_DIR": "/tmp/unreviewed-git",
+        "LD_PRELOAD": "/tmp/unreviewed-loader.so",
+        "DYLD_INSERT_LIBRARIES": "/tmp/unreviewed-loader.dylib",
+    }):
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=[], returncode=0,
+        )) as observed:
+            require(module.source_is_ancestor(actual_head),
+                    "local foundation Git sanitized call control invalid")
+            args, kwargs = observed.call_args
+            env = kwargs.get("env")
+            require(args[0][0] == "/usr/bin/git" and type(env) is dict
+                    and all(key not in env for key in (
+                        "GIT_DIR", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"
+                    )) and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+                    and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
+                    "local foundation Git executable or environment authority drift")
+
+
 def main() -> int:
     normalizer = load_module(NORMALIZER, "memory_os_backup_authority_atomic_negative_target")
     coherent = load_module(COHERENT, "memory_os_coherent_backup_authority_atomic_negative_target")
     semantic = load_module(SEMANTIC, "memory_os_backup_semantic_authority_negative_target")
+    local_foundation = load_module(LOCAL_FOUNDATION, "memory_os_backup_local_foundation_git_negative_target")
+    local_foundation_git_ancestry(local_foundation)
     normalizer.validate_runtime_authority()
     coherent.validate_runtime_authority()
     semantic.validate_runtime_authority()
@@ -489,6 +547,7 @@ def main() -> int:
     coherent_atomic_replace_failure(coherent)
     coherent_atomic_rollback(coherent)
     print("Memory OS backup authority atomic negative suite PASS")
+    print("local foundation Git executable and inherited environment: enforced")
     print("semantic production status identity: enforced")
     print("normalizer data/executable authority identity: enforced")
     print("normalizer blocker validator identity: enforced")
