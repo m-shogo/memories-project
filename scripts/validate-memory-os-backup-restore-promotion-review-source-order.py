@@ -25,6 +25,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 TRUSTED_GIT = "/usr/bin/git"
+MAX_JSON_BYTES = 1024 * 1024
 CONTRACT_REL = Path("contracts/operations/backup-restore-promotion-review-contract.v1.json")
 PROMOTION_REGISTRY_REL = Path("contracts/operations/backup-restore-promotion-review-registry.v1.json")
 GENERATION_REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
@@ -138,14 +139,39 @@ def first_commit_for_path(ref: str, field: str) -> str:
 
 
 def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
-    completed = subprocess.run(
-        [TRUSTED_GIT, "show", f"{commit_sha}:{ref}"],
-        cwd=ROOT, env=trusted_git_env(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(completed.returncode == 0, f"cannot inspect {field} creation blob: {completed.stderr.decode('utf-8', errors='replace').strip()}")
+    require(isinstance(commit_sha, str) and SHA40.fullmatch(commit_sha) is not None,
+            f"{field} creation commit invalid")
+    object_ref = f"{commit_sha}:{ref}"
+    try:
+        size_result = subprocess.run(
+            [TRUSTED_GIT, "cat-file", "-s", object_ref],
+            cwd=ROOT, env=trusted_git_env(), text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field} creation blob") from None
+    require(type(size_result.returncode) is int and size_result.returncode == 0
+            and type(size_result.stdout) is str
+            and re.fullmatch(r"[0-9]{1,7}\n?", size_result.stdout) is not None,
+            f"cannot inspect {field} creation blob")
+    expected_bytes = int(size_result.stdout.strip())
+    require(0 < expected_bytes <= MAX_JSON_BYTES,
+            f"{field} creation blob size limit exceeded")
+    try:
+        completed = subprocess.run(
+            [TRUSTED_GIT, "show", object_ref],
+            cwd=ROOT, env=trusted_git_env(),
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"cannot inspect {field} creation blob") from None
+    require(type(completed.returncode) is int and completed.returncode == 0
+            and type(completed.stdout) is bytes,
+            f"cannot inspect {field} creation blob")
+    require(len(completed.stdout) == expected_bytes,
+            f"{field} creation blob size mismatch")
     return completed.stdout
 
 
@@ -439,7 +465,92 @@ def commit_ancestry_transport_self_test() -> None:
         require(len(calls) == 11, "promotion commit/ancestry negative count drift")
 
 
+def creation_blob_transport_self_test() -> None:
+    field = "self-test"
+    ref = "docs/evidence/backup-restore/promotion/synthetic-creation.json"
+    object_ref = "a" * 40 + ":" + ref
+    payload = b'{"reviewResult":"APPROVED"}\n'
+    marker = "PRIVATE_PROMOTION_BLOB_DIAGNOSTIC_DO_NOT_LOG"
+    state = {
+        "size": str(len(payload)) + "\n", "size_exit": 0, "size_error": None,
+        "show": payload, "show_exit": 0, "show_error": None,
+    }
+    calls = []
+    def fake_git(args, **kwargs):
+        phase = args[1]
+        require(phase in ("cat-file", "show")
+                and kwargs.get("cwd") == ROOT
+                and kwargs.get("stdout") is subprocess.PIPE
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("check") is False and kwargs.get("timeout") == 20,
+                "promotion creation blob Git bounded/private transport drift")
+        env = kwargs.get("env")
+        require(type(env) is dict and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+                and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
+                "promotion creation blob Git environment drift")
+        calls.append(phase)
+        if phase == "cat-file":
+            require(args == [TRUSTED_GIT, "cat-file", "-s", object_ref]
+                    and kwargs.get("text") is True,
+                    "promotion creation blob size preflight command drift")
+            if state["size_error"] is not None:
+                raise state["size_error"]
+            return subprocess.CompletedProcess(
+                args, state["size_exit"], stdout=state["size"], stderr=marker
+            )
+        require(args == [TRUSTED_GIT, "show", object_ref]
+                and kwargs.get("text") is None,
+                "promotion creation blob byte read command drift")
+        if state["show_error"] is not None:
+            raise state["show_error"]
+        return subprocess.CompletedProcess(
+            args, state["show_exit"], stdout=state["show"], stderr=marker
+        )
+    with patch.object(subprocess, "run", side_effect=fake_git):
+        require(creation_blob("a" * 40, ref, field) == payload,
+                "promotion creation blob positive control invalid")
+        cases = (
+            ("zero", {"size": "0\n"}, f"{field} creation blob size limit exceeded", 1),
+            ("oversized", {"size": str(MAX_JSON_BYTES + 1) + "\n"},
+             f"{field} creation blob size limit exceeded", 1),
+            ("malformed", {"size": marker}, f"cannot inspect {field} creation blob", 1),
+            ("nonzero-size", {"size_exit": 1}, f"cannot inspect {field} creation blob", 1),
+            ("bool-size", {"size_exit": True}, f"cannot inspect {field} creation blob", 1),
+            ("timeout-size", {"size_error": subprocess.TimeoutExpired(
+                [TRUSTED_GIT, "cat-file"], 20, stderr=marker
+            )}, f"cannot inspect {field} creation blob", 1),
+            ("unavailable-size", {"size_error": OSError(marker)},
+             f"cannot inspect {field} creation blob", 1),
+            ("mismatch", {"show": b"changed"}, f"{field} creation blob size mismatch", 2),
+            ("nonbytes-show", {"show": marker}, f"cannot inspect {field} creation blob", 2),
+            ("nonzero-show", {"show_exit": 1}, f"cannot inspect {field} creation blob", 2),
+            ("timeout-show", {"show_error": subprocess.TimeoutExpired(
+                [TRUSTED_GIT, "show"], 20, stderr=marker
+            )}, f"cannot inspect {field} creation blob", 2),
+            ("unavailable-show", {"show_error": OSError(marker)},
+             f"cannot inspect {field} creation blob", 2),
+        )
+        for label, changes, expected, expected_calls in cases:
+            state.update({
+                "size": str(len(payload)) + "\n", "size_exit": 0, "size_error": None,
+                "show": payload, "show_exit": 0, "show_error": None,
+            })
+            state.update(changes)
+            before = len(calls)
+            try:
+                creation_blob("a" * 40, ref, field)
+            except Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"promotion creation blob {label} wrong/private diagnostic")
+            else:
+                raise Fail(f"promotion creation blob {label} unexpectedly accepted")
+            require(len(calls) - before == expected_calls,
+                    f"promotion creation blob {label} wrong Git phase")
+        require(len(calls) == 19, "promotion creation blob negative count drift")
+
+
 def self_test() -> None:
+    creation_blob_transport_self_test()
     commit_ancestry_transport_self_test()
     git_output_transport_self_test()
     git_transport_self_test()
