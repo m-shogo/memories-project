@@ -3369,7 +3369,11 @@ def require_reviewed_upload_route_transitive_callsite(function_source: str) -> N
         "require_reviewed_upload_route_transitive_package_init("
         "file.relative_to(source_root).as_posix(), source)"
     ).body[0].value
-    expected_read = ast.parse('source = file.read_text(encoding="utf-8")').body[0]
+    expected_prefix = ast.parse(
+        'require_unaliased_go_path(source_root, file)\n'
+        'inputs.add(file.relative_to(source_root).as_posix())\n'
+        'source = file.read_text(encoding="utf-8")\n'
+    ).body
     statements = file_loops[0].body
     call_positions = [i for i, statement in enumerate(statements)
                       if isinstance(statement, ast.Expr) and
@@ -3377,10 +3381,15 @@ def require_reviewed_upload_route_transitive_callsite(function_source: str) -> N
     if len(call_positions) != 1 or call_positions[0] == 0:
         raise RuntimeError(failure)
     position = call_positions[0]
-    if (ast.dump(calls[0], include_attributes=False) !=
+    # No continue/break/return or conditional can precede the guard.
+    # Only the reviewed fail-closed path check, input accounting and exact
+    # source read may execute first; the call must follow immediately.
+    if (position != len(expected_prefix) or
+            ast.dump(calls[0], include_attributes=False) !=
             ast.dump(expected_call, include_attributes=False) or
-            ast.dump(statements[position - 1], include_attributes=False) !=
-            ast.dump(expected_read, include_attributes=False)):
+            any(ast.dump(statements[i], include_attributes=False) !=
+                ast.dump(expected_prefix[i], include_attributes=False)
+                for i in range(len(expected_prefix)))):
         raise RuntimeError(failure)
 
 
@@ -3405,6 +3414,22 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
         ("wrong source", source.replace(anchor,
             anchor.replace(", source)", ", 'unreviewed')"), 1)),
         ("before read", source.replace(read + anchor, anchor + read, 1)),
+        ("unconditional continue", source.replace(read + anchor,
+            "            continue\n" + read + anchor, 1)),
+        ("conditional continue", source.replace(read + anchor,
+            "            if file.name == 'skip.go':\n"
+            "                continue\n" + read + anchor, 1)),
+        ("unconditional break", source.replace(read + anchor,
+            "            break\n" + read + anchor, 1)),
+        ("unconditional return", source.replace(read + anchor,
+            "            return\n" + read + anchor, 1)),
+        ("missing path check", source.replace(
+            "            require_unaliased_go_path(source_root, file)\n"
+            "            inputs.add(file.relative_to(source_root).as_posix())\n"
+            + read + anchor,
+            "            pass\n"
+            "            inputs.add(file.relative_to(source_root).as_posix())\n"
+            + read + anchor, 1)),
         ("duplicate call", source.replace(anchor, anchor + anchor, 1)),
     ):
         try:
