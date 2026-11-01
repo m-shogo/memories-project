@@ -919,6 +919,23 @@ def prove_drill_request_json_reader(validator) -> None:
                 validator.os.fstat = original_fstat
                 validator.os.close = original_close
 
+        original_read = validator.os.read
+        for invalid in (None, "synthetic-secret-invalid-read", [123], True):
+            def invalid_read(_descriptor, _count):
+                return invalid
+            try:
+                validator.os.read = invalid_read
+                rejected(path, "drill request JSON invalid read result",
+                         f"invalid read result {type(invalid).__name__}")
+            finally:
+                validator.os.read = original_read
+        try:
+            validator.os.read = lambda _descriptor, _count: b""
+            rejected(path, "drill request JSON changed during read",
+                     "premature EOF before authority size")
+        finally:
+            validator.os.read = original_read
+
         # A secondary close fault cannot mask a primary JSON rejection.
         # The same fault must fail closed when parsing itself succeeded.
         original_open = validator.os.open
@@ -961,7 +978,7 @@ def prove_drill_request_json_reader(validator) -> None:
                 "drill request JSON post-race positive control failed")
         require(path.read_bytes() == positive, "drill request JSON modified positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "drill request JSON mutated protected authorities")
-    print("PASS: actual drill request JSON reader positive, invalid-FD, mode/link, mutation and close-fault negatives")
+    print("PASS: actual drill request JSON reader positive, invalid-FD/read, early-EOF, mode/link and close-fault negatives")
 
 
 def prove_reconciler_bounded_reader(reconciler) -> None:
@@ -1072,6 +1089,23 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
                 reconciler.os.fstat = original_fstat
                 reconciler.os.close = original_close
 
+        original_read = reconciler.os.read
+        for invalid in (None, "synthetic-secret-invalid-read", [123], True):
+            def invalid_read(_descriptor, _count):
+                return invalid
+            try:
+                reconciler.os.read = invalid_read
+                rejected(candidate, "drill request reconcile authority invalid read result",
+                         f"invalid read result {type(invalid).__name__}")
+            finally:
+                reconciler.os.read = original_read
+        try:
+            reconciler.os.read = lambda _descriptor, _count: b""
+            rejected(candidate, "drill request reconcile authority changed during read",
+                     "premature EOF before authority size")
+        finally:
+            reconciler.os.read = original_read
+
         # The primary UTF-8 rejection must survive a secondary close fault;
         # a close fault after a successful read remains a hard failure.
         original_open = reconciler.os.open
@@ -1115,7 +1149,7 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         require(candidate.read_bytes() == positive, "drill reconcile reader mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected) == before,
             "drill reconcile reader mutated protected authorities")
-    print("PASS: drill reconcile reader positive, invalid-FD, mode/link, mutation and close-fault negatives")
+    print("PASS: drill reconcile reader positive, invalid-FD/read, early-EOF, mode/link and close-fault negatives")
 
 
 def prove_reconciler_strict_json(reconciler) -> None:

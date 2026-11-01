@@ -131,6 +131,7 @@ def read_text(path: Path) -> str:
         raw = bytearray()
         while len(raw) <= MAX_AUTHORITY_BYTES:
             part = os.read(fd, min(65536, MAX_AUTHORITY_BYTES + 1 - len(raw)))
+            require(type(part) is bytes, "drill request reconcile authority invalid read result")
             if not part:
                 break
             raw.extend(part)

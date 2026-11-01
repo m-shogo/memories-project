@@ -157,6 +157,7 @@ def load(path: Path) -> dict[str, Any]:
         raw = bytearray()
         while len(raw) <= MAX_JSON_BYTES:
             part = os.read(fd, min(65536, MAX_JSON_BYTES + 1 - len(raw)))
+            require(type(part) is bytes, "drill request JSON invalid read result")
             if not part:
                 break
             raw.extend(part)
