@@ -1,0 +1,25 @@
+# Supplemental OPS learning — negative canonical size rejected before descriptor acquisition (2026-11-01)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, approved objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human-promotion gates.
+
+## Material failure class
+
+- **symptom:** A forged regular-file `lstat` snapshot with exact integer `st_size=-1` could pass preflight and reach `os.open` before failing the later descriptor metadata comparison. This is a verified source-level synthetic metadata boundary, not an observed CPython stat defect or production incident.
+- **evidence:** At prior code HEAD `59943f84`, the reader required exact built-in integer metadata, rejected pre-existing `st_size > max_bytes`, and checked hardlink/writable mode, but did not reject negative regular-file sizes before descriptor acquisition. Existing malformed-stat negatives covered boolean size but not negative integer size.
+- **rootCauseOrUnknown:** Verified that strict integer type validation does not imply a valid nonnegative byte-count range. Whether the OS could actually return a negative size for a regular canonical file is unknown/not asserted.
+- **failedApproach:** Assuming `type(st_size) is int` and a maximum-size bound establish a valid pre-open size.
+- **correction:** [`17b32af7`](https://github.com/m-shogo/memories-project/commit/17b32af7eb1af8473cc324f914a0d1a662f1eb5a) rejects `preflight.st_size < 0` with the exact unreadable-authority diagnostic before `os.open`, preserving the positive regular-file and existing oversized/hardlink/writable guards.
+- **recurrenceGuard:** The CI-reachable forged-regular-stat negative inventory now includes `st_size=-1`; its existing forbidden-open spy, exact unreadable diagnostic, untouched external FD canary and valid-read recovery apply to this new case.
+- **retryCondition:** Revisit when canonical stat field contracts, size bounds, preflight ordering or exact diagnostics change, or a real negative-size regular-file observation requires a stronger bounded fixture. Do not retry unchanged MinIO 401, workflow-write permissions or missing human evidence.
+
+## Material success
+
+- **outcome:** Negative synthetic regular-file sizes fail closed before canonical descriptor acquisition; existing ordinary and oversized read cases remain accepted/rejected according to their prior exact contracts.
+- **evidence:** Exact-source [Autonomous Learning Guard #41302503391](https://github.com/m-shogo/memories-project/actions/runs/41302503391) SUCCESS on `17b32af7`, job `124836197025`. Logs confirm append-only PASS, canonical learning contract PASS, 601 fail-closed negatives PASS, source-negative reachability 52 workflows / 63 Python commands / 204 fixtures, 195 fanout synthetic cases PASS, Memory OS entrypoint PASS, helper ancestor 1,186 negative mutations PASS and read-only execution.
+- **whySafe:** Only the read-only learning validator and disposable synthetic negative fixture changed. No runtime Go service, workflow YAML, protected production authority, OPS-P0-007 registry, generation, objective, executable reviewed request, recovery evidence, typed non-resurrection coverage, independent review, credential, traffic, readiness or promotion authority was written.
+- **reusableMechanism:** Validate both the exact metadata type and its semantic range *before* resource acquisition, with a deterministic forbidden-operation spy, exact error, external canary and positive recovery.
+- **protectedAuthorityCheck:** All ten protected Git blob identities unchanged: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, environment generation registry `bfd1b045`, recovery objectives `f4d74f33`, reviewed drill requests `acebcd02`, generation recovery evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, human promotion review `99cb895f`. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/semantically eligible generations 0/0 and approved objectives 0. Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective; reviewed drill requests remain planning-only; new generation recovery evidence must be bound to a current executable reviewed request; complete typed eight-domain coverage and independent review remain mandatory; human promotion is separate and non-automatic.
+
+## Next safe target
+
+Audit the remaining preflight metadata semantic ranges and any unproved descriptor side effects without repeating known failed approaches. Independently seek an authorized, non-skipped real Focused Go Test path before MinIO without treating static CI guards as execution evidence.
