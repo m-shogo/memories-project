@@ -371,6 +371,69 @@ def prove_atomic_writer_double_fault_and_fd_ownership(reconciler: Any) -> None:
     print("PASS: drill generation binding fdopen ownership and primary atomic failure precedence")
 
 
+def prove_rollback_double_fault_diagnostic(reconciler: Any) -> None:
+    """A failed restore must retain the primary validator rejection."""
+    canonical_contract, canonical_registry = canonical_bytes()
+    with tempfile.TemporaryDirectory(prefix=".tmp-drill-generation-binding-rollback-", dir=TMP_PARENT) as raw:
+        contract_copy = Path(raw) / CONTRACT.name
+        registry_copy = Path(raw) / DRILL_REGISTRY.name
+        shutil.copyfile(CONTRACT, contract_copy)
+        shutil.copyfile(DRILL_REGISTRY, registry_copy)
+        contract_copy.chmod(0o640)
+        before = contract_copy.read_bytes()
+        before_mode = stat.S_IMODE(contract_copy.stat().st_mode)
+        original_contract = reconciler.CONTRACT
+        original_registry = reconciler.DRILL_REGISTRY
+        original_write = reconciler.atomic_write_text
+        original_validator = reconciler.run_post_validator
+        writes = []
+
+        def fail_rollback(path: Path, text: str) -> None:
+            require(path == contract_copy, "binding rollback targeted unexpected authority")
+            writes.append(text)
+            if len(writes) == 2:
+                raise reconciler.Fail("synthetic private secondary binding rollback failure")
+            original_write(path, text)
+
+        def reject_post_validator(_path, _expected_relative, _field):
+            raise reconciler.Fail("synthetic private primary binding validator failure")
+
+        try:
+            reconciler.CONTRACT = contract_copy
+            reconciler.DRILL_REGISTRY = registry_copy
+            reconciler.atomic_write_text = fail_rollback
+            reconciler.run_post_validator = reject_post_validator
+            try:
+                reconciler._reconcile()
+            except reconciler.Fail as exc:
+                require(str(exc) == "drill generation binding reconcile failed (Fail); rollback incomplete (Fail)",
+                        f"binding rollback double-fault diagnostic drift: {exc}")
+                require(isinstance(exc.__cause__, reconciler.Fail)
+                        and "synthetic private primary" in str(exc.__cause__),
+                        "binding rollback double-fault lost primary exception chain")
+                require("synthetic private" not in str(exc),
+                        "binding rollback double-fault leaked private details")
+            else:
+                raise Fail("binding rollback double-fault unexpectedly accepted")
+        finally:
+            reconciler.CONTRACT = original_contract
+            reconciler.DRILL_REGISTRY = original_registry
+            reconciler.atomic_write_text = original_write
+            reconciler.run_post_validator = original_validator
+            # This fixture deliberately rejects rollback; restore only its
+            # isolated authority after all fault injections are removed.
+            original_write(contract_copy, before.decode("utf-8"))
+
+        require(len(writes) == 2, "binding rollback double-fault did not attempt both writes")
+        require(contract_copy.read_bytes() == before
+                and stat.S_IMODE(contract_copy.stat().st_mode) == before_mode,
+                "binding rollback double-fault fixture restoration drift")
+        require(not list(contract_copy.parent.glob(f".{contract_copy.name}.*.tmp")),
+                "binding rollback double-fault left temporary authority")
+    assert_canonical_unchanged(canonical_contract, canonical_registry, "binding rollback double fault")
+    print("PASS: binding rollback failure preserves primary exception and private-safe incomplete marker")
+
+
 def main() -> int:
     require(VALIDATOR.is_file(), "drill generation binding validator missing")
     require(RECONCILER.is_file(), "drill generation binding reconciler missing")
@@ -381,6 +444,7 @@ def main() -> int:
     prove_direct_authority_identity(reconciler)
     prove_reconciler_execution_identity(reconciler)
     prove_atomic_writer_double_fault_and_fd_ownership(reconciler)
+    prove_rollback_double_fault_diagnostic(reconciler)
 
     original_contract_path = reconciler.CONTRACT
     original_registry_path = reconciler.DRILL_REGISTRY

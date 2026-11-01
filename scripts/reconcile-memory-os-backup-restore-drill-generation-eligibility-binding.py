@@ -237,11 +237,17 @@ def _reconcile() -> int:
         atomic_write_text(CONTRACT, updated_contract_text)
         run_post_validator(VALIDATOR, VALIDATOR_REL, "drill generation binding validator")
         run_post_validator(OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL, "operability validator")
-    except Exception:
+    except Exception as primary_exc:
         try:
             atomic_write_text(CONTRACT, original_contract_text)
-        except OSError as restore_exc:
-            raise Fail(f"drill generation eligibility binding rollback failed: {restore_exc}") from restore_exc
+        except Exception as restore_exc:
+            # A failed rollback must be explicit without hiding the original
+            # rejection or leaking either private exception message.
+            raise Fail(
+                "drill generation binding reconcile failed "
+                f"({type(primary_exc).__name__}); rollback incomplete "
+                f"({type(restore_exc).__name__})"
+            ) from primary_exc
         raise
 
     print("Memory OS drill request semantic generation binding reconciliation PASS")
