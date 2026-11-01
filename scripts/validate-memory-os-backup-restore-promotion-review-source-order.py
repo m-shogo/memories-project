@@ -573,7 +573,7 @@ def bounded_review_bytes_self_test() -> None:
         for label, fixture, expected, loader in (
             ("oversized", b"x" * (MAX_JSON_BYTES + 1),
              f"{field} bytes invalid or oversized", read_bounded_bytes),
-            ("invalid-utf8", b"\\xff",
+            ("invalid-utf8", b"\xff",
              f"{field} unreadable or invalid JSON", load_json),
             ("invalid-json", b"{broken",
              f"{field} unreadable or invalid JSON", load_json),
