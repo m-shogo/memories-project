@@ -1,0 +1,25 @@
+# Supplemental OPS learning — postread live canonical size/mtime identity (2026-11-01)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record is never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation/objective, reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human-promotion evidence.
+
+## Material failure class
+
+- **symptom:** A post-read live pathname `lstat` snapshot could report changed size or modification time while retaining original device/inode and ctime, and the reader's final predicate would still accept the bytes. This is a verified comparison omission under deterministic synthetic metadata, not an observed production incident.
+- **evidence:** On source HEAD `c924f0f5`, the final predicate compared the descriptor's `after.st_size/st_mtime_ns/st_ctime_ns` to `before`, but compared only the pathname's `live.st_ctime_ns` to `before`; `live.st_size` and `live.st_mtime_ns` were type-checked but not identity-compared. A synthetic second-`lstat` snapshot can preserve ctime while changing either field.
+- **rootCauseOrUnknown:** Verified omission of the live pathname size and mtime equality checks. Whether a real filesystem can produce this exact combination due to timestamp resolution, races or metadata anomalies remains unknown and is not asserted.
+- **failedApproach:** Relying on pathname device/inode and ctime plus descriptor size/mtime/ctime to imply complete live pathname metadata continuity.
+- **correction:** [`258d9c9d`](https://github.com/m-shogo/memories-project/commit/258d9c9da80ac5bc912ffd79f63159aade0a0629) compares the complete live `(st_size, st_mtime_ns, st_ctime_ns)` tuple against the original descriptor snapshot, retaining type, device/inode, link-count and writable-mode checks.
+- **recurrenceGuard:** Two CI-reachable synthetic second-`lstat` negatives independently alter `st_size` and `st_mtime_ns` while keeping ctime and inode unchanged. Both require the exact canonical-drift diagnostic, one owned descriptor, exactly two leaf probes, owned FD closed, external canary unchanged and valid-read recovery.
+- **retryCondition:** Revisit when the canonical live metadata identity contract, reader ordering or stat interface changes, or a real filesystem counterexample warrants a new bounded fixture. Do not retry unchanged MinIO 401, workflow permission or human production evidence blockers.
+
+## Material success
+
+- **outcome:** Both synthetic live-path size and mtime drifts now fail closed; the ordinary stable canonical read still passes.
+- **evidence:** Exact-source [Autonomous Learning Guard #41301647669](https://github.com/m-shogo/memories-project/actions/runs/41301647669) SUCCESS on `258d9c9d`, job `124833647746`. Logs confirm append-only PASS, learning contract PASS, 601 fail-closed negatives PASS, 52 workflow / 63 direct Python command / 204 fixture source-negative reachability, 195 prewrite fanout synthetic PASS, 1,186 helper-ancestor negative mutations PASS, and clean read-only execution.
+- **whySafe:** Only the read-only canonical validator and its disposable negative fixtures changed. No runtime Go service, workflow, protected production status, OPS-P0-007 evidence, environment generation, approved recovery objective, reviewed request, recovery evidence, typed non-resurrection coverage, independent review, credential, traffic, readiness or promotion authority changed.
+- **reusableMechanism:** Compare complete metadata tuples for both descriptor and live pathname after bounded reads; exercise each individual field through a deterministic, exact-diagnostic, FD-lifecycle negative and recovery positive.
+- **protectedAuthorityCheck:** All ten protected Git blobs unchanged: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, environment generations `bfd1b045`, recovery objectives `f4d74f33`, reviewed drill requests `acebcd02`, generation recovery evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, human promotion review `99cb895f`. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/semantically eligible generations 0/0; approved objectives 0. Preflight still requires distinct unsuperseded semantically eligible environments and an explicitly human-approved current objective; reviewed drill requests remain planning-only; new generation recovery evidence requires a current executable reviewed request; typed eight-domain coverage and independent review remain mandatory; human production promotion is separate and non-automatic.
+
+## Next safe target
+
+Reject an already oversized canonical leaf before acquiring its FD, while retaining the post-open size race check, exact too-large diagnostic, external canary and valid-read recovery. Separately seek an authorized real pre-MinIO Focused Go Test path without retrying unchanged blockers.
