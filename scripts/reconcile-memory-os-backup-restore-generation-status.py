@@ -116,6 +116,7 @@ def write_text(path: Path, text: str) -> None:
     except OSError as exc:
         raise Fail(f"cannot stat authority {relative}: {exc}") from exc
     temp_name: str | None = None
+    fd: int | None = None
     try:
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.",
@@ -124,6 +125,7 @@ def write_text(path: Path, text: str) -> None:
             text=True,
         )
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            fd = None  # The stream context manager owns the descriptor now.
             os.fchmod(handle.fileno(), existing_mode)
             handle.write(text)
             handle.flush()
@@ -133,6 +135,12 @@ def write_text(path: Path, text: str) -> None:
     except OSError as exc:
         raise Fail(f"cannot atomically write {relative}: {exc}") from exc
     finally:
+        if fd is not None:
+            # fdopen can fail before taking ownership of mkstemp's descriptor.
+            try:
+                os.close(fd)
+            except OSError:
+                pass  # Preserve the primary write failure.
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
