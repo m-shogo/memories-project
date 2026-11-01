@@ -182,7 +182,8 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                     or after.st_mode & 0o022 or live.st_mode & 0o022
                     or (after.st_size, after.st_mtime_ns, after.st_ctime_ns) !=
                     (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
-                    or live.st_ctime_ns != before.st_ctime_ns):
+                    or (live.st_size, live.st_mtime_ns, live.st_ctime_ns) !=
+                    (before.st_size, before.st_mtime_ns, before.st_ctime_ns)):
                 raise ValidationFailure(diagnostic)
             if len(raw) != before.st_size:
                 raise ValidationFailure(f"unreadable authority: {path}")

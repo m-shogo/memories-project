@@ -1260,6 +1260,44 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical postread FD identity recovery failed")
+        # The live pathname's size and mtime must match the opened inode,
+        # even if a forged or coarsely resolved ctime appears unchanged.
+        for field in ("st_size", "st_mtime_ns"):
+            opened.clear()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            live_reads = 0
+            def drifted_live_lstat(path):
+                nonlocal live_reads
+                original = real_lstat(path)
+                if path == target:
+                    live_reads += 1
+                    if live_reads == 2:
+                        fields = {name: getattr(original, name)
+                                  for name in snapshot_fields}
+                        fields[field] = getattr(original, field) + 1
+                        return type("SyntheticLiveLeafDrift", (), fields)()
+                return original
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.Path, "lstat", new=drifted_live_lstat):
+                    reject(f"postread live {field}",
+                           f"canonical authority changed during read: {target}")
+                if len(opened) != 1 or live_reads != 2:
+                    raise RuntimeError("canonical postread live drift reachability regression")
+                try:
+                    real_fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical postread live drift wrong FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical postread live drift leaked owned FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical postread live drift corrupted canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical postread live drift recovery failed")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
         opened.clear()
