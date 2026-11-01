@@ -130,12 +130,13 @@ def write_text(path: Path, text: str) -> None:
         raise Fail(f"cannot atomically write {relative}: {exc}") from exc
     finally:
         if temp_name is not None:
+            # Cleanup must never replace the primary atomic-write failure.
+            primary_failure = sys.exc_info()[0] is not None
             try:
                 os.unlink(temp_name)
-            except FileNotFoundError:
-                pass
-            except OSError:
-                pass
+            except Exception as cleanup_exc:
+                if not primary_failure:
+                    raise Fail(f"cannot clean temporary authority for {relative}") from cleanup_exc
 
 
 def load(path: Path) -> dict[str, Any]:

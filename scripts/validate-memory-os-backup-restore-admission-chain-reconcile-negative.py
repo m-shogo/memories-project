@@ -620,6 +620,57 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     print("PASS boundary: failed atomic write leaves no temporary authority file")
 
 
+def prove_atomic_cleanup_failure_precedence(reconciler: object) -> None:
+    """A secondary cleanup exception must not hide the original write failure."""
+    contract_before = CONTRACT.read_bytes()
+    status_before = STATUS.read_bytes()
+    mode_before = mode(CONTRACT)
+    before = set(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp"))
+    original_replace = reconciler.os.replace
+    original_unlink = reconciler.os.unlink
+    seen_cleanup = []
+
+    def reject_replace(_source, _destination):
+        raise OSError("synthetic primary admission-chain replace rejection")
+
+    def reject_cleanup(path, *args, **kwargs):
+        require(Path(path).parent == CONTRACT.parent and Path(path).name.startswith(f".{CONTRACT.name}."),
+                "admission-chain cleanup targeted unexpected path")
+        seen_cleanup.append(Path(path))
+        raise ValueError("synthetic secondary admission-chain cleanup rejection")
+
+    try:
+        reconciler.os.replace = reject_replace
+        reconciler.os.unlink = reject_cleanup
+        try:
+            reconciler.write_text(CONTRACT, contract_before.decode("utf-8") + " ")
+        except reconciler.Fail as exc:
+            require("cannot atomically write" in str(exc),
+                    f"admission-chain cleanup masked primary write failure: {exc}")
+            require("synthetic primary admission-chain replace rejection" in str(exc),
+                    "admission-chain cleanup lost primary replace evidence")
+            require("secondary" not in str(exc),
+                    "admission-chain cleanup leaked secondary diagnostic")
+        else:
+            raise Fail("admission-chain double-fault write unexpectedly accepted")
+    finally:
+        reconciler.os.replace = original_replace
+        reconciler.os.unlink = original_unlink
+        created = set(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")) - before
+        for path in created:
+            original_unlink(path)
+
+    require(len(seen_cleanup) == 1 and seen_cleanup[0] in created,
+            "admission-chain secondary cleanup failure was not exercised")
+    require(CONTRACT.read_bytes() == contract_before and mode(CONTRACT) == mode_before,
+            "admission-chain cleanup double fault changed contract bytes or mode")
+    require(STATUS.read_bytes() == status_before,
+            "admission-chain cleanup double fault changed production status")
+    require(set(CONTRACT.parent.glob(f".{CONTRACT.name}.*.tmp")) == before,
+            "admission-chain cleanup double fault left a synthetic temporary authority")
+    print("PASS boundary: admission-chain primary atomic failure survives secondary cleanup exception")
+
+
 def prove_mode_preserving_write(reconciler: object) -> None:
     with guarded_temporary_directory(".tmp-admission-chain-mode-") as tmpdir:
         target = Path(tmpdir) / "mode-preservation.json"
@@ -845,6 +896,7 @@ def main() -> int:
             expect_domain_fail("admission-chain reconciler authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
     prove_atomic_write_failure(reconciler)
+    prove_atomic_cleanup_failure_precedence(reconciler)
     prove_mode_preserving_write(reconciler)
     prove_post_validation_rollback(reconciler)
     prove_rollback_failure_preserves_primary_diagnostic(reconciler)
