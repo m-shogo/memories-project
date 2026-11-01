@@ -366,21 +366,25 @@ def prove_atomic_mode_failure_cleanup(module) -> None:
     with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-mode-fault-") as temp_dir:
         root = Path(temp_dir)
         target = root / "authority.txt"
-        for operation in ("fchmod", "fsync"):
+        canary = root / "external-mode-canary.txt"
+        canary.write_bytes(b"independent-mode-canary")
+        for operation, failure_type in (("fchmod", "OSError"), ("fsync", "OSError"), ("fchmod", "ValueError"), ("fsync", "ValueError")):
             target.write_bytes(b"original")
             target.chmod(0o755)
             before = {item.name for item in root.glob(".authority.txt.*.tmp")}
             original = getattr(module.os, operation)
 
             def reject(*_args, **_kwargs):
+                if failure_type == "ValueError":
+                    raise ValueError(f"synthetic {operation} failure")
                 raise OSError(f"synthetic {operation} failure")
 
             setattr(module.os, operation, reject)
             try:
                 try:
                     module.atomic_write_bytes(target, b"partial")
-                except OSError as exc:
-                    require(str(exc) == f"synthetic {operation} failure",
+                except (OSError, ValueError) as exc:
+                    require(type(exc).__name__ == failure_type and str(exc) == f"synthetic {operation} failure",
                             f"atomic writer failed for unrelated reason: {exc}")
                 else:
                     raise Fail(f"atomic writer accepted {operation} failure")
@@ -391,8 +395,8 @@ def prove_atomic_mode_failure_cleanup(module) -> None:
             require(stat.S_IMODE(target.stat().st_mode) == 0o755,
                     f"atomic writer changed original mode after {operation} failure")
             after = {item.name for item in root.glob(".authority.txt.*.tmp")}
-            require(after == before,
-                    f"atomic writer left temporary residue after {operation} failure")
+            require(after == before and canary.read_bytes() == b"independent-mode-canary",
+                    f"atomic writer left temporary residue or changed canary after {operation} failure")
 
 
 
