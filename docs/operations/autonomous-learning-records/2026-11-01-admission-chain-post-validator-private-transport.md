@@ -1,0 +1,25 @@
+# Supplemental OPS learning — admission-chain post-validator private transport (2026-11-01)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, executable reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review, final-candidate or human-promotion evidence.
+
+## Material failure — unbounded, inherited, raw-output post-validation
+
+- **symptom:** Both admission-chain post-reconcile child validators inherited interpreter/loader/Git override variables, could run without a timeout, and exposed up to 8,000 characters each of captured stdout/stderr on failure.
+- **evidence:** Initial `so` source at `2e604ff7` in `scripts/reconcile-memory-os-backup-restore-admission-chain.py` used `subprocess.run(..., text=True, stdout=PIPE, stderr=PIPE, check=False)` without `env` or `timeout`. Prior [child environment isolation learning](2026-11-01-child-validator-environment-isolation.md) demonstrates a synthetic `PYTHONPATH` early-success bypass. This is a source-level failure mode, not observed actual compromise.
+- **rootCauseOrUnknown:** Verified implicit child environment inheritance, unbounded process runtime and raw child diagnostics in the parent exception. Whether hostile runner environment or sensitive child output occurred in production is **unknown**.
+- **failedApproach:** Relying on the canonical validator path and a zero exit code without bounding runtime, sanitizing child environment or suppressing raw output.
+- **correction:** [`24cf26c8`](https://github.com/m-shogo/memories-project/commit/24cf26c8179bd2486892f031ed7c4eae03732fe8) adds an explicit child environment excluding `PYTHON*`, `LD_*`, `DYLD_*`, `GIT_*`, a 120-second timeout, private DEVNULL streams, strict `CompletedProcess`/integer-zero validation, and class-only failures for process errors and timeouts.
+- **recurrenceGuard:** The existing CI-reachable `scripts/validate-memory-os-backup-restore-admission-chain-reconcile-negative.py` now injects six override variables, asserts exact filtering and benign canary preservation for both validators, rejects exit codes `1`, `False`, `None`, and checks four transport exception classes without leaking a synthetic private marker. Code and negative were committed atomically using an expected-HEAD Git ref lease.
+- **retryCondition:** Revisit only if the reviewed child launch topology, environment trust boundary, validator timeout policy, or exact-source CI outcome changes. Do not retry unchanged Quay MinIO HTTP 401, workflow-write permissions or missing human production evidence.
+
+## Material success — executable private child transport
+
+- **outcome:** Both admission-chain post-validators now use bounded, isolated and private child transport; existing reconciliation rollback and protected authority logic remain unchanged.
+- **evidence:** Exact-source [Backup Restore Admission Chain Reconcile Negative #41317666166](https://github.com/m-shogo/memories-project/actions/runs/41317666166) completed **SUCCESS** on `24cf26c8`. Other workflows were still running when this record was prepared and are not claimed successful.
+- **whySafe:** The atomic change affected only the admission-chain Python reconciler and its existing negative test. It did not alter production/recovery registries, objective, reviewed request, typed eight-domain, workflow, credentials, traffic or promotion authorities. Synthetic tests are not production evidence.
+- **reusableMechanism:** Use exact-path child validation plus filtered `env`, bounded timeout, DEVNULL output, strict result typing, poisoned-environment negative controls and a benign-environment positive control; publish code and test together with an expected-HEAD lease.
+- **protectedAuthorityCheck:** Git compare showed exactly two Python files changed. All ten protected blob SHAs remained identical after the commit: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, environment generation `bfd1b045`, recovery objective `f4d74f33`, drill request `acebcd02`, generation recovery evidence `ae7e57ef`, typed eight-domain registry `26bb1cc7`, and human promotion `99cb895f`. Production remains `NO_GO`; registered and semantically eligible generations remain separate, with unsuperseded distinct-environment eligibility and explicit current human-approved recovery objective required before preflight. Reviewed requests are planning-only until executable, evidence remains request-bound, typed eight-domain coverage and independent review remain mandatory, and human promotion is separate/non-automatic.
+
+## Next safe target
+
+Audit the drill-generation eligibility binding post-validator for the same inherited, unbounded, raw-output transport. Never use this learning record as production or promotion evidence.
