@@ -2838,7 +2838,6 @@ def supplemental_history_head_stability_bound(source: str) -> bool:
         and ast.unparse(rejection.body[0]) ==
             "raise GuardFailure('supplemental history HEAD moved during audit')"
     )
-
 def supplemental_history_reflog_bound(source: str) -> bool:
     """Independently bind the live local reflog witness and ABA rejection."""
     try:
@@ -2890,7 +2889,6 @@ def supplemental_history_reflog_bound(source: str) -> bool:
         body.index(captured[0]) < body.index(enumerations[0])
         < body.index(traversals[0]) < body.index(rejected[0]) < len(body) - 2
     )
-
 def supplemental_history_git_transport_bound(source: str) -> bool:
     """Independently bind exact successful-Git OID transport checks."""
     try:
@@ -2899,7 +2897,10 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
         return False
     functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                  and node.name == "git"]
-    if len(functions) != 1 or len(functions[0].body) < 2:
+    if (len(functions) != 1 or len(functions[0].body) < 2
+            or sum(ast.unparse(n) == "TRUSTED_GIT = '/usr/bin/git'" for n in tree.body) != 1
+            or sum(isinstance(n, ast.Name) and n.id == "TRUSTED_GIT" and isinstance(n.ctx, ast.Store) for n in ast.walk(tree)) != 1
+            or not any(isinstance(n, ast.Call) and ast.unparse(n.func) == "subprocess.run" and n.args and ast.unparse(n.args[0]).startswith("[TRUSTED_GIT, '-C'") for n in ast.walk(functions[0]))):
         return False
     guarded, returned = functions[0].body[-2:]
     if (not isinstance(guarded, ast.If)
@@ -2956,7 +2957,6 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
                 "malformed supplemental parent enumeration",
                 "malformed supplemental parent inventory"}
             and len(type_checks) == 4 and any(isinstance(n, ast.IfExp) and ast.unparse(n.test) == "type(invalid) is not bytes" for n in ast.walk(tree)) and all(any(isinstance(n, ast.If) and ast.unparse(n.test) == test and len(n.body) == 1 and ast.unparse(n.body[0]) == f"raise GuardFailure({reason!r})" for n in functions[0].body[:-2]) for test, reason in (("type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git exit status"), ("type(result.stdout) is not bytes or type(result.stderr) is not bytes", "invalid supplemental Git byte transport"))))
-
 def supplemental_history_enumeration_bound(source: str) -> bool:
     """Independently bind complete-range count and terminal HEAD proof."""
     try:
@@ -3087,7 +3087,7 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
-        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes",
+        "malformed supplemental parent enumeration", "type(invalid) is not bytes", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0", "invalid supplemental Git byte transport", "type(result.stdout) is not bytes or type(result.stderr) is not bytes", 'TRUSTED_GIT = "/usr/bin/git"', "subprocess.run([TRUSTED_GIT,",
     ):
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
