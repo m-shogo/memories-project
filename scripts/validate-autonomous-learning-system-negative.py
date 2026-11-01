@@ -3228,6 +3228,48 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
                     re.search(r"\breturn\b", body) or
                     not re.search(r"(?m)^[ \t]*t\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
                 raise RuntimeError(failure)
+            # A present assertion is not coverage if its table was emptied,
+            # its iteration suppressed, or its comparison made tautological.
+            # Bind the reviewed environment-free route cases and live calls.
+            if path.endswith("/route_authority_test.go"):
+                case_prefixes = {
+                    "TestRouteAuthorityMatchesRegisteredUploadSurface": (
+                        '{"issue", http.MethodPost, "/v1/import-jobs/job_123/upload-authorizations",',
+                        '{"complete", http.MethodPost, "/v1/upload-authorizations/upl_123/complete",',
+                        '{"preview", http.MethodGet, "/v1/import-jobs/job_123/preview",',
+                        '{"apply", http.MethodPost, "/v1/previews/prv_123/apply",',
+                        '{"legacy tombstone", http.MethodPost, "/v1/import-jobs/job_123/uploads",',
+                        '{"obsolete nested completion", http.MethodPost, "/v1/import-jobs/job_123/upload-authorizations/upl_123/complete",',
+                        '{"hostile cardinality", http.MethodGet, "/v1/random/attacker-controlled/value",',
+                    ),
+                    "TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes": (
+                        '{"/v1/upload-authorizations/upl_123/complete", http.StatusServiceUnavailable},',
+                        '{"/v1/import-jobs/job_123/uploads", http.StatusServiceUnavailable},',
+                        '{"/v1/random/attacker-controlled/value", http.StatusNotFound},',
+                    ),
+                }
+                statements = {
+                    "TestRouteAuthorityMatchesRegisteredUploadSurface": (
+                        "for _, test := range tests {",
+                        "t.Run(test.name, func(t *testing.T) {",
+                        "if got := routeTemplate(test.method, test.path); got != test.template {",
+                        "if got := knownAPIRouteShape(test.path); got != test.known {",
+                    ),
+                    "TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes": (
+                        "handler := New(Config{})",
+                        "for _, test := range []struct {",
+                        "request := httptest.NewRequest(http.MethodPost, test.path, nil)",
+                        "response := httptest.NewRecorder()",
+                        "handler.ServeHTTP(response, request)",
+                        "if response.Code != test.want {",
+                    ),
+                }
+                for token in case_prefixes[name]:
+                    if not re.search(r"(?m)^[ \t]*" + re.escape(token), body):
+                        raise RuntimeError(failure)
+                for statement in statements[name]:
+                    if not re.search(r"(?m)^[ \t]*" + re.escape(statement) + r"$", body):
+                        raise RuntimeError(failure)
 
 def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     files = {path: (source_root / path).read_text(encoding="utf-8")
@@ -3290,6 +3332,19 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
            't.Log("t.Fatalf(")')
     reject("no route assertion", route,
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
+    reject("removed issue route case", route,
+           '{"issue", http.MethodPost,', '// {"issue", http.MethodPost,')
+    reject("removed unknown route case", route,
+           '{"hostile cardinality", http.MethodGet,', '// {"hostile cardinality", http.MethodGet,')
+    reject("removed prefilter known case", route,
+           '{"/v1/upload-authorizations/upl_123/complete", http.StatusServiceUnavailable},',
+           '// {"/v1/upload-authorizations/upl_123/complete", http.StatusServiceUnavailable},')
+    reject("suppressed route iteration", route,
+           "for _, test := range tests {", "for _, test := range tests[:0] {")
+    reject("tautological route comparison", route,
+           "got != test.template", "got != got")
+    reject("tautological prefilter comparison", route,
+           "response.Code != test.want", "response.Code != response.Code")
     # Balanced block comments are legal Go and can conceal the first test
     # while the old line-anchored regex still finds its name and t.Fatalf.
     commented = dict(files)
