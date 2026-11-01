@@ -15,6 +15,7 @@ import stat
 import tempfile
 from pathlib import Path
 from typing import Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-non-resurrection-admission.py"
@@ -1748,17 +1749,38 @@ def exercise_validator_child_exit_propagation(validator) -> None:
             argv, kwargs = calls[0]
             require(argv == [validator.sys.executable, str(VALIDATOR)],
                     "typed child executable/argument binding drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "typed child environment missing")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "typed child inherited import/loader override: " + key)
+            require(child_env.get("SAFE_TYPED_CHILD_ENV") == "preserved",
+                    "typed child benign environment lost")
             require(kwargs == {
-                "cwd": ROOT, "stdout": subprocess.DEVNULL,
-                "stderr": subprocess.DEVNULL, "check": False, "timeout": 180,
+                "cwd": ROOT, "env": {
+                    key: value for key, value in validator.os.environ.items()
+                    if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+                },
+                "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
+                "check": False, "timeout": 180,
             }, "typed child subprocess capture or execution mode drift")
         finally:
             validator.subprocess.run = original_run
 
-    check_case(0, "canonical child PASS\n", "")
-    check_case(7, "SYNTHETIC_SECRET_STDOUT_DO_NOT_LOG", "SYNTHETIC_SECRET_STDERR_DO_NOT_LOG")
-    check_case(-9, "", "controlled signal termination\n")
-    check_case(True, "SYNTHETIC_SECRET_BOOLEAN_EXIT_DO_NOT_LOG", "")
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_TYPED_CHILD_ENV": "preserved",
+    }
+    with patch.dict(validator.os.environ, poisoned):
+        check_case(0, "canonical child PASS\n", "")
+        check_case(7, "SYNTHETIC_SECRET_STDOUT_DO_NOT_LOG", "SYNTHETIC_SECRET_STDERR_DO_NOT_LOG")
+        check_case(-9, "", "controlled signal termination\n")
+        check_case(True, "SYNTHETIC_SECRET_BOOLEAN_EXIT_DO_NOT_LOG", "")
 
     def reject_transport(label: str, failure: BaseException, class_name: str) -> None:
         def failed_run(*args, **kwargs):
@@ -1779,7 +1801,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
                      subprocess.TimeoutExpired("SYNTHETIC_SECRET_COMMAND_DO_NOT_LOG", 180),
                      "TimeoutExpired")
     reject_transport("OS error", OSError("SYNTHETIC_SECRET_OSERROR_DO_NOT_LOG"), "OSError")
-    print("PASS boundary: typed child bounded output suppression, nonzero/signal/boolean and transport negatives")
+    print("PASS boundary: typed child sanitized environment, bounded output, nonzero/signal/boolean and transport negatives")
 
 def prove_typed_transport_fixture_parent_guard() -> None:
     with guarded_temporary_directory(".tmp-typed-transport-parent-negative-", TEMP_PARENT) as raw:
