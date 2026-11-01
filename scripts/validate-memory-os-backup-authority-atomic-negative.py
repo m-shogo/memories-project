@@ -222,6 +222,62 @@ def coherent_authority_identity(module) -> None:
     module.validate_runtime_authority()
 
 
+def local_reconciler_child_transport(module, label: str) -> None:
+    """Only reviewed child validators may run with bounded private transport."""
+    allowed = [module.BACKUP_VALIDATOR, module.OPERABILITY_VALIDATOR]
+    if label == "coherent":
+        allowed.append(module.VALIDATOR)
+    for path in allowed:
+        with patch.dict(os.environ, {
+            "PYTHONPATH": "/tmp/unreviewed-python",
+            "GIT_DIR": "/tmp/unreviewed-git",
+            "LD_PRELOAD": "/tmp/unreviewed-loader.so",
+            "DYLD_INSERT_LIBRARIES": "/tmp/unreviewed-loader.dylib",
+        }):
+            with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=0,
+            )) as observed:
+                module.run_validator(path)
+                args, kwargs = observed.call_args
+                env = kwargs.get("env")
+                require(
+                    args[0] == [module.sys.executable, str(path)]
+                    and kwargs.get("cwd") == ROOT
+                    and kwargs.get("timeout") == 120
+                    and kwargs.get("stdout") == subprocess.DEVNULL
+                    and kwargs.get("stderr") == subprocess.DEVNULL
+                    and type(env) is dict
+                    and all(key not in env for key in (
+                        "PYTHONPATH", "GIT_DIR", "LD_PRELOAD",
+                        "DYLD_INSERT_LIBRARIES"
+                    ))
+                    and env.get("PYTHONNOUSERSITE") == "1",
+                    f"{label} child transport isolation drift",
+                )
+    with patch.object(subprocess, "run") as observed:
+        expect_rejected(
+            f"{label} rejects unreviewed repository child",
+            lambda: module.run_validator(
+                ROOT / "contracts/operations/backup-restore-contract.v1.json"
+            ),
+        )
+        require(not observed.called, f"{label} launched unreviewed child")
+    with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+        args=[], returncode=True,
+    )):
+        expect_rejected(
+            f"{label} rejects boolean child success",
+            lambda: module.run_validator(allowed[0]),
+        )
+    with patch.object(subprocess, "run", side_effect=subprocess.TimeoutExpired(
+        cmd=["python", str(allowed[0])], timeout=120,
+    )):
+        expect_rejected(
+            f"{label} rejects timed-out child",
+            lambda: module.run_validator(allowed[0]),
+        )
+
+
 def normalizer_noop_validation(module) -> None:
     original = module.STATUS_PATH.read_bytes()
     real_normalize = module.normalize
@@ -542,6 +598,8 @@ def main() -> int:
     semantic_authority_identity(semantic)
     normalizer_authority_identity(normalizer)
     coherent_authority_identity(coherent)
+    local_reconciler_child_transport(normalizer, "normalizer")
+    local_reconciler_child_transport(coherent, "coherent")
     normalizer_noop_validation(normalizer)
     normalizer_atomic_replace_failure(normalizer)
     normalizer_atomic_rollback(normalizer)
@@ -559,6 +617,7 @@ def main() -> int:
     print("coherent blocker validator identity: enforced")
     print("coherent subprocess execution transport: enforced")
     print("coherent runtime authority guard identity: enforced")
+    print("legacy backup child validator allowlist, environment, timeout: enforced")
     print("normalizer no-op aggregate validation: enforced")
     print("normalizer atomic replacement/rollback bytes+mode: enforced")
     print("coherent no-op aggregate validation: enforced")

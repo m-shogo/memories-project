@@ -95,14 +95,37 @@ def validate_runtime_authority(
 
 
 def run_validator(path: Path) -> None:
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        check=False,
-    )
+    # Caller-provided repository containment is not executable authorization.
+    allowed = {
+        ROOT / "scripts/validate-memory-os-backup-restore.py",
+        ROOT / "scripts/validate-memory-os-operability.py",
+        ROOT / "scripts/validate-memory-os-local-coherent-recovery-set.py",
+    }
+    require(isinstance(path, Path) and path in allowed,
+            "unreviewed local backup child validator")
+    try:
+        require(path.is_file() and not path.is_symlink()
+                and path.resolve(strict=True) == path,
+                "local backup child validator path drift")
+    except OSError:
+        raise Fail("local backup child validator path unavailable") from None
+    env = {key: item for key, item in os.environ.items()
+           if not key.startswith(("PYTHON", "GIT_", "LD_", "DYLD_"))}
+    env.update(PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1")
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("local backup child validator transport failed") from None
     require(type(completed.returncode) is int and completed.returncode == 0,
             f"canonical validator rejected coherent backup authority: {path.name}")
-
 
 def validate_projected_authority() -> None:
     run_validator(BACKUP_VALIDATOR)
