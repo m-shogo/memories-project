@@ -73,6 +73,9 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         if any(not stat.S_ISDIR(prior.st_mode) for _, prior in parents):
             raise ValidationFailure(diagnostic)
         preflight = path.lstat()
+        # A bool/int-subclass mode must not be classified as a real inode.
+        if type(preflight.st_mode) is not int:
+            raise ValidationFailure(f"unreadable authority: {path}")
         # Reject malformed/nonregular leaf metadata before opening any FD.
         if stat.S_ISLNK(preflight.st_mode):
             raise ValidationFailure(f"unreadable authority: {path}")
