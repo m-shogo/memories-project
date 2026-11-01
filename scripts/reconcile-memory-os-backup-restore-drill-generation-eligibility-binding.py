@@ -157,8 +157,9 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         for owned_fd in reversed(owned):
             try:
                 os.close(owned_fd)
-            except OSError:
-                # Never retry a potentially recycled descriptor after a post-effect error.
+            except Exception:
+                # Preserve a primary failure across ordinary non-OSError close faults.
+                # Never retry a potentially recycled descriptor.
                 cleanup_failed = True
         if cleanup_failed and not primary_failure:
             raise Fail(f"{field} module descriptor cleanup failed") from None

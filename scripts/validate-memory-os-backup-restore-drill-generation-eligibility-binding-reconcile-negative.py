@@ -149,49 +149,50 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
             )
             real_close = validator.os.close
 
-            def close_then_fail(fd: int) -> None:
-                real_close(fd)
-                raise OSError("synthetic post-effect descriptor close failure")
+            for close_error in (OSError, ValueError):
+                def close_then_fail(fd: int) -> None:
+                    real_close(fd)
+                    raise close_error("synthetic post-effect descriptor close failure")
 
-            validator.os.close = close_then_fail
-            try:
+                validator.os.close = close_then_fail
                 try:
-                    validator.load_module(
-                        approved, Path("pkg/approved.py"), "binding_close_fault", "fixture"
-                    )
-                except validator.Fail as exc:
-                    require(str(exc) == "fixture module descriptor cleanup failed",
-                            f"descriptor close failure rejected at wrong boundary: {exc}")
-                else:
-                    raise Fail("module import accepted failed descriptor cleanup")
-                require(not marker.exists(), "module executed after descriptor cleanup failure")
+                    try:
+                        validator.load_module(
+                            approved, Path("pkg/approved.py"), "binding_close_fault", "fixture"
+                        )
+                    except validator.Fail as exc:
+                        require(str(exc) == "fixture module descriptor cleanup failed",
+                                f"descriptor close failure rejected at wrong boundary: {exc}")
+                    else:
+                        raise Fail("module import accepted failed descriptor cleanup")
+                    require(not marker.exists(), "module executed after descriptor cleanup failure")
 
-                checks = 0
-                def primary_failure(path: Path, expected: Path, field: str) -> Path:
-                    nonlocal checks
-                    checks += 1
-                    if checks == 2:
-                        raise validator.Fail("synthetic primary module rejection")
-                    return original_check(path, expected, field)
+                    checks = 0
+                    def primary_failure(path: Path, expected: Path, field: str) -> Path:
+                        nonlocal checks
+                        checks += 1
+                        if checks == 2:
+                            raise validator.Fail("synthetic primary module rejection")
+                        return original_check(path, expected, field)
 
-                validator.require_exact_repo_file = primary_failure
-                try:
-                    validator.load_module(
-                        approved, Path("pkg/approved.py"), "binding_double_fault", "fixture"
-                    )
-                except validator.Fail as exc:
-                    require(str(exc) == "synthetic primary module rejection",
-                            f"descriptor cleanup masked primary failure: {exc}")
-                else:
-                    raise Fail("module import accepted primary failure")
-                require(not marker.exists(), "module executed after primary and cleanup failures")
-            finally:
-                validator.os.close = real_close
-                validator.require_exact_repo_file = original_check
+                    validator.require_exact_repo_file = primary_failure
+                    try:
+                        validator.load_module(
+                            approved, Path("pkg/approved.py"), "binding_double_fault", "fixture"
+                        )
+                    except validator.Fail as exc:
+                        require(str(exc) == "synthetic primary module rejection",
+                                f"descriptor cleanup masked primary failure: {exc}")
+                    else:
+                        raise Fail("module import accepted primary failure")
+                    require(not marker.exists(), "module executed after primary and cleanup failures")
+                finally:
+                    validator.os.close = real_close
+                    validator.require_exact_repo_file = original_check
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup and double faults")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup and double faults (OSError/ValueError)")
 
 
 def prove_validator_execution_identity() -> None:
