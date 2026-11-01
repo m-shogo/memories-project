@@ -133,10 +133,27 @@ def validate_runtime_authority(
 
 
 def run_validator(path: Path) -> None:
-    completed = subprocess.run([sys.executable, str(path)], cwd=ROOT, check=False)
+    require(path in validator_paths(), "unreviewed backup/restore policy validator")
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=180,
+        )
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        raise ReconcileFailure(f"canonical validator unavailable or timed out: {path.name} (raw output withheld)") from None
     require(
-        type(completed.returncode) is int and completed.returncode == 0,
-        f"canonical validator rejected backup/restore policy authority: {path.name}",
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        f"canonical validator rejected backup/restore policy authority: {path.name} (raw output withheld)",
     )
 
 

@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import copy
+import os
+import subprocess
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore.py"
@@ -228,11 +231,98 @@ def rollback_negative(module) -> None:
         module.STATUS_PATH.chmod(original_mode)
 
 
+
+def prove_private_validator_transport(reconciler) -> None:
+    """Five canonical backup validators must use bounded isolated private execution."""
+    original_run = reconciler.subprocess.run
+    marker = "synthetic-private-backup-restore-policy-validator-output"
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_BACKUP_POLICY_VALIDATOR_ENV": "preserved",
+    }
+    targets = reconciler.validator_paths()
+    seen: list[int | bool | None] = []
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv[0] == reconciler.sys.executable
+                    and argv[1] in [str(path) for path in targets],
+                    "backup policy validator child target drift")
+            require(kwargs.get("cwd") == reconciler.ROOT,
+                    "backup policy validator cwd drift")
+            require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                    and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
+                    "backup policy validator raw diagnostics captured")
+            require(kwargs.get("timeout") == 180 and kwargs.get("check") is False,
+                    "backup policy validator runtime budget drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "backup policy child environment missing")
+            require(child_env.get("SAFE_BACKUP_POLICY_VALIDATOR_ENV") == "preserved",
+                    "backup policy benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "backup policy inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in reconciler.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "backup policy validator child environment drift")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return run
+
+    with patch.dict(reconciler.os.environ, poisoned):
+        try:
+            for path in targets:
+                reconciler.subprocess.run = fake_run(0)
+                reconciler.run_validator(path)
+                for code in (1, False, None):
+                    reconciler.subprocess.run = fake_run(code)
+                    try:
+                        reconciler.run_validator(path)
+                    except reconciler.ReconcileFailure as exc:
+                        require(str(exc) == f"canonical validator rejected backup/restore policy authority: {path.name} (raw output withheld)",
+                                "backup policy validator failure class drift")
+                        require(marker not in str(exc), "backup policy private output leaked")
+                    else:
+                        raise Fail("backup policy validator invalid return accepted")
+                for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                                subprocess.TimeoutExpired(["synthetic"], 180, output=marker, stderr=marker)):
+                    def raise_failure(*_args, **_kwargs):
+                        raise failure
+                    reconciler.subprocess.run = raise_failure
+                    try:
+                        reconciler.run_validator(path)
+                    except reconciler.ReconcileFailure as exc:
+                        require(str(exc) == f"canonical validator unavailable or timed out: {path.name} (raw output withheld)",
+                                "backup policy unavailable class drift")
+                        require(marker not in str(exc), "backup policy exception details leaked")
+                    else:
+                        raise Fail("backup policy validator unavailable accepted")
+        finally:
+            reconciler.subprocess.run = original_run
+    require(seen == [0, 1, False, None] * len(targets),
+            "backup policy validator positive/negative controls incomplete")
+    try:
+        reconciler.run_validator(reconciler.CONTRACT_PATH)
+    except reconciler.ReconcileFailure as exc:
+        require(str(exc) == "unreviewed backup/restore policy validator",
+                "backup policy unreviewed validator rejected at wrong boundary")
+    else:
+        raise Fail("backup policy unreviewed validator unexpectedly accepted")
+    print("PASS: backup policy five validators use isolated bounded private transport")
+
+
 def main() -> int:
     reconciler = load_module(RECONCILER, "memory_os_backup_restore_reconcile_negative_target")
     original_status = reconciler.STATUS_PATH.read_bytes()
     original_mode = reconciler.STATUS_PATH.stat().st_mode & 0o777
     reconciler.validate_runtime_authority()
+    prove_private_validator_transport(reconciler)
     authority_identity_negative(reconciler)
     data_authority_identity_negative(reconciler)
     blocker_authority_identity_negative(reconciler)
