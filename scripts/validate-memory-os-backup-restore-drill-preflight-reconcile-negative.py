@@ -533,6 +533,62 @@ def assert_authorities_restored(
     )
 
 
+def prove_atomic_cleanup_preserves_primary(module) -> None:
+    canonical_before = {
+        module.CONTRACT: (module.CONTRACT.read_bytes(), mode(module.CONTRACT)),
+        module.STATUS: (module.STATUS.read_bytes(), mode(module.STATUS)),
+    }
+    original_replace = module.os.replace
+    original_unlink = module.os.unlink
+    with guarded_temporary_directory(".tmp-preflight-atomic-cleanup-", TMP_PARENT) as raw:
+        target = Path(raw) / "preflight-cleanup.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        before_bytes, before_mode = target.read_bytes(), mode(target)
+        before_temps = set(target.parent.glob(f".{target.name}.*.tmp"))
+        observed_cleanup = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic-private-primary-preflight-replace")
+
+        def reject_cleanup(path, *args, **kwargs):
+            require(Path(path).parent == target.parent
+                    and Path(path).name.startswith(f".{target.name}."),
+                    "preflight cleanup targeted unexpected path")
+            observed_cleanup.append(Path(path))
+            raise OSError("synthetic-private-secondary-preflight-unlink")
+
+        try:
+            module.os.replace = reject_replace
+            module.os.unlink = reject_cleanup
+            try:
+                module.write_text(target, before_bytes.decode("utf-8") + " ")
+            except module.Fail as exc:
+                require(str(exc) == "preflight reconcile atomic write failed",
+                        f"preflight cleanup masked primary write failure: {exc}")
+                require("synthetic-private" not in str(exc),
+                        "preflight double-fault leaked private details")
+            else:
+                raise Fail("preflight double-fault atomic write unexpectedly accepted")
+        finally:
+            module.os.replace = original_replace
+            module.os.unlink = original_unlink
+            created = set(target.parent.glob(f".{target.name}.*.tmp")) - before_temps
+            for path in created:
+                original_unlink(path)
+
+        require(len(observed_cleanup) == 1 and observed_cleanup[0] in created,
+                "preflight secondary cleanup failure not exercised")
+        require(target.read_bytes() == before_bytes and mode(target) == before_mode,
+                "preflight double-fault mutated isolated authority")
+        require(set(target.parent.glob(f".{target.name}.*.tmp")) == before_temps,
+                "preflight double-fault left synthetic temporary authority")
+    for path, (expected_bytes, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected_bytes and mode(path) == expected_mode,
+                f"preflight double-fault changed canonical authority: {path.name}")
+    print("PASS boundary: preflight primary atomic failure survives secondary cleanup OSError")
+
+
 def prove_second_replace_rollback(module, tmp: Path) -> None:
     contract, status = fixture_authorities(module, tmp, "second-replace")
     contract_before = contract.read_bytes()
@@ -715,6 +771,7 @@ def main() -> int:
     module = load_module()
     module.enforce_execution_identity()
     module.enforce_runtime_authorities()
+    prove_atomic_cleanup_preserves_primary(module)
     # Reject valid repository paths with unreviewed labels/targets before any
     # subprocess can run; these are synthetic authority candidates only.
     with patch.object(module.subprocess, "run", side_effect=Fail("unreviewed preflight child executed")):

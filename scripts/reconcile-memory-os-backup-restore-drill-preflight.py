@@ -231,6 +231,7 @@ def write_text(path: Path, text: str) -> None:
     except (OSError, UnicodeError, ValueError, TypeError):
         raise Fail("preflight reconcile atomic write failed") from None
     finally:
+        primary_failure = sys.exc_info()[0] is not None
         cleanup_failed = False
         if fd is not None:
             try:
@@ -244,7 +245,9 @@ def write_text(path: Path, text: str) -> None:
                 pass
             except OSError:
                 cleanup_failed = True
-        if cleanup_failed:
+        # Preserve the primary fixed-class write failure across cleanup faults.
+        # Residual private temps are still rejected by clean-source guards.
+        if cleanup_failed and not primary_failure:
             raise Fail("preflight reconcile atomic cleanup failed") from None
 
 
