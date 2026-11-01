@@ -275,12 +275,13 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 
 
 def run_post_reconcile_validator(path: Path, label: str) -> None:
-    if path == VALIDATOR_MODULE:
-        relative = require_exact_repo_file(path, VALIDATOR_MODULE_REL, f"{label} validator")
-    elif path == OPERABILITY_VALIDATOR:
-        relative = require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, f"{label} validator")
-    else:
-        relative = require_repo_file(path, f"{label} validator missing")
+    reviewed = {
+        "preflight": (VALIDATOR_MODULE, VALIDATOR_MODULE_REL),
+        "operability": (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL),
+    }
+    require(reviewed.get(label) is not None and reviewed[label][0] == path,
+            "unreviewed preflight post-reconcile validator")
+    relative = require_exact_repo_file(path, reviewed[label][1], f"{label} validator")
     # A post-reconcile PASS must come from the reviewed validator, not from
     # an inherited Python import or dynamic-loader override exiting zero.
     child_env = {

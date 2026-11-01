@@ -10,6 +10,7 @@ import shutil
 import stat
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-drill-preflight.py"
@@ -714,6 +715,23 @@ def main() -> int:
     module = load_module()
     module.enforce_execution_identity()
     module.enforce_runtime_authorities()
+    # Reject valid repository paths with unreviewed labels/targets before any
+    # subprocess can run; these are synthetic authority candidates only.
+    with patch.object(module.subprocess, "run", side_effect=Fail("unreviewed preflight child executed")):
+        for path, label in (
+            (module.CONTRACT, "preflight"),
+            (module.VALIDATOR_MODULE, "operability"),
+            (module.OPERABILITY_VALIDATOR, "preflight"),
+            (module.CONTRACT, "synthetic unreviewed"),
+        ):
+            try:
+                module.run_post_reconcile_validator(path, label)
+            except module.Fail as exc:
+                require(str(exc) == "unreviewed preflight post-reconcile validator",
+                        "preflight post-validator rejected at wrong authority boundary")
+            else:
+                raise Fail("preflight post-validator unreviewed target accepted")
+    print("PASS: preflight post-validator reviewed label/path allowlist")
     canonical_before = {
         module.CONTRACT: module.CONTRACT.read_bytes(),
         module.STATUS: module.STATUS.read_bytes(),
