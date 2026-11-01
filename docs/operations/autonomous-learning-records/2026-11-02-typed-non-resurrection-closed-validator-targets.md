@@ -1,0 +1,25 @@
+# Supplemental OPS learning — typed non-resurrection child-validator target closure (2026-11-02)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, executable reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human promotion evidence.
+
+## Material failure — self-consistent but unreviewed typed post-validator target
+
+- **symptom:** The typed non-resurrection reconciliation helper could accept a repository-contained unreviewed child executable when its caller provided a self-consistent `path` and `expected_relative` pair.
+- **evidence:** At `f52efa6a`, `scripts/reconcile-memory-os-backup-non-resurrection-authority.py` passed the supplied pair directly into `require_exact_repo_file` without a reviewed label/path/relative-path allowlist. Existing production main() call sites supplied canonical typed and operability validators; no actual unreviewed child execution was observed.
+- **rootCauseOrUnknown:** Verified self-referential expected-relative authority in a child execution helper. Whether an adversary can reach this helper through approved CI is unknown.
+- **failedApproach:** Treating repository containment and a matching caller-supplied relative path as sufficient authorization for an executable post-validator.
+- **correction:** [`a6abf16e`](https://github.com/m-shogo/memories-project/commit/a6abf16ee4bf9a92c4c18a08d696ad5077d6262b) requires exact reviewed triples for the typed non-resurrection and operability validators before canonical file resolution or child launch.
+- **recurrenceGuard:** The existing CI-reachable `scripts/validate-memory-os-backup-non-resurrection-reconcile-negative.py` now rejects a canonical but unreviewed contract JSON under a reviewed label, an unknown label, and a reviewed validator under the wrong label. A mocked subprocess canary fails if any rejected case reaches execution. Existing canonical mutation, rollback and post-write validator-order negatives remain active.
+- **retryCondition:** Revisit only when an explicitly reviewed new typed/operability post-validator target or label is added with negative coverage, or exact-source CI proves a regression. Do not retry unchanged Quay MinIO HTTP 401, workflow permissions or missing human production-evidence blockers.
+
+## Material success — typed child execution is bound to reviewed authority
+
+- **outcome:** Typed non-resurrection post-validation now rejects self-consistent but unreviewed repository targets and cross-swapped labels before launching subprocesses.
+- **evidence:** Exact-source [Backup Restore Non-Resurrection Reconcile Negative #41320424998](https://github.com/m-shogo/memories-project/actions/runs/41320424998) completed **SUCCESS** at `a6abf16e`; the transactional negative step and job cleanup passed. Git compare confirms only the existing typed reconciler and existing negative suite changed.
+- **whySafe:** No production status, OPS-P0-007 snapshot, generation/objective/request/recovery/typed/promotion registry, reviewed workflow, credential or traffic was modified. Synthetic negative inputs are not recovery evidence.
+- **reusableMechanism:** Pair a closed reviewed (label, path, expected-relative) allowlist with strict canonical identity verification and a no-subprocess negative canary, retaining bounded private child transport.
+- **protectedAuthorityCheck:** Ten protected blob SHAs remained unchanged after `a6abf16e`: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, recovery objective registry `f4d74f33`, drill request registry `acebcd02`, generation evidence registry `ae7e57ef`, typed eight-domain registry `26bb1cc7`, promotion registry `99cb895f`. `productionDecision=NO_GO` remains authoritative, registered/semantically eligible generations are 0/0, approved objectives 0, executable reviewed requests 0, request-bound recovery evidence 0, complete typed eight-domain records 0 and final candidates 0. Preflight still requires unsuperseded eligible generations from distinct environments plus explicit human-approved current recovery objective; reviewed requests are planning-only until executable, generation recovery evidence remains request-bound, complete typed eight-domain coverage and independent review are required for final candidates, and human promotion remains separate and nonautomatic.
+
+## Next safe target
+
+Audit older local backup/coherent authority child validator helpers for unbounded subprocess transport and unreviewed path acceptance, distinguishing local-only evidence from production-equivalent readiness. Preserve protected authorities and the separate human production-promotion gate. The final learning-only HEAD has no independently confirmed exact-source CI SUCCESS at record preparation.
