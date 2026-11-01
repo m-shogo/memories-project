@@ -3270,6 +3270,10 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
                 for statement in statements[name]:
                     if not re.search(r"(?m)^[ \t]*" + re.escape(statement) + r"$", body):
                         raise RuntimeError(failure)
+                # A table with every reviewed case and assertion can still
+                # run zero cases if loop control jumps past the assertions.
+                if re.search(r"\b(?:continue|break|goto)\b", body):
+                    raise RuntimeError(failure)
 
 def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     files = {path: (source_root / path).read_text(encoding="utf-8")
@@ -3345,6 +3349,15 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
            "got != test.template", "got != got")
     reject("tautological prefilter comparison", route,
            "response.Code != test.want", "response.Code != response.Code")
+    reject("route loop unconditional continue", route,
+           "t.Run(test.name, func(t *testing.T) {",
+           "if true { continue }\n\t\tt.Run(test.name, func(t *testing.T) {")
+    reject("prefilter loop unconditional break", route,
+           "request := httptest.NewRequest(http.MethodPost, test.path, nil)",
+           "if true { break }\n\t\trequest := httptest.NewRequest(http.MethodPost, test.path, nil)")
+    reject("route loop goto bypass", route,
+           "t.Run(test.name, func(t *testing.T) {",
+           "goto skipCases\n\t\tt.Run(test.name, func(t *testing.T) {")
     # Balanced block comments are legal Go and can conceal the first test
     # while the old line-anchored regex still finds its name and t.Fatalf.
     commented = dict(files)
