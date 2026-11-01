@@ -3787,7 +3787,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             failures.append("upload-route pinned publication binding missing")
             return
         for original, replacement in (
-            ("os.replace(temporary.name, path.name,\n                   src_dir_fd=parent_fd, dst_dir_fd=parent_fd)", "os.replace(temporary, path)"),
+            ("os.replace(temporary.name, path.name,\n                       src_dir_fd=parent_fd, dst_dir_fd=parent_fd)", "os.replace(temporary, path)"),
             ("os.unlink(temporary.name, dir_fd=parent_fd)",
              "temporary.unlink()"),
             ("if not published and staged_identity is not None:", "if True:"),
