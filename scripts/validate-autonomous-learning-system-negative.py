@@ -3255,6 +3255,78 @@ def require_reviewed_upload_route_package_init(package_tests: dict[str, str]) ->
             raise RuntimeError(failure)
 
 
+
+def require_reviewed_upload_route_transitive_package_init(relative: str, source: str) -> None:
+    """Fail closed on unreviewed pre-test exits in local imported Go packages."""
+    import re
+    failure = "unreviewed Upload Route transitive Go package initializer"
+    if (type(source) is not str or
+            not relative.startswith("services/import-api/internal/") or
+            not relative.endswith(".go") or relative.endswith("_test.go")):
+        raise RuntimeError(failure)
+    try:
+        aliases = upload_route_local_go_imports(source, include_aliases=True)
+    except RuntimeError:
+        raise RuntimeError(failure) from None
+    # A dot/named import can hide an exit behind Exit(0) or alias.Exit(0).
+    if any(binding.split("\t", 1)[1] in {"os", "syscall", "log"}
+           for binding in aliases):
+        raise RuntimeError(failure)
+    # No transitive package initializer is currently reviewed. This is a
+    # conservative lexical boundary, not a complete Go semantic proof:
+    # an unreviewed init or exit reference requires explicit source review.
+    if (re.search(r"\binit\b", source) or
+            re.search(
+                r"\b(?:os|syscall|log)\s*(?:/\*.*?\*/\s*)?\.\s*"
+                r"(?:/\*.*?\*/\s*)?(?:Exit|Fatal|Fatalf|Fatalln)\b",
+                source, re.DOTALL,
+            )):
+        raise RuntimeError(failure)
+
+
+def prove_upload_route_transitive_package_init_negatives() -> None:
+    """An imported package must not exit successfully before focused tests."""
+    relative = "services/import-api/internal/obslog/event.go"
+    # The reviewed obslog eventCodeSet variable is ordinary data, not an
+    # executable package initializer; preserve this legitimate positive.
+    for source in (
+            'package obslog\nvar eventCodeSet = map[string]struct{}{"E": {}}\n',
+            'package obslog\nimport "os"\nvar _ = os.Getenv("HOME")\n'):
+        require_reviewed_upload_route_transitive_package_init(relative, source)
+    cases = (
+        ("transitive init exit",
+         'package obslog\nimport "os"\nfunc init() { os.Exit(0) }\n'),
+        ("transitive variable exit",
+         'package obslog\nimport "os"\nvar _ = func() int { os.Exit(0); return 0 }()\n'),
+        ("transitive comment-split exit",
+         'package obslog\nimport "os"\nvar _ = func() int { os /* gap */ . Exit(0); return 0 }()\n'),
+        ("transitive named-alias exit",
+         'package obslog\nimport terminate "os"\n'
+         'var _ = func() int { terminate.Exit(0); return 0 }()\n'),
+        ("transitive dot-import exit",
+         'package obslog\nimport . "os"\n'
+         'var _ = func() int { Exit(0); return 0 }()\n'),
+        ("transitive syscall exit",
+         'package obslog\nimport "syscall"\n'
+         'var _ = func() int { syscall.Exit(0); return 0 }()\n'),
+        ("transitive log fatal",
+         'package obslog\nimport "log"\n'
+         'var _ = func() int { log.Fatal("stop"); return 0 }()\n'),
+        ("transitive empty init", 'package obslog\nfunc init() {}\n'),
+        ("transitive comment-split init",
+         'package obslog\nfunc /* gap */ init() {}\n'),
+    )
+    for label, source in cases:
+        try:
+            require_reviewed_upload_route_transitive_package_init(relative, source)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route transitive Go package initializer":
+                raise
+        else:
+            raise RuntimeError("transitive Go package init negative accepted: " + label)
+
+
+
 def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> None:
     import re
     failure = "unreviewed Upload Route focused Go test target"
@@ -4273,6 +4345,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
     prove_upload_route_critical_coverage_negatives()
     prove_upload_route_go_build_constraint_negatives()
     prove_upload_route_go_package_negatives()
+    prove_upload_route_transitive_package_init_negatives()
     prove_unaliased_go_path_negatives()
     prove_go_embed_negatives()
     prove_go_linkname_negatives()
@@ -4401,6 +4474,7 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             require_unaliased_go_path(source_root, file)
             inputs.add(file.relative_to(source_root).as_posix())
             source = file.read_text(encoding="utf-8")
+            require_reviewed_upload_route_transitive_package_init(file.relative_to(source_root).as_posix(), source)
             require_reviewed_upload_route_go_package(file.relative_to(source_root).as_posix(), source)
             require_reviewed_upload_route_go_build_constraints(file.relative_to(source_root).as_posix(), source)
             reject_unreviewed_go_embeds(source)
