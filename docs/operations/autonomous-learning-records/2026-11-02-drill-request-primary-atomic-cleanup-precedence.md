@@ -1,0 +1,25 @@
+# Supplemental OPS learning — drill-request primary atomic failure survives cleanup (2026-11-02)
+
+Append-only operational learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. Not production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human promotion evidence.
+
+## Material failure
+
+- **symptom:** The drill-request planning reconciler could replace a primary atomic-write rejection with a secondary cleanup-incomplete error, losing the original fixed-class failure.
+- **evidence:** At `78b70ef3`, `scripts/reconcile-memory-os-backup-restore-drill-request.py` raised `Fail("cannot atomically write drill request authority (raw error withheld)")` on `os.replace` OSError, but the `finally` block raised a different cleanup `Fail` whenever `os.close` or `os.unlink` raised OSError. No real production write or cleanup incident was observed.
+- **rootCauseOrUnknown:** Verified Python finally exception precedence. The original primary failure is masked by a secondary fixed-class cleanup failure; actual occurrence outside synthetic injection is unknown.
+- **failedApproach:** Treating cleanup-incomplete as always higher-priority than the original atomic-write rejection, including when the original failure was already active.
+- **correction:** [2104d357](https://github.com/m-shogo/memories-project/commit/2104d357ab48fe27eceb9420adc866fbb1405068) captures whether a primary exception is active and preserves it across secondary cleanup OSError; standalone cleanup failures remain fail-closed. Any orphan temporary file is not treated as successful publication and remains subject to existing clean-source/rollback guards.
+- **recurrenceGuard:** The existing CI-reached drill-request reconcile rollback negative suite injects a primary `os.replace` OSError and secondary `os.unlink` OSError, asserts the exact original private-safe `Fail` message, checks no private canary leakage, verifies unchanged isolated bytes/mode and all three canonical authority byte strings, and removes only newly created synthetic temporary files.
+- **retryCondition:** Revisit only after reviewed drill-request atomic-writer/rollback changes or exact-source CI regression. Do not retry unchanged MinIO 401, workflow permissions, external production evidence or human approval blockers.
+
+## Material success
+
+- **outcome:** The double-fault negative now preserves the primary drill-request atomic failure while retaining fail-closed cleanup and unchanged protected authorities.
+- **evidence:** [Backup Restore Drill Request Reconcile Rollback #41332053229](https://github.com/m-shogo/memories-project/actions/runs/41332053229) completed **SUCCESS** on exact code HEAD `2104d357`. Logs explicitly report `drill request primary atomic failure survives secondary cleanup OSError`, `drill-request restore failure still attempts all three authorities`, primary/rollback diagnostics preserved, no temporary residue, and full negative suite PASS. The separate Drill Request Admission publisher was still running at record preparation and is not claimed SUCCESS.
+- **whySafe:** Only the existing planning reconciler and its CI-reached synthetic negative suite changed. No production status, OPS-P0-007 snapshot, environment generation, recovery objective, reviewed request, generation-bound recovery evidence, typed coverage, promotion registry, credential or traffic was modified.
+- **reusableMechanism:** Capture active primary failure before finally cleanup; do not overwrite it with secondary cleanup OSError; prove with isolated double-fault negative, fixed private-safe diagnostic and byte/mode checks.
+- **protectedAuthorityCheck:** Ten protected Git blob SHAs unchanged: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generations `bfd1b045`, objectives `f4d74f33`, drill requests `acebcd02`, generation evidence `ae7e57ef`, typed eight-domain registry `26bb1cc7`, promotion review `99cb895f`. `productionDecision=NO_GO`; OPS-P0-007 `PREREQUISITES_BLOCKED`; registered/semantically eligible generations 0/0, approved objectives 0, executable reviewed requests 0, request-bound recovery evidence 0, complete typed eight-domain coverage 0, final candidates 0. Preflight still requires unsuperseded semantically eligible generations from distinct environments and an explicitly human-approved current recovery objective; reviewed requests are planning-only, new recovery evidence is current executable-request-bound, final candidates require typed eight-domain coverage and independent review, and human promotion remains separate/nonautomatic.
+
+## Next safe target
+
+Audit the separate preflight atomic-writer cleanup precedence using its existing CI-reached isolated negative suite, without modifying reviewed workflows or production authorities.
