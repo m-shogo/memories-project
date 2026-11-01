@@ -1,0 +1,25 @@
+# Supplemental OPS learning — promotion-review post-validator child environment (2026-11-01)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. **Not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, recovery objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or human promotion evidence.
+
+## Material failure — inherited Python/loader/Git overrides at human promotion post-validation
+
+- **symptom:** Two promotion-review post-reconcile validators inherited Python/import, dynamic-loader and Git override variables, despite existing canonical file checks, 180-second timeout, DEVNULL streams and typed zero exit.
+- **evidence:** Source at `d466a2b1` in `scripts/reconcile-memory-os-backup-restore-promotion-review.py` used `subprocess.run([sys.executable, str(path)], cwd=ROOT, ...)` without explicit `env`. Prior [child validator environment isolation learning](2026-11-01-child-validator-environment-isolation.md) reproduced a synthetic `PYTHONPATH` bypass; actual runner compromise or human promotion manipulation is **not observed**.
+- **rootCauseOrUnknown:** Verified implicit inheritance of unreviewed parent environment into the child interpreter. Whether adversarial environment control was available is unknown.
+- **failedApproach:** Relying on canonical validator paths, private diagnostics and bounded execution while leaving the child interpreter/loader environment unreviewed.
+- **correction:** [`5ed78a87`](https://github.com/m-shogo/memories-project/commit/5ed78a87a510aacf99b8008420c1f4a3b3c9a46e) explicitly filters `PYTHON*`, `LD_*`, `DYLD_*`, `GIT_*` for both post-validator child processes, retaining the existing 180-second timeout, DEVNULL streams, strict exit typing and protected human promotion semantics.
+- **recurrenceGuard:** Existing CI-reachable `scripts/validate-memory-os-backup-restore-promotion-review-reconcile-negative.py` now poisons six parent override variables, requires exact filtered child environment and a preserved benign canary for every mocked post-validator invocation. The previous success, nonzero, boolean, timeout, unavailable, wrong-label and private-diagnostic controls remain active. Code and test were published atomically with expected-HEAD lease.
+- **retryCondition:** Revisit on changed reviewed child execution topology, Python/loader trust boundary or exact-source CI. Do not retry unchanged Quay MinIO HTTP 401, workflow permission or human production evidence blockers.
+
+## Material success — promotion-review child environment isolation verified
+
+- **outcome:** Both human promotion post-validators now run with explicitly sanitized child environment while retaining existing strict bounded/private transport and separate nonautomatic human promotion.
+- **evidence:** Exact-source [Backup Restore Promotion Review #41318049577](https://github.com/m-shogo/memories-project/actions/runs/41318049577) and [Backup Restore Promotion Review Readonly #41318049587](https://github.com/m-shogo/memories-project/actions/runs/41318049587) completed **SUCCESS** on `5ed78a87`. Other workflows are not claimed successful unless separately observed.
+- **whySafe:** Git compare shows only the existing promotion-review reconciler and its negative test changed. No reviewed workflow, production status, registry, credential, traffic, recovery objective, generation, drill, evidence, typed coverage or human promotion record was modified. Synthetic test values cannot authorize promotion.
+- **reusableMechanism:** For any child validation that already has bounded private subprocess execution, additionally pin explicit filtered `env` and enforce it with poisoned-environment negatives plus benign-variable positive control, keeping code/test atomic.
+- **protectedAuthorityCheck:** Ten protected Git blob SHAs remain unchanged: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, environment generation registry `bfd1b045`, objective registry `f4d74f33`, drill request registry `acebcd02`, generation evidence registry `ae7e57ef`, typed eight-domain registry `26bb1cc7`, human promotion registry `99cb895f`. `productionDecision=NO_GO`. Registered generations and semantically eligible generations remain distinct; unsuperseded eligible distinct environments plus explicit current human-approved recovery objective are required for preflight. Reviewed requests are planning authority only, generation recovery evidence remains bound to executable reviewed request, complete typed eight-domain coverage and independent review are mandatory, and human promotion is separate/nonautomatic.
+
+## Next safe target
+
+Audit remaining child-validator launch boundaries for inherited Python/loader/Git environment and missing timeout/private output controls. Do not use learning as production evidence or readiness.
