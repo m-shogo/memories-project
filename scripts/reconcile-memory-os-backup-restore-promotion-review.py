@@ -144,6 +144,7 @@ def write_text(path: Path, text: str) -> None:
     except (OSError, ValueError, TypeError):
         raise Fail("promotion reconcile authority atomic write failed") from None
     finally:
+        primary_failure = sys.exc_info()[0] is not None
         if fd is not None:
             owned_fd = fd
             fd = None
@@ -157,7 +158,9 @@ def write_text(path: Path, text: str) -> None:
             except FileNotFoundError:
                 pass
             except OSError:
-                raise Fail("promotion reconcile authority temporary cleanup failed") from None
+                # Preserve the original private-safe write failure if one is active.
+                if not primary_failure:
+                    raise Fail("promotion reconcile authority temporary cleanup failed") from None
 
 
 def load(path: Path) -> dict[str, Any]:

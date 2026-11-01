@@ -289,6 +289,63 @@ def prove_promotion_atomic_fd_ownership(reconciler: Any, original_contract: byte
     print("PASS boundary: promotion-review fchmod/fdopen faults close retained raw descriptors")
 
 
+def prove_promotion_atomic_cleanup_preserves_primary(
+    reconciler: Any, original_contract: bytes, original_registry: bytes,
+) -> None:
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    original_replace = reconciler.os.replace
+    original_unlink = reconciler.os.unlink
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
+        before_temps = set(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp"))
+        seen_cleanup = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic-private-primary-promotion-replace")
+
+        def reject_cleanup(path, *args, **kwargs):
+            require(Path(path).parent == reconciler.CONTRACT.parent
+                    and Path(path).name.startswith(f".{reconciler.CONTRACT.name}."),
+                    "promotion-review cleanup targeted unexpected path")
+            seen_cleanup.append(Path(path))
+            raise OSError("synthetic-private-secondary-promotion-unlink")
+
+        try:
+            reconciler.os.replace = reject_replace
+            reconciler.os.unlink = reject_cleanup
+            try:
+                reconciler.write_text(reconciler.CONTRACT, fixture_contract.decode("utf-8"))
+            except reconciler.Fail as exc:
+                require(str(exc) == "promotion reconcile authority atomic write failed"
+                        and exc.__suppress_context__,
+                        f"promotion-review secondary cleanup masked primary failure: {exc}")
+                require("synthetic-private" not in str(exc),
+                        "promotion-review cleanup double-fault leaked private details")
+            else:
+                raise Fail("promotion-review double-fault atomic write unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+            created = set(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp")) - before_temps
+            for path in created:
+                original_unlink(path)
+
+        require(len(seen_cleanup) == 1 and seen_cleanup[0] in created,
+                "promotion-review secondary cleanup fault not exercised")
+        assert_fixture_unchanged(reconciler, fixture_contract, fixture_registry,
+                                 "promotion-review cleanup double fault", 0o640, 0o640)
+        require(set(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp")) == before_temps,
+                "promotion-review cleanup double fault left synthetic temp")
+    assert_canonical_unchanged(original_contract, original_registry,
+                               "promotion-review cleanup double fault",
+                               canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: promotion-review primary atomic failure survives secondary cleanup OSError")
+
+
 def prove_second_replace_failure_rolls_back_transaction(
     reconciler: Any,
     original_contract: bytes,
@@ -819,6 +876,7 @@ def main() -> int:
     prove_private_atomic_write_path_guards(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
     prove_promotion_atomic_fd_ownership(reconciler, original_contract, original_registry)
+    prove_promotion_atomic_cleanup_preserves_primary(reconciler, original_contract, original_registry)
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
     prove_rollback_attempts_all_authorities(reconciler)
     prove_writer_close_failure_releases_lock()
