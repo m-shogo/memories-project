@@ -3225,6 +3225,7 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
             body = source[matches[0].end():(
                 matches[0].end() + following.start() if following else len(source))]
             if (re.search(r"\.[ \t\r\n]*Skip(?:f|Now)?\b", body) or
+                    re.search(r"(?m)^[ \t]*return(?:[ \t]|$)", body) or
                     not re.search(r"\bt\.(?:Fatal|Fatalf|Error|Errorf|Fail|FailNow)[ \t]*\(", body)):
                 raise RuntimeError(failure)
 
@@ -3270,6 +3271,12 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     reject("skip method value", live,
            "func TestUploadLifecycleOverHTTP(t *testing.T) {",
            "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\tskip := t.Skip\n\tskip(\"disabled\")")
+    reject("early route test return", route,
+           "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {",
+           "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {\n\treturn")
+    reject("early live test return", live,
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {",
+           "func TestUploadLifecycleOverHTTP(t *testing.T) {\n\treturn")
     reject("no route assertion", route,
            't.Fatalf("POST %s returned', 't.Logf("POST %s returned')
     # Balanced block comments are legal Go and can conceal the first test
