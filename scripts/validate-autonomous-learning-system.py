@@ -95,6 +95,8 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             if before.st_size > max_bytes:
                 raise ValidationFailure(too_large)
             raw = stream.read(max_bytes + 1)
+            if type(raw) is not bytes:
+                raise ValidationFailure(f"unreadable authority: {path}")
             if len(raw) > max_bytes:
                 raise ValidationFailure(too_large)
             after = os.fstat(stream.fileno())
