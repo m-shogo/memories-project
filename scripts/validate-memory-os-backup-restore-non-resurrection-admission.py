@@ -234,6 +234,15 @@ def load_module(path: Path, name: str):
     return module
 
 def run_validator(path: Path, label: str) -> None:
+    reviewed = {
+        "local Apple replay restore validator": LOCAL_APPLE_VALIDATOR,
+        "local coherent recovery-set validator": LOCAL_COHERENT_VALIDATOR,
+        "non-resurrection negative admission suite": NEGATIVE,
+        "non-resurrection writer CLI authority negative suite": WRITER_AUTHORITY_NEGATIVE,
+        "non-resurrection contract path negative suite": PATH_NEGATIVE,
+    }
+    require(type(label) is str and reviewed.get(label) == path,
+            "unreviewed typed admission child validator")
     repo_relative(path)
     require(path.is_file() and not path.is_symlink(),
             "typed admission child validator must be a regular canonical file")

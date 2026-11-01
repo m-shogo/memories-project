@@ -1732,13 +1732,13 @@ def exercise_validator_child_exit_propagation(validator) -> None:
 
         validator.subprocess.run = controlled_run
         try:
-            label = "controlled typed child"
+            label = "local Apple replay restore validator"
             if code == 0:
-                require(validator.run_validator(VALIDATOR, label) is None,
+                require(validator.run_validator(validator.LOCAL_APPLE_VALIDATOR, label) is None,
                         "typed child success result drift")
             else:
                 try:
-                    validator.run_validator(VALIDATOR, label)
+                    validator.run_validator(validator.LOCAL_APPLE_VALIDATOR, label)
                 except validator.Fail as exc:
                     require(str(exc) == f"{label} failed without exposing subprocess output"
                             and "SYNTHETIC_SECRET" not in str(exc),
@@ -1747,7 +1747,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
                     raise Fail("typed child nonzero exit was accepted")
             require(len(calls) == 1, "typed child subprocess invocation count drift")
             argv, kwargs = calls[0]
-            require(argv == [validator.sys.executable, str(VALIDATOR)],
+            require(argv == [validator.sys.executable, str(validator.LOCAL_APPLE_VALIDATOR)],
                     "typed child executable/argument binding drift")
             child_env = kwargs.get("env")
             require(isinstance(child_env, dict), "typed child environment missing")
@@ -1788,7 +1788,7 @@ def exercise_validator_child_exit_propagation(validator) -> None:
         validator.subprocess.run = failed_run
         try:
             try:
-                validator.run_validator(VALIDATOR, "controlled typed child")
+                validator.run_validator(validator.LOCAL_APPLE_VALIDATOR, "local Apple replay restore validator")
             except validator.Fail as exc:
                 require(class_name in str(exc) and "SYNTHETIC_SECRET" not in str(exc),
                         f"typed child {label} leaked transport exception")
@@ -1811,9 +1811,9 @@ def exercise_validator_child_exit_propagation(validator) -> None:
         validator.subprocess.run = lambda *_args, **_kwargs: result
         try:
             try:
-                validator.run_validator(VALIDATOR, "controlled typed child")
+                validator.run_validator(validator.LOCAL_APPLE_VALIDATOR, "local Apple replay restore validator")
             except validator.Fail as exc:
-                require(str(exc) == "controlled typed child failed without exposing subprocess output",
+                require(str(exc) == "local Apple replay restore validator failed without exposing subprocess output",
                         f"typed child {label} rejected at wrong boundary")
             else:
                 raise Fail(f"typed child {label} accepted")
@@ -1841,25 +1841,53 @@ def prove_typed_transport_fixture_parent_guard() -> None:
 
 
 def prove_child_validator_symlink_rejected(validator) -> None:
-    """A same-repository symlink must not redirect executable child authority."""
+    """Unreviewed repository scripts cannot run; a reviewed-path symlink still fails."""
     with guarded_temporary_directory(".memory-os-typed-child-symlink-negative-", TEMP_PARENT) as tmp:
         parent = Path(tmp)
         child = parent / "child-positive.py"
         child.write_text("raise SystemExit(0)\n", encoding="utf-8")
-        validator.run_validator(child, "typed child positive control")
         alias = parent / "child-alias.py"
         alias.symlink_to(child)
+        original_target = validator.LOCAL_APPLE_VALIDATOR
+        original_run = validator.subprocess.run
+        calls = []
+
+        def fake_run(argv, **_kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0)
+
+        validator.subprocess.run = fake_run
         try:
-            validator.run_validator(alias, "typed child symlink negative")
-        except validator.Fail as exc:
-            require(str(exc) == "typed admission child validator must be a regular canonical file",
-                    "typed child symlink rejected at wrong boundary")
-        else:
-            raise Fail("typed admission executed a symlinked child validator")
+            validator.run_validator(original_target, "local Apple replay restore validator")
+            require(calls == [[validator.sys.executable, str(original_target)]],
+                    "typed child reviewed positive control drift")
+            for path, label in (
+                (child, "typed child positive control"),
+                (validator.LOCAL_COHERENT_VALIDATOR, "local Apple replay restore validator"),
+            ):
+                try:
+                    validator.run_validator(path, label)
+                except validator.Fail as exc:
+                    require(str(exc) == "unreviewed typed admission child validator",
+                            "typed child unreviewed target rejected at wrong boundary")
+                else:
+                    raise Fail("typed child unreviewed target unexpectedly executed")
+                require(len(calls) == 1, "typed child unreviewed target reached subprocess")
+            validator.LOCAL_APPLE_VALIDATOR = alias
+            try:
+                validator.run_validator(alias, "local Apple replay restore validator")
+            except validator.Fail as exc:
+                require(str(exc) == "typed admission child validator must be a regular canonical file",
+                        "typed child symlink rejected at wrong boundary")
+            else:
+                raise Fail("typed admission executed a symlinked child validator")
+            require(len(calls) == 1, "typed child symlink reached subprocess")
+        finally:
+            validator.LOCAL_APPLE_VALIDATOR = original_target
+            validator.subprocess.run = original_run
         require(alias.is_symlink() and child.read_text(encoding="utf-8") == "raise SystemExit(0)\n",
                 "typed child symlink negative modified trusted fixture")
-    print("PASS reject: typed admission child validator internal symlink")
-
+    print("PASS reject: typed admission unreviewed targets, swapped labels and internal symlink")
 
 def exercise_writer_lock_lifecycle_negative() -> None:
     """Execute the existing actual-writer lock lifecycle negative through the canonical CI suite."""
