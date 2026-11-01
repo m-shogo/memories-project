@@ -1025,7 +1025,8 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
 
     # A guard FD close can fail before or after consuming the descriptor.
     # Never replace the primary publication failure or retry the ambiguous close.
-    for guard_close_scenario in ("before-guard-close", "after-guard-close"):
+    for guard_close_scenario in ("before-guard-close", "after-guard-close",
+                                 "before-guard-valueerror", "after-guard-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-guard-close-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -1050,8 +1051,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_guard_close(fd):
                 if guard_fds and fd == guard_fds[0] and not close_tripped[0]:
                     close_tripped[0] = True
-                    if guard_close_scenario == "after-guard-close":
+                    if guard_close_scenario.startswith("after-guard"):
                         original_close(fd)
+                    if guard_close_scenario.endswith("valueerror"):
+                        raise ValueError("synthetic staged guard close ValueError")
                     raise OSError("synthetic staged guard close failure")
                 return original_close(fd)
 
@@ -1067,6 +1070,9 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     require(any("staged guard descriptor close status unknown" in note
                                 for note in getattr(exc, "__notes__", [])),
                             "staged guard close lacked bounded uncertainty diagnostic")
+                    if guard_close_scenario.endswith("valueerror"):
+                        require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                "non-OSError staged guard close lost fault type diagnostic")
                 else:
                     raise Fail("staged guard close failure unexpectedly published")
             finally:
@@ -1075,7 +1081,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                 module.os.replace = original_replace
             require(close_tripped[0] and len(guard_fds) == 1,
                     "guard close fault did not reach owned duplicate descriptor")
-            if guard_close_scenario == "before-guard-close":
+            if guard_close_scenario.startswith("before-guard"):
                 os.fstat(guard_fds[0])
                 os.close(guard_fds[0])
             else:
