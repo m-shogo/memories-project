@@ -849,10 +849,11 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         # A forged regular-file mode must not hide missing or non-integer
         # identity fields and cause an unreviewed descriptor acquisition.
         preflight_stat = real_lstat(target)
-        identity_fields = ("st_mode", "st_dev", "st_ino", "st_size",
-                           "st_mtime_ns", "st_ctime_ns")
+        identity_fields = ("st_mode", "st_dev", "st_ino", "st_nlink",
+                           "st_size", "st_mtime_ns", "st_ctime_ns")
         for field, bad_value, missing in (
                 ("st_dev", None, True),
+                ("st_nlink", True, False),
                 ("st_size", True, False),
                 ("st_ctime_ns", "123", False),
                 ("st_mode", True, False),
@@ -1317,8 +1318,25 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         target.write_bytes(b"stable")
         alias = Path(tmp) / "hardlink"
         os.link(target, alias)
-        reject("hardlink", f"canonical authority changed during read: {target}")
-        alias.unlink()
+        guard_fd = real_open(canary, os.O_RDONLY)
+        hardlink_opens: list[Path] = []
+        def forbid_hardlink_open(path, flags):
+            if Path(path) == target:
+                hardlink_opens.append(Path(path))
+                raise RuntimeError("hardlinked canonical leaf reached os.open")
+            return real_open(path, flags)
+        try:
+            with mock.patch.object(module.os, "open", side_effect=forbid_hardlink_open):
+                reject("hardlink", f"canonical authority changed during read: {target}")
+            if hardlink_opens:
+                raise RuntimeError("hardlinked canonical leaf acquired a descriptor")
+            if os.read(guard_fd, 8) != b"external":
+                raise RuntimeError("hardlink preflight corrupted external canary")
+        finally:
+            real_close(guard_fd)
+            alias.unlink()
+        if read() != b"stable":
+            raise RuntimeError("hardlink preflight recovery corrupted authority")
         target.chmod(0o666)
         reject("world-writable", f"canonical authority changed during read: {target}")
         target.chmod(0o644)
