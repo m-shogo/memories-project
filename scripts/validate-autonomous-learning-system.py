@@ -70,8 +70,16 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # Reject pre-existing aliases before probing the leaf through them.
         # A stable symlinked ancestor is not canonical authority, even when
         # no parent changes between descriptor acquisition and final audit.
-        if any(not stat.S_ISDIR(prior.st_mode) for _, prior in parents):
-            raise ValidationFailure(diagnostic)
+        # Ancestor metadata is also authority: validate the exact fields
+        # used by the post-read identity check before probing the leaf.
+        for _, prior in parents:
+            if type(prior.st_mode) is not int:
+                raise ValidationFailure(f"unreadable authority: {path}")
+            if not stat.S_ISDIR(prior.st_mode):
+                raise ValidationFailure(diagnostic)
+            for field in ("st_dev", "st_ino", "st_ctime_ns"):
+                if type(getattr(prior, field)) is not int:
+                    raise ValidationFailure(f"unreadable authority: {path}")
         preflight = path.lstat()
         # A bool/int-subclass mode must not be classified as a real inode.
         if type(preflight.st_mode) is not int:
