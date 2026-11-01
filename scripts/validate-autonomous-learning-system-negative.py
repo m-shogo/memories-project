@@ -1171,6 +1171,19 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 raise RuntimeError("canonical parent symlink swap accepted")
         if not parent.is_symlink() or nested.read_bytes() != b"stable":
             raise RuntimeError("canonical parent-chain fixture did not preserve leaf identity")
+        # A pre-existing alias is also invalid: no during-read mutation is
+        # required for the parent path to cease being canonical authority.
+        try:
+            module.read_canonical_authority_bytes(
+                nested, 10, too_large="reviewed source oversized"
+            )
+        except module.ValidationFailure as exc:
+            if str(exc) != f"canonical authority changed during read: {nested}":
+                raise RuntimeError("canonical pre-existing parent alias wrong diagnostic") from exc
+        else:
+            raise RuntimeError("canonical pre-existing parent symlink accepted")
+        if nested.read_bytes() != b"stable":
+            raise RuntimeError("canonical pre-existing parent alias mutated authority")
 
 
 def prove_canonical_repo_root_alias_cli(source_root: Path) -> None:
