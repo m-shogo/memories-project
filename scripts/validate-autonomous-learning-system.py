@@ -118,6 +118,13 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
             if type(stream_fd) is not int or stream_fd != fd:
                 raise ValidationFailure(f"unreadable authority: {path}")
             before = os.fstat(fd)
+            # Descriptor-pinned metadata is still an untrusted interface
+            # boundary in fault-injection tests; bool/int subclasses are
+            # not authoritative integer identity or link-count evidence.
+            for field in ("st_mode", "st_dev", "st_ino", "st_nlink",
+                          "st_size", "st_mtime_ns", "st_ctime_ns"):
+                if type(getattr(before, field)) is not int:
+                    raise ValidationFailure(f"unreadable authority: {path}")
             if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                     or before.st_mode & 0o022
                     or (preflight.st_dev, preflight.st_ino) !=
@@ -140,6 +147,11 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                 raise ValidationFailure(f"unreadable authority: {path}")
             after = os.fstat(fd)
             live = path.lstat()
+            for snapshot in (after, live):
+                for field in ("st_mode", "st_dev", "st_ino", "st_nlink",
+                              "st_size", "st_mtime_ns", "st_ctime_ns"):
+                    if type(getattr(snapshot, field)) is not int:
+                        raise ValidationFailure(f"unreadable authority: {path}")
             for parent, prior in parents:
                 current = parent.lstat()
                 # The post-read snapshot must be a real integer metadata
