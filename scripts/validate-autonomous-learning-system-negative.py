@@ -3274,6 +3274,12 @@ def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> N
                 # run zero cases if loop control jumps past the assertions.
                 if re.search(r"\b(?:continue|break|goto)\b", body):
                     raise RuntimeError(failure)
+                # These constant-false wrappers retain every case and
+                # assertion yet prevent the test body from executing.
+                if re.search(
+                        r"\bif[ \t\r\n]+(?:false|0[ \t]*==[ \t]*1|1[ \t]*!=[ \t]*1)[ \t\r\n]*\{",
+                        body):
+                    raise RuntimeError(failure)
 
 def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     files = {path: (source_root / path).read_text(encoding="utf-8")
@@ -3358,6 +3364,29 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     reject("route loop goto bypass", route,
            "t.Run(test.name, func(t *testing.T) {",
            "goto skipCases\n\t\tt.Run(test.name, func(t *testing.T) {")
+    # Wrap the entire first reviewed test in a Go-valid constant-false
+    # block. All case literals, loops and assertions remain unchanged.
+    signature = "func TestRouteAuthorityMatchesRegisteredUploadSurface(t *testing.T) {\n"
+    boundary = "\t}\n}\n\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes"
+    if files[route].count(signature) != 1 or files[route].count(boundary) != 1:
+        raise RuntimeError("focused Go constant-false fixture anchor drift")
+    for label, condition in (
+            ("literal false", "false"),
+            ("zero equals one", "0 == 1"),
+            ("one not equal itself", "1 != 1")):
+        wrapped = dict(files)
+        wrapped[route] = files[route].replace(
+            signature, signature + "\tif " + condition + " {\n", 1
+        ).replace(
+            boundary, "\t}\n\t}\n}\n\nfunc TestRoutePrefilterPreservesKnownAndRejectsUnknownShapes", 1
+        )
+        try:
+            require_reviewed_upload_route_focused_go_tests(wrapped)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route focused Go test target":
+                raise
+        else:
+            raise RuntimeError("focused Go constant-false negative accepted: " + label)
     # Balanced block comments are legal Go and can conceal the first test
     # while the old line-anchored regex still finds its name and t.Fatalf.
     commented = dict(files)
