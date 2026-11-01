@@ -1216,6 +1216,50 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical malformed snapshot recovery corrupted authority")
+        # The post-read descriptor must still identify the original inode
+        # and regular file type. Matching sizes/timestamps are insufficient:
+        # a recycled FD number can describe a different file.
+        for label, mutate in (
+                ("postread inode identity", "inode"),
+                ("postread file type", "mode")):
+            opened.clear()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            owned_fstats = 0
+            def substituted_postread_fstat(descriptor):
+                nonlocal owned_fstats
+                actual = real_fstat(descriptor)
+                if opened and descriptor == opened[0]:
+                    owned_fstats += 1
+                    if owned_fstats == 2:
+                        fields = {name: getattr(actual, name)
+                                  for name in snapshot_fields}
+                        if mutate == "inode":
+                            fields["st_ino"] = actual.st_ino + 1
+                        else:
+                            fields["st_mode"] = stat.S_IFIFO | stat.S_IMODE(actual.st_mode)
+                        return type("SyntheticPostreadFdIdentity", (), fields)()
+                return actual
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.os, "fstat",
+                                       side_effect=substituted_postread_fstat):
+                    reject(label, f"canonical authority changed during read: {target}")
+                if len(opened) != 1 or owned_fstats != 2:
+                    raise RuntimeError("canonical postread FD identity reachability drift")
+                try:
+                    real_fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical postread FD identity wrong FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical postread FD identity leaked owned FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical postread FD identity corrupted canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical postread FD identity recovery failed")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
         opened.clear()

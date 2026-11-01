@@ -175,6 +175,8 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                     # while its inode and the leaf descriptor remain stable.
                     raise ValidationFailure(diagnostic)
             if (not stat.S_ISREG(live.st_mode)
+                    or not stat.S_ISREG(after.st_mode)
+                    or (after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
                     or (live.st_dev, live.st_ino) != (before.st_dev, before.st_ino)
                     or after.st_nlink != 1 or live.st_nlink != 1
                     or after.st_mode & 0o022 or live.st_mode & 0o022
