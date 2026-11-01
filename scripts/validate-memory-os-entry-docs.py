@@ -3581,6 +3581,7 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         return False
     body, opener, stage = (ast.unparse(functions[name][0]) for name in names)
     handoff_failures = [n for n in ast.walk(functions["atomic_write_bytes"][0]) if isinstance(n, ast.ExceptHandler) and n.name == "fdopen_exc"]
+    if sorted(ast.unparse(n.type) for n in ast.walk(functions["atomic_write_bytes"][0]) if isinstance(n, ast.ExceptHandler) and n.name == "probe_exc") != ["Exception", "Exception"]: return False
     if len(handoff_failures) != 1 or any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and isinstance(n.func.value, ast.Name) and n.func.value.id == "os" and n.func.attr == "close" and len(n.args) == 1 and isinstance(n.args[0], ast.Name) and n.args[0].id == "descriptor" for n in ast.walk(handoff_failures[0])) or not (len(handoff_failures[0].body) >= 2 and isinstance(handoff_failures[0].body[-2], ast.Assign) and len(handoff_failures[0].body[-2].targets) == 1 and isinstance(handoff_failures[0].body[-2].targets[0], ast.Name) and handoff_failures[0].body[-2].targets[0].id == "untransferred_stage_fd" and isinstance(handoff_failures[0].body[-2].value, ast.Constant) and handoff_failures[0].body[-2].value.value is None and isinstance(handoff_failures[0].body[-1], ast.Raise)): return False
     if not all(fragment in opener for fragment in (
         "os.open(path.anchor, flags)", "os.open(part, flags, dir_fd=fd)", "os.O_DIRECTORY | os.O_NOFOLLOW",
@@ -3602,7 +3603,6 @@ def has_upload_route_pinned_publication_binding(source: str) -> bool:
         "(live_parent.st_dev, live_parent.st_ino, live_parent.st_mode) == (initial_parent.st_dev, initial_parent.st_ino, initial_parent.st_mode)",
         "concurrent publication parent drift", "os.close(parent_fd)",
     ))
-
 
 def has_upload_route_scan_root_binding(source: str) -> bool:
     """Require root/ancestor no-follow and regular directory preflight before rglob."""
@@ -3795,7 +3795,7 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
             ("staged_initial = os.fstat(descriptor)", "staged_initial = path.stat()"),
             ("if not published and staged_identity is None and untransferred_stage_fd is not None:", "if False:"),
             ("recovery_stat = os.fstat(untransferred_stage_fd)", "recovery_stat = path.stat()"), ("except Exception as replace_exc:", "except OSError as replace_exc:"), ("atomic replace outcome unknown; staged inode visible after error", "atomic replace outcome verified safe"), ("except Exception as recovery_exc:", "except OSError as recovery_exc:"),
-            ("staging_guard_fd = os.dup(descriptor)", "staging_guard_fd = None"), ("current_fd = os.fstat(descriptor)", "current_fd = os.fstat(-1)"), ("except Exception as probe_exc:", "except OSError as probe_exc:"), ("untransferred_stage_fd = None\n            raise", "os.close(descriptor)\n            untransferred_stage_fd = None\n            raise"), ("untransferred_stage_fd = None\n            raise", "untransferred_stage_fd = descriptor\n            raise"), ("fdopen stage descriptor ownership changed; close skipped", "fdopen stage descriptor ownership unchanged; close skipped"),
+            ("staging_guard_fd = os.dup(descriptor)", "staging_guard_fd = None"), ("current_fd = os.fstat(descriptor)", "current_fd = os.fstat(-1)"), ("current_fd = os.fstat(descriptor)\n            except Exception as probe_exc:", "current_fd = os.fstat(descriptor)\n            except OSError as probe_exc:"), ("post_replace = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)\n            except Exception as probe_exc:", "post_replace = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)\n            except OSError as probe_exc:"), ("untransferred_stage_fd = None\n            raise", "os.close(descriptor)\n            untransferred_stage_fd = None\n            raise"), ("untransferred_stage_fd = None\n            raise", "untransferred_stage_fd = descriptor\n            raise"), ("fdopen stage descriptor ownership changed; close skipped", "fdopen stage descriptor ownership unchanged; close skipped"),
             ("os.close(staging_guard_fd)", "pass"),
             ("os.close(untransferred_stage_fd)", "pass"), ("original_failure = sys.exception()", "original_failure = None"), ("except Exception as cleanup_exc:", "except OSError as cleanup_exc:"), ("except Exception as unlink_exc:", "except OSError as unlink_exc:"), ("except Exception as parent_close_exc:", "except OSError as parent_close_exc:"), ("except Exception as guard_close_exc:", "except OSError as guard_close_exc:"), ("except Exception as stage_close_exc:", "except OSError as stage_close_exc:"), ("except Exception as prestage_close_exc:", "except OSError as prestage_close_exc:"),
             ("open_pinned_parent(path, initial_parent)", "os.open(path.parent, os.O_RDONLY)"),
