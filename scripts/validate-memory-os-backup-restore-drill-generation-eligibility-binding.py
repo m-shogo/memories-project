@@ -211,6 +211,17 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
             require(type(parent_fd) is int and parent_fd >= 0,
                     f"{field} module source invalid descriptor")
             owned.append(parent_fd)
+        # Pin the executable's directory authority, including the repository root.
+        # A writable or replaced parent must never authorize source execution.
+        parent_before = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+        )
+        require(
+            all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                for item in parent_before),
+            f"{field} module parent directory unsafe",
+        )
         source_fd = os.open(expected_relative.name, file_flags, dir_fd=parent_fd)
         require(type(source_fd) is int and source_fd >= 0,
                 f"{field} module source invalid descriptor")
@@ -245,6 +256,21 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
             and identity(before) == identity(after) == identity(leaf),
             f"{field} module source changed during read",
         )
+        # The same pinned directory objects and lexical paths must remain
+        # unchanged until the executable source snapshot is accepted.
+        for index, directory_fd in enumerate(owned[:-1]):
+            opened = os.fstat(directory_fd)
+            lexical_parent = (
+                ROOT if index == 0
+                else ROOT.joinpath(*expected_relative.parts[:index])
+            )
+            pathname = os.lstat(lexical_parent)
+            require(
+                stat.S_ISDIR(pathname.st_mode)
+                and parent_identity(parent_before[index])
+                == parent_identity(opened) == parent_identity(pathname),
+                f"{field} module parent directory changed during read",
+            )
         require_exact_repo_file(path, expected_relative, field)
         require(
             identity(path.stat()) == identity(after),

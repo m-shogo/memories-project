@@ -224,6 +224,56 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
                 approved.chmod(0o644)
             require(not marker.exists(), "writable module executed untrusted marker")
 
+            # Directory authority is executable-source authority too. Neither
+            # a writable repository root nor a writable module parent is trusted.
+            for directory, label in ((root, "root"), (package, "package")):
+                previous_mode = stat.S_IMODE(directory.stat().st_mode)
+                directory.chmod(previous_mode | 0o022)
+                try:
+                    try:
+                        validator.load_module(
+                            approved, Path("pkg/approved.py"),
+                            "binding_writable_parent_" + label, "fixture"
+                        )
+                    except validator.Fail as exc:
+                        require(str(exc) == "fixture module parent directory unsafe",
+                                f"{label} writable directory rejected at wrong boundary: {exc}")
+                    else:
+                        raise Fail(f"{label} writable module parent unexpectedly executed")
+                finally:
+                    directory.chmod(previous_mode)
+            require(not marker.exists(), "writable module parent executed untrusted marker")
+
+            # A parent chmod after acquisition but before source acceptance
+            # must invalidate the pinned executable, even if bytes are intact.
+            original_read = validator.os.read
+            parent_mode_changed = False
+            previous_mode = stat.S_IMODE(package.stat().st_mode)
+            def writable_parent_during_read(fd: int, count: int):
+                nonlocal parent_mode_changed
+                chunk = original_read(fd, count)
+                if not parent_mode_changed:
+                    parent_mode_changed = True
+                    package.chmod(previous_mode | 0o022)
+                return chunk
+            validator.os.read = writable_parent_during_read
+            try:
+                try:
+                    validator.load_module(
+                        approved, Path("pkg/approved.py"),
+                        "binding_parent_mode_race", "fixture"
+                    )
+                except validator.Fail as exc:
+                    require(str(exc) == "fixture module parent directory changed during read",
+                            f"parent mode race rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("module executed after parent permission change")
+            finally:
+                validator.os.read = original_read
+                package.chmod(previous_mode)
+            require(parent_mode_changed and not marker.exists(),
+                    "parent mode race fixture not reached or untrusted module executed")
+
             # Mode changes after the pinned pre-read snapshot also invalidate
             # execution, even when source bytes remain identical.
             original_read = validator.os.read
@@ -386,7 +436,7 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, writable mode, mode race, size, mid-read, fragmented, EOF, nonbytes, invalid acquired FDs")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, writable module/parent mode, parent mode race, mode race, size, mid-read, fragmented, EOF, nonbytes, invalid acquired FDs")
 
 
 def prove_validator_execution_identity() -> None:
