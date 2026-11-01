@@ -922,6 +922,34 @@ def prove_pinned_json_path_boundaries() -> None:
             reject(prefix + " JSON authority type/link drift", "hardlink")
             (root / "hardlink.json").unlink()
 
+            # A writable planning JSON leaf is not a reviewed authority.
+            previous_mode = stat.S_IMODE(authority.stat().st_mode)
+            authority.chmod(previous_mode | 0o022)
+            try:
+                reject(prefix + " JSON authority type/link drift",
+                       "writable JSON leaf")
+            finally:
+                authority.chmod(previous_mode)
+
+            # Permission changes after acquisition must invalidate the
+            # accepted bytes even when the JSON payload is identical.
+            original_read = module.os.read
+            changed_leaf_mode = [False]
+            def chmod_leaf_during_read(fd: int, count: int):
+                chunk = original_read(fd, count)
+                if not changed_leaf_mode[0]:
+                    changed_leaf_mode[0] = True
+                    authority.chmod(previous_mode | 0o022)
+                return chunk
+            try:
+                module.os.read = chmod_leaf_during_read
+                reject(prefix + " JSON authority changed during read",
+                       "JSON leaf mode race")
+                require(changed_leaf_mode[0], name + " JSON leaf mode race not exercised")
+            finally:
+                module.os.read = original_read
+                authority.chmod(previous_mode)
+
             moved = root / "real-authority"
             parent.rename(moved)
             parent.symlink_to(moved, target_is_directory=True)
@@ -1074,7 +1102,7 @@ def prove_pinned_json_path_boundaries() -> None:
                 original_close(canary_fd)
     assert_canonical_unchanged(canonical_contract, canonical_registry,
                                "pinned JSON authority negative cases")
-    print("PASS pinned JSON: both readers reject writable checkout parent, parent mode race, leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault, invalid FD and partial acquisition; fragmented positive")
+    print("PASS pinned JSON: both readers reject writable JSON leaf, leaf mode race, writable checkout parent, parent mode race, leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault, invalid FD and partial acquisition; fragmented positive")
 
 
 def prove_validator_negative_suite_private_transport() -> None:

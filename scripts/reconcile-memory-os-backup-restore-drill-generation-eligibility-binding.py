@@ -106,7 +106,8 @@ def load(path: Path, *, include_raw: bool = False) -> dict[str, Any] | tuple[dic
                     "drill generation binding JSON authority invalid descriptor")
             owned.append(source_fd)
             before = os.fstat(source_fd)
-            require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1,
+            require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                    and not (before.st_mode & 0o022),
                     "drill generation binding JSON authority type/link drift")
             require(0 <= before.st_size <= MAX_BINDING_AUTHORITY_BYTES,
                     "drill generation binding JSON oversized authority refused")
@@ -123,7 +124,8 @@ def load(path: Path, *, include_raw: bool = False) -> dict[str, Any] | tuple[dic
             after = os.fstat(source_fd)
             leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
             identity = lambda item: (
-                item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns
+                item.st_dev, item.st_ino, item.st_mode, item.st_size,
+                item.st_mtime_ns, item.st_ctime_ns
             )
             require(len(raw) <= MAX_BINDING_AUTHORITY_BYTES,
                     "drill generation binding JSON oversized authority refused")
