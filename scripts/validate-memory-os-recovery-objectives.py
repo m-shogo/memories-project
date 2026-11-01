@@ -205,16 +205,23 @@ def load_writer():
 def run_negative() -> None:
     """Execute negative admission without retaining or echoing private validator output."""
     require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "recovery objective negative validator")
+    # A child must not inherit Python/loader/Git overrides capable of
+    # manufacturing an exit-zero result without executing reviewed checks.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(NEGATIVE)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
             timeout=120,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail("recovery objective negative admission unavailable or timed out (raw output withheld)") from None
     require(
         type(completed.returncode) is int and completed.returncode == 0,
