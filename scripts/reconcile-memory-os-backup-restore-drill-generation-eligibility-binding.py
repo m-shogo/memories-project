@@ -84,6 +84,12 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
 
 
 def run_post_validator(path: Path, expected_relative: Path, field: str) -> None:
+    reviewed = {
+        "drill generation binding validator": (VALIDATOR, VALIDATOR_REL),
+        "operability validator": (OPERABILITY_VALIDATOR, OPERABILITY_VALIDATOR_REL),
+    }
+    require(reviewed.get(field) == (path, expected_relative),
+            "unreviewed drill generation binding post-validator")
     require_exact_repo_file(path, expected_relative, field)
     child_env = {
         key: value for key, value in os.environ.items()

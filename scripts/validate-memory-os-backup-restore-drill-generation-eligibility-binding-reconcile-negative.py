@@ -275,7 +275,14 @@ def prove_post_validator_private_transport(reconciler: Any) -> None:
             reconciler.subprocess.run = original_run
     require(seen == [0, 1, False, None] * 2,
             "drill generation binding post-validator positive/negative controls incomplete")
-    print("PASS: drill generation binding post-validators use isolated bounded private transport")
+    try:
+        reconciler.run_post_validator(reconciler.CONTRACT, reconciler.CONTRACT_REL, "synthetic unreviewed validator")
+    except reconciler.Fail as exc:
+        require(str(exc) == "unreviewed drill generation binding post-validator",
+                "drill generation binding unreviewed validator rejected at wrong boundary")
+    else:
+        raise Fail("drill generation binding unreviewed repository validator accepted")
+    print("PASS: drill generation binding post-validators use isolated bounded private transport and closed targets")
 
 
 def main() -> int:

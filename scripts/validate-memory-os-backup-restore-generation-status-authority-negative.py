@@ -210,7 +210,14 @@ def prove_generation_status_private_validator_transport(reconciler) -> None:
             reconciler.subprocess.run = original_run
     require(seen == [0, 1, False, None] * 3,
             "generation status validator positive/negative controls incomplete")
-    print("PASS: generation status validators use isolated bounded private transport")
+    try:
+        reconciler.run_validator(reconciler.CONTRACT, reconciler.CONTRACT_REL, "synthetic unreviewed validator")
+    except reconciler.Fail as exc:
+        require(str(exc) == "unreviewed generation-status validator",
+                "generation status unreviewed validator rejected at wrong boundary")
+    else:
+        raise Fail("generation status unreviewed repository validator accepted")
+    print("PASS: generation status validators use isolated bounded private transport and closed targets")
 
 
 def main() -> int:
