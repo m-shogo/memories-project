@@ -3184,6 +3184,18 @@ REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS = {
     ),
 }
 
+def require_no_upload_route_testmain(package_tests: dict[str, str]) -> None:
+    """A Go TestMain that omits m.Run can make all selected tests PASS unrun."""
+    import re
+    failure = "unreviewed Upload Route package TestMain bypass"
+    if (not package_tests or
+            any(not name.endswith("_test.go") or type(source) is not str
+                for name, source in package_tests.items()) or
+            any(re.search(r"\bfunc[ \t\r\n]+TestMain[ \t\r\n]*\(", source)
+                for source in package_tests.values())):
+        raise RuntimeError(failure)
+
+
 def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> None:
     import re
     failure = "unreviewed Upload Route focused Go test target"
@@ -3285,6 +3297,40 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     files = {path: (source_root / path).read_text(encoding="utf-8")
              for path in REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS}
     require_reviewed_upload_route_focused_go_tests(files)
+    # Go's package-level TestMain can exit zero without invoking m.Run;
+    # inventory every current and future package test file, not just the
+    # two reviewed focused test files.
+    package_dir = source_root / "services/import-api/internal/httpserver"
+    if package_dir.is_symlink() or not package_dir.is_dir():
+        raise RuntimeError("unreviewed Upload Route package TestMain bypass")
+    package_tests = {}
+    for test_path in sorted(package_dir.glob("*_test.go")):
+        if test_path.is_symlink() or not test_path.is_file():
+            raise RuntimeError("unreviewed Upload Route package TestMain bypass")
+        package_tests[test_path.name] = test_path.read_text(encoding="utf-8")
+    if not {"route_authority_test.go", "server_live_test.go"} <= set(package_tests):
+        raise RuntimeError("unreviewed Upload Route package TestMain bypass")
+    require_no_upload_route_testmain(package_tests)
+    for label, name in (
+            ("existing test file", "route_authority_test.go"),
+            ("new package test file", "shadow_test.go")):
+        changed_tests = dict(package_tests)
+        if name in changed_tests and label == "new package test file":
+            raise RuntimeError("focused Go TestMain fixture name collision")
+        if name in changed_tests:
+            changed_tests[name] += "\nfunc TestMain(m *testing.M) {}\n"
+        else:
+            changed_tests[name] = (
+                'package httpserver\nimport "testing"\n'
+                'func TestMain(m *testing.M) {}\n'
+            )
+        try:
+            require_no_upload_route_testmain(changed_tests)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route package TestMain bypass":
+                raise
+        else:
+            raise RuntimeError("focused Go package TestMain negative accepted: " + label)
     route, live = tuple(REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS)
     def reject(label: str, path: str, old: str, new: str) -> None:
         if files[path].count(old) != 1:
