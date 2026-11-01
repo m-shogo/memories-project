@@ -1312,6 +1312,77 @@ def exercise_bounded_review_git_history(module) -> None:
 
 
 
+def require_source_order_git_env(source_order, kwargs) -> None:
+    env = kwargs.get("env")
+    require(source_order.TRUSTED_GIT == "/usr/bin/git"
+            and type(env) is dict
+            and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+            and env.get("GIT_CONFIG_NOSYSTEM") == "1"
+            and env.get("GIT_CONFIG_GLOBAL") == os.devnull
+            and not any(key.startswith(("LD_", "DYLD_")) for key in env)
+            and not any(key.startswith("GIT_") and key not in (
+                "GIT_NO_REPLACE_OBJECTS", "GIT_CONFIG_NOSYSTEM",
+                "GIT_CONFIG_GLOBAL"
+            ) for key in env),
+            "source-order Git executable or inherited environment drift")
+
+
+def prove_source_order_git_path_loader_negative(module) -> None:
+    source_order = module.load_review_source_order_validator()
+    ref = "docs/evidence/backup-restore/security/synthetic-source-order-path-decoy.json"
+    field = "syntheticSecurityReview"
+    with tempfile.TemporaryDirectory(prefix="source-order-git-decoy-") as temp:
+        fake = Path(temp) / "git"
+        fake.write_text("#!/bin/sh\necho " + "a" * 40 + "\n", encoding="utf-8")
+        fake.chmod(0o755)
+        previous = os.environ.get("PATH")
+        try:
+            os.environ["PATH"] = temp + os.pathsep + (previous or "")
+            decoy = subprocess.run(
+                ["git", "log", "--diff-filter=A", "--max-count=2",
+                 "--follow", "--format=%H", "--", ref],
+                cwd=ROOT, capture_output=True, text=True, check=False, timeout=10,
+            )
+            require(decoy.returncode == 0 and decoy.stdout == "a" * 40 + "\n",
+                    "source-order Git PATH decoy positive control ineffective")
+            try:
+                source_order.first_commit_for_path(ref, field)
+            except source_order.Fail as exc:
+                require(str(exc) == f"{field} must have exactly one committed creation point",
+                        "source-order Git PATH decoy rejected for unrelated reason")
+            else:
+                raise Fail("source-order Git PATH decoy admitted fabricated creation point")
+        finally:
+            if previous is None:
+                os.environ.pop("PATH", None)
+            else:
+                os.environ["PATH"] = previous
+    overrides = {
+        "GIT_DIR": "/tmp/unreviewed-git-dir",
+        "LD_PRELOAD": "/tmp/unreviewed-git-loader.so",
+        "DYLD_INSERT_LIBRARIES": "/tmp/unreviewed-git-loader.dylib",
+    }
+    previous = {key: os.environ.get(key) for key in overrides}
+    original_run = source_order.subprocess.run
+    def fake_git(args, **kwargs):
+        require(args[0] == source_order.TRUSTED_GIT,
+                "source-order Git trusted executable drift")
+        require_source_order_git_env(source_order, kwargs)
+        return subprocess.CompletedProcess(args, 0, stdout="a" * 40 + "\n")
+    try:
+        os.environ.update(overrides)
+        source_order.subprocess.run = fake_git
+        require(source_order.first_commit_for_path(ref, field) == "a" * 40,
+                "source-order Git sanitized positive control invalid")
+    finally:
+        source_order.subprocess.run = original_run
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def prove_source_order_bounded_git_output(module) -> None:
     """Exercise actual source-order Git transport without production evidence."""
     source_order = module.load_review_source_order_validator()
@@ -1323,7 +1394,7 @@ def prove_source_order_bounded_git_output(module) -> None:
     calls = []
 
     def fake_git(args, **kwargs):
-        require(args == ["git", "log", "--diff-filter=A", "--max-count=2",
+        require(args == [source_order.TRUSTED_GIT, "log", "--diff-filter=A", "--max-count=2",
                          "--follow", "--format=%H", "--", ref],
                 "source-order Git creation history pathspec/count drift")
         require(kwargs.get("cwd") == source_order.ROOT and kwargs.get("text") is True,
@@ -1332,6 +1403,7 @@ def prove_source_order_bounded_git_output(module) -> None:
                 "source-order Git diagnostic privacy drift")
         require(kwargs.get("check") is False and kwargs.get("timeout") == 20,
                 "source-order Git timeout drift")
+        require_source_order_git_env(source_order, kwargs)
         calls.append(args)
         if state["error"] is not None:
             raise state["error"]
@@ -1391,15 +1463,16 @@ def prove_source_order_bounded_creation_blob(module) -> None:
                 and kwargs.get("check") is False, "creation blob Git timeout/context drift")
         require(kwargs.get("stdout") is subprocess.PIPE and kwargs.get("stderr") is subprocess.DEVNULL,
                 "creation blob Git stderr privacy drift")
+        require_source_order_git_env(source_order, kwargs)
         calls.append(phase)
         if phase == "cat-file":
-            require(args == ["git", "cat-file", "-s", object_ref] and kwargs.get("text") is True,
+            require(args == [source_order.TRUSTED_GIT, "cat-file", "-s", object_ref] and kwargs.get("text") is True,
                     "creation blob size preflight drift")
             if state["size_error"] is not None:
                 raise state["size_error"]
             return subprocess.CompletedProcess(args, state["size_exit"],
                                                stdout=state["size"], stderr=marker)
-        require(args == ["git", "show", object_ref] and kwargs.get("text") is None,
+        require(args == [source_order.TRUSTED_GIT, "show", object_ref] and kwargs.get("text") is None,
                 "creation blob byte-exact Git show drift")
         if state["show_error"] is not None:
             raise state["show_error"]
@@ -1534,14 +1607,15 @@ def prove_source_order_bounded_commit_checks(module) -> None:
 
     def fake_git(args, **kwargs):
         require(args in (
-            ["git", "cat-file", "-e", ancestor + "^{commit}"],
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            [source_order.TRUSTED_GIT, "cat-file", "-e", ancestor + "^{commit}"],
+            [source_order.TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant],
         ), "source-order commit Git command drift")
         require(kwargs.get("cwd") == source_order.ROOT
                 and kwargs.get("stdout") is subprocess.DEVNULL
                 and kwargs.get("stderr") is subprocess.DEVNULL
                 and kwargs.get("timeout") == 20 and kwargs.get("check") is False,
                 "source-order commit Git privacy/timeout drift")
+        require_source_order_git_env(source_order, kwargs)
         calls.append(args[1])
         if state["error"] is not None:
             raise state["error"]
@@ -1605,6 +1679,7 @@ def main() -> int:
     prove_pinned_pair_validator_import()
     prove_pair_import_unsafe_sources()
     prove_pair_import_fd_cleanup()
+    prove_source_order_git_path_loader_negative(module)
     prove_source_order_bounded_git_output(module)
     prove_source_order_bounded_creation_blob(module)
     prove_source_order_bounded_current_blob(module)

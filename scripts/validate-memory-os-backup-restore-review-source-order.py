@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
+TRUSTED_GIT = "/usr/bin/git"
 CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
 REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
 SELF_REL = Path("scripts/validate-memory-os-backup-restore-review-source-order.py")
@@ -45,6 +47,15 @@ def require(condition: bool, message: str) -> None:
 
 
 MAX_JSON_BYTES = 1024 * 1024
+
+
+def trusted_git_env() -> dict[str, str]:
+    """Reject inherited Git and dynamic-loader overrides for review chronology."""
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("GIT_", "LD_", "DYLD_"))}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=os.devnull)
+    return env
 
 
 def load_json(path: Path, field: str) -> dict[str, Any]:
@@ -147,7 +158,7 @@ def git_output(args: list[str], field: str) -> str:
     # A source SHA or commit timestamp never requires unbounded Git diagnostics.
     try:
         completed = subprocess.run(
-            ["git", *args], cwd=ROOT, text=True, stdout=subprocess.PIPE,
+            [TRUSTED_GIT, *args], cwd=ROOT, env=trusted_git_env(), text=True, stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -174,7 +185,7 @@ def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
     # Bound the immutable object size before asking Git to return its raw bytes.
     try:
         size_result = subprocess.run(
-            ["git", "cat-file", "-s", object_ref], cwd=ROOT, text=True,
+            [TRUSTED_GIT, "cat-file", "-s", object_ref], cwd=ROOT, env=trusted_git_env(), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -187,7 +198,7 @@ def creation_blob(commit_sha: str, ref: str, field: str) -> bytes:
     require(0 < expected_bytes <= MAX_JSON_BYTES, f"{field} creation blob size limit exceeded")
     try:
         completed = subprocess.run(
-            ["git", "show", object_ref], cwd=ROOT,
+            [TRUSTED_GIT, "show", object_ref], cwd=ROOT, env=trusted_git_env(),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -208,7 +219,7 @@ def commit_exists(commit_sha: str, field: str) -> None:
             f"{field} sourceCommitSha invalid")
     try:
         completed = subprocess.run(
-            ["git", "cat-file", "-e", f"{commit_sha}^{{commit}}"], cwd=ROOT,
+            [TRUSTED_GIT, "cat-file", "-e", f"{commit_sha}^{{commit}}"], cwd=ROOT, env=trusted_git_env(),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -243,7 +254,7 @@ def is_ancestor(ancestor: str, descendant: str) -> bool:
             "cannot compare review/source commit ancestry")
     try:
         completed = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", ancestor, descendant], cwd=ROOT,
+            [TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant], cwd=ROOT, env=trusted_git_env(),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
