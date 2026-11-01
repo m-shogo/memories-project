@@ -32,7 +32,7 @@ def load_module():
 
 
 def prove_atomic_replace_failure(module) -> None:
-    for replace_scenario in ("before-effect", "after-effect", "after-effect-probe-failure", "after-effect-probe-valueerror"):
+    for replace_scenario in ("before-effect", "after-effect", "after-effect-probe-failure", "after-effect-probe-valueerror", "after-effect-replace-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
             target = Path(temp_dir) / "authority.txt"
             original = b"exact-original-bytes\n"
@@ -52,6 +52,8 @@ def prove_atomic_replace_failure(module) -> None:
                     if replace_scenario != "before-effect":
                         original_replace(source, destination, *args, **kwargs)
                         replace_fault_seen[0] = True
+                    if replace_scenario == "after-effect-replace-valueerror":
+                        raise ValueError("synthetic atomic replace ValueError")
                     raise OSError("synthetic atomic replace rejection")
                 original_replace(source, destination, *args, **kwargs)
 
@@ -69,10 +71,14 @@ def prove_atomic_replace_failure(module) -> None:
             try:
                 try:
                     module.atomic_write_bytes(target, b"partial-mutation\n")
-                except OSError as exc:
-                    require("synthetic atomic replace rejection" in str(exc),
-                            "atomic replacement failed for unrelated reason")
-                    if replace_scenario == "after-effect":
+                except Exception as exc:
+                    if replace_scenario == "after-effect-replace-valueerror":
+                        require(type(exc) is ValueError and "synthetic atomic replace ValueError" in str(exc),
+                                "post-effect replace ValueError lost primary error")
+                    else:
+                        require(type(exc) is OSError and "synthetic atomic replace rejection" in str(exc),
+                                "atomic replacement failed for unrelated reason")
+                    if replace_scenario in ("after-effect", "after-effect-replace-valueerror"):
                         require(any("atomic replace outcome unknown; staged inode visible after error" in note
                                     for note in getattr(exc, "__notes__", [])),
                                 "post-effect replace lacked explicit uncertain publication diagnostic")
