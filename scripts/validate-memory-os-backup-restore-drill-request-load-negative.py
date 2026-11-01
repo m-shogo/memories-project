@@ -681,8 +681,17 @@ def prove_negative_subprocess_redaction(validator) -> None:
 
     def fake_run(exit_code):
         def run(argv, **kwargs):
-            require(argv == [validator.sys.executable, str(validator.NEGATIVE)],
-                    "drill request negative runner target drift")
+            require(len(argv) == 4 and argv[0] == validator.sys.executable
+                    and argv[1] == "-c" and argv[3] == str(validator.NEGATIVE),
+                    "drill request negative runner pinned target drift")
+            require("sys.stdin.buffer.read()" in argv[2]
+                    and "exec(compile(" in argv[2]
+                    and "sys.argv[:] = [path]" in argv[2]
+                    and "sys.path.insert(0, os.path.dirname(path))" in argv[2],
+                    "drill request negative runner pinned bootstrap drift")
+            require(type(kwargs.get("input")) is bytes
+                    and kwargs["input"] == validator.NEGATIVE.read_bytes(),
+                    "drill request negative runner pinned source drift")
             require(kwargs.get("cwd") == validator.ROOT,
                     "drill request negative runner cwd drift")
             require(kwargs.get("stdout") == validator.subprocess.DEVNULL
@@ -748,6 +757,30 @@ def prove_negative_subprocess_redaction(validator) -> None:
         env_patch.stop()
 
     require(observed == [0, 1, False, None], "drill request negative runner positive/failure controls missing")
+    # A substituted leaf descriptor after the canonical path precheck must
+    # fail before any unreviewed child reaches subprocess.
+    with tempfile.TemporaryDirectory(prefix="drill-negative-pinned-source-") as tmp:
+        injected = Path(tmp) / "substituted.py"
+        injected.write_text("raise RuntimeError('synthetic substituted negative')\n",
+                            encoding="utf-8")
+        real_open = validator.os.open
+
+        def swapped_leaf_open(path, flags, *args, **kwargs):
+            if path == validator.NEGATIVE.name and "dir_fd" in kwargs:
+                return real_open(injected, validator.os.O_RDONLY)
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch.object(validator.os, "open", side_effect=swapped_leaf_open), \
+             patch.object(validator.subprocess, "run",
+                          side_effect=Fail("substituted negative reached subprocess")):
+            try:
+                validator.run_negative()
+            except validator.Fail as exc:
+                require("substituted negative reached subprocess" not in str(exc),
+                        "drill request negative executed substituted source")
+            else:
+                raise Fail("drill request negative accepted substituted source FD")
+    print("PASS: drill request negative runner rejects substituted FD before child execution")
     print("PASS: drill request negative subprocess bounded isolated execution and fixed private failure classes")
 
 

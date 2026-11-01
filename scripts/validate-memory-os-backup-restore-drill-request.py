@@ -208,15 +208,101 @@ def load_module(path: Path, name: str):
     return module
 
 
-def run_negative() -> None:
+def pinned_negative_source() -> bytes:
+    """Acquire reviewed negative-suite source from pinned no-follow descriptors."""
     require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
+    owned: list[int] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0,
+                "drill request negative source invalid directory descriptor")
+        owned.append(parent_fd)
+        for component in NEGATIVE_REL.parts[:-1]:
+            parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    "drill request negative source invalid directory descriptor")
+            owned.append(parent_fd)
+        parents_before = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in parents_before),
+                "drill request negative source unsafe parent directory")
+        fd = os.open(NEGATIVE_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                     dir_fd=parent_fd)
+        require(type(fd) is int and fd >= 0,
+                "drill request negative source invalid descriptor")
+        owned.append(fd)
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 <= before.st_size <= MAX_JSON_BYTES,
+                "drill request negative source unsafe type or size")
+        chunks: list[bytes] = []
+        remaining = MAX_JSON_BYTES + 1
+        while remaining:
+            part = os.read(fd, remaining)
+            require(type(part) is bytes, "drill request negative source invalid read result")
+            if not part:
+                break
+            chunks.append(part)
+            remaining -= len(part)
+        source = b"".join(chunks)
+        after = os.fstat(fd)
+        leaf = os.stat(NEGATIVE_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) <= MAX_JSON_BYTES and len(source) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "drill request negative source changed during read")
+        for index, parent_before in enumerate(parents_before):
+            pathname = ROOT if index == 0 else ROOT.joinpath(*NEGATIVE_REL.parts[:index])
+            opened = os.fstat(owned[index])
+            lexical = os.lstat(pathname)
+            require(stat.S_ISDIR(lexical.st_mode)
+                    and parent_identity(parent_before)
+                    == parent_identity(opened) == parent_identity(lexical),
+                    "drill request negative source parent changed during read")
+        require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
+        require(identity(NEGATIVE.stat()) == identity(after),
+                "drill request negative source pathname changed during read")
+        return source
+    except (OSError, ValueError, TypeError, OverflowError):
+        raise Fail("drill request negative source unavailable or unsafe (raw output withheld)") from None
+    finally:
+        primary_failure = sys.exc_info()[0] is not None
+        cleanup_failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                cleanup_failed = True
+        if cleanup_failed and not primary_failure:
+            raise Fail("drill request negative source descriptor cleanup failed (raw output withheld)") from None
+
+
+def run_negative() -> None:
+    source = pinned_negative_source()
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
     }
+    bootstrap = (
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+    )
     try:
         completed = subprocess.run(
-            [sys.executable, str(NEGATIVE)],
+            [sys.executable, "-c", bootstrap, str(NEGATIVE)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
