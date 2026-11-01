@@ -580,8 +580,26 @@ def trusted_git_ancestry(module, label: str) -> None:
                     and all(key not in env for key in (
                         "GIT_DIR", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES"
                     )) and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
-                    and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
-                    f"{label} Git executable or environment authority drift")
+                    and env.get("GIT_CONFIG_GLOBAL") == os.devnull
+                    and kwargs.get("timeout") == 20
+                    and env.get("GIT_CONFIG_NOSYSTEM") == "1",
+                    f"{label} Git executable, environment or timeout authority drift")
+    with patch.object(subprocess, "run") as observed:
+        require(not module.source_is_ancestor("invalid-sha"),
+                f"{label} accepted malformed evidence SHA")
+        require(not observed.called, f"{label} launched Git for malformed SHA")
+    for name, error in (
+        ("timeout", subprocess.TimeoutExpired(cmd=["git"], timeout=20)),
+        ("unavailable", OSError("synthetic unavailable Git")),
+    ):
+        with patch.object(subprocess, "run", side_effect=error):
+            require(not module.source_is_ancestor(actual_head),
+                    f"{label} accepted Git {name} failure")
+    with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+        args=[], returncode=True,
+    )):
+        require(not module.source_is_ancestor(actual_head),
+                f"{label} accepted boolean Git success")
 
 
 def main() -> int:
