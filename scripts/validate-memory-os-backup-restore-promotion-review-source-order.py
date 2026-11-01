@@ -154,14 +154,17 @@ def require_creation_blob_immutable(current: bytes, created: bytes, field: str) 
 
 
 def commit_exists(commit_sha: str, field: str) -> None:
-    completed = subprocess.run(
-        [TRUSTED_GIT, "cat-file", "-e", f"{commit_sha}^{{commit}}"],
-        cwd=ROOT, env=trusted_git_env(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    require(completed.returncode == 0, f"{field} sourceCommitSha must resolve to a commit")
+    try:
+        completed = subprocess.run(
+            [TRUSTED_GIT, "cat-file", "-e", f"{commit_sha}^{{commit}}"],
+            cwd=ROOT, env=trusted_git_env(),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail(f"{field} sourceCommitSha must resolve to a commit") from None
+    require(type(completed.returncode) is int and completed.returncode == 0,
+            f"{field} sourceCommitSha must resolve to a commit")
 
 
 def commit_time(commit_sha: str, field: str) -> datetime:
@@ -185,16 +188,18 @@ def review_time(value: Any, field: str) -> datetime:
 
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
-    completed = subprocess.run(
-        [TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant],
-        cwd=ROOT, env=trusted_git_env(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    if completed.returncode == 0:
+    try:
+        completed = subprocess.run(
+            [TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=ROOT, env=trusted_git_env(),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            check=False, timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        raise Fail("cannot compare promotion review/source commit ancestry") from None
+    if type(completed.returncode) is int and completed.returncode == 0:
         return True
-    if completed.returncode == 1:
+    if type(completed.returncode) is int and completed.returncode == 1:
         return False
     raise Fail("cannot compare promotion review/source commit ancestry")
 
@@ -365,7 +370,77 @@ def git_output_transport_self_test() -> None:
         require(len(calls) == 8, "promotion Git history negative call count drift")
 
 
+def commit_ancestry_transport_self_test() -> None:
+    ancestor, descendant = "a" * 40, "b" * 40
+    field = "self-test"
+    marker = "PRIVATE_PROMOTION_COMMIT_DIAGNOSTIC_DO_NOT_LOG"
+    state = {"returncode": 0, "error": None}
+    calls = []
+    def fake_git(args, **kwargs):
+        require(args in (
+            [TRUSTED_GIT, "cat-file", "-e", ancestor + "^{commit}"],
+            [TRUSTED_GIT, "merge-base", "--is-ancestor", ancestor, descendant],
+        ), "promotion commit/ancestry Git command drift")
+        require(kwargs.get("cwd") == ROOT
+                and kwargs.get("stdout") is subprocess.DEVNULL
+                and kwargs.get("stderr") is subprocess.DEVNULL
+                and kwargs.get("check") is False and kwargs.get("timeout") == 20,
+                "promotion commit/ancestry Git privacy/timeout drift")
+        env = kwargs.get("env")
+        require(type(env) is dict and env.get("GIT_NO_REPLACE_OBJECTS") == "1"
+                and env.get("GIT_CONFIG_GLOBAL") == os.devnull,
+                "promotion commit/ancestry Git environment drift")
+        calls.append(args)
+        if state["error"] is not None:
+            raise state["error"]
+        return subprocess.CompletedProcess(
+            args, state["returncode"], stdout=marker, stderr=marker
+        )
+    with patch.object(subprocess, "run", side_effect=fake_git):
+        commit_exists(ancestor, field)
+        require(is_ancestor(ancestor, descendant) is True,
+                "promotion Git ancestor positive control invalid")
+        state["returncode"] = 1
+        require(is_ancestor(ancestor, descendant) is False,
+                "promotion Git non-ancestor positive control invalid")
+        cases = (
+            ("commit-nonzero", {"returncode": 1},
+             f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-bool", {"returncode": True},
+             f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-timeout", {"error": subprocess.TimeoutExpired(
+                [TRUSTED_GIT, "cat-file"], 20, stderr=marker
+            )}, f"{field} sourceCommitSha must resolve to a commit"),
+            ("commit-unavailable", {"error": OSError(marker)},
+             f"{field} sourceCommitSha must resolve to a commit"),
+            ("ancestor-other", {"returncode": 2},
+             "cannot compare promotion review/source commit ancestry"),
+            ("ancestor-bool", {"returncode": True},
+             "cannot compare promotion review/source commit ancestry"),
+            ("ancestor-timeout", {"error": subprocess.TimeoutExpired(
+                [TRUSTED_GIT, "merge-base"], 20, stderr=marker
+            )}, "cannot compare promotion review/source commit ancestry"),
+            ("ancestor-unavailable", {"error": OSError(marker)},
+             "cannot compare promotion review/source commit ancestry"),
+        )
+        for label, changes, expected in cases:
+            state.update({"returncode": 0, "error": None})
+            state.update(changes)
+            try:
+                if label.startswith("commit-"):
+                    commit_exists(ancestor, field)
+                else:
+                    is_ancestor(ancestor, descendant)
+            except Fail as exc:
+                require(str(exc) == expected and marker not in str(exc),
+                        f"promotion Git {label} wrong/private diagnostic")
+            else:
+                raise Fail(f"promotion Git {label} unexpectedly accepted")
+        require(len(calls) == 11, "promotion commit/ancestry negative count drift")
+
+
 def self_test() -> None:
+    commit_ancestry_transport_self_test()
     git_output_transport_self_test()
     git_transport_self_test()
     source = "1" * 40
