@@ -2519,7 +2519,8 @@ def prove_nonblocking_special_file_reads(module) -> None:
                 "special-file read modified an external canary")
         require(fifo.is_fifo(), "special-file negative changed FIFO identity")
         # A pinned read error must not be masked by an ambiguous reader close.
-        for read_close_scenario in ("before-read-close", "after-read-close"):
+        for read_close_scenario in ("before-read-close", "after-read-close",
+                                    "before-read-valueerror", "after-read-valueerror"):
             with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-read-close-") as read_dir:
                 read_root = Path(read_dir)
                 read_target = read_root / "read-authority.txt"
@@ -2548,8 +2549,10 @@ def prove_nonblocking_special_file_reads(module) -> None:
                 def fail_reader_close(fd):
                     if read_fds and fd == read_fds[0] and not close_tripped[0]:
                         close_tripped[0] = True
-                        if read_close_scenario == "after-read-close":
+                        if read_close_scenario.startswith("after-read"):
                             original_close(fd)
+                        if read_close_scenario.endswith("valueerror"):
+                            raise ValueError("synthetic pinned reader close ValueError")
                         raise OSError("synthetic pinned reader close failure")
                     return original_close(fd)
 
@@ -2565,6 +2568,9 @@ def prove_nonblocking_special_file_reads(module) -> None:
                         require(any("pinned reader descriptor close status unknown" in note
                                     for note in getattr(exc, "__notes__", [])),
                                 "reader close lacked bounded uncertainty diagnostic")
+                        if read_close_scenario.endswith("valueerror"):
+                            require(any("ValueError" in note for note in getattr(exc, "__notes__", [])),
+                                    "non-OSError reader cleanup lost fault type diagnostic")
                     else:
                         raise Fail("reader close unexpectedly returned bytes")
                 finally:
@@ -2573,7 +2579,7 @@ def prove_nonblocking_special_file_reads(module) -> None:
                     module.os.close = original_close
                 require(read_tripped[0] and close_tripped[0] and len(read_fds) == 1,
                         "reader close fault did not reach pinned descriptor")
-                if read_close_scenario == "before-read-close":
+                if read_close_scenario.startswith("before-read"):
                     os.fstat(read_fds[0])
                     original_close(read_fds[0])
                 else:
