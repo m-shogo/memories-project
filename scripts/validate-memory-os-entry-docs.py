@@ -2955,8 +2955,7 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
                 "malformed supplemental commit enumeration",
                 "malformed supplemental parent enumeration",
                 "malformed supplemental parent inventory"}
-            and len(type_checks) == 4 and any(
-                isinstance(n, ast.If) and ast.unparse(n.test) == "type(result.returncode) is not int or result.returncode < 0" and len(n.body) == 1 and ast.unparse(n.body[0]) == "raise GuardFailure(\'invalid supplemental Git exit status\')" for n in functions[0].body[:-2]))
+            and len(type_checks) == 4 and any(isinstance(n, ast.If) and ast.unparse(n.test) == "type(result.returncode) is not int or result.returncode < 0" and len(n.body) == 1 and ast.unparse(n.body[0]) == "raise GuardFailure(\'invalid supplemental Git exit status\')" for n in functions[0].body[:-2]))
 
 def supplemental_history_enumeration_bound(source: str) -> bool:
     """Independently bind complete-range count and terminal HEAD proof."""
