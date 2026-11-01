@@ -3207,6 +3207,31 @@ def require_reviewed_upload_route_package_init(package_tests: dict[str, str]) ->
     )
     if "sustained_local_soak_test.go" not in package_tests:
         raise RuntimeError(failure)
+    # Package-level variable initializers execute before the Go test runner
+    # even when no func init() is declared. A reviewed SIGKILL child helper is
+    # the only direct-package exit reference; additional exits are fail-closed.
+    exit_reference = re.compile(
+        r"\b(?:os|log)\s*(?:/\*.*?\*/\s*)?\.\s*"
+        r"(?:/\*.*?\*/\s*)?(?:Exit|Fatal|Fatalf|Fatalln)\b",
+        flags=re.DOTALL,
+    )
+    reviewed_exit = "deletion_worker_sigkill_recovery_linux_test.go"
+    reviewed_helper = (
+        r"(?m)^func sigkillHelperAbort\(stage string\) \{\n"
+        r'\t_, _ = fmt\.Fprintf\(os\.Stderr, "SIGKILL_HELPER_FAILURE:%s\\n", stage\)\n'
+        r"\tos\.Exit\(70\)\n\}"
+    )
+    if reviewed_exit not in package_tests:
+        raise RuntimeError(failure)
+    for name, source in package_tests.items():
+        if type(source) is not str:
+            raise RuntimeError(failure)
+        references = list(exit_reference.finditer(source))
+        if name == reviewed_exit:
+            if len(references) != 1 or not re.search(reviewed_helper, source):
+                raise RuntimeError(failure)
+        elif references:
+            raise RuntimeError(failure)
     for name, source in package_tests.items():
         if type(source) is not str:
             raise RuntimeError(failure)
@@ -3378,7 +3403,20 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
              'func /* split */ init() { os.Exit(0) }\n'),
             ("new production init exit", "shadow.go",
              'package httpserver\nimport "os"\n'
-             'func init() { os.Exit(0) }\n')):
+             'func init() { os.Exit(0) }\n'),
+            ("new production variable initializer exit", "shadow.go",
+             'package httpserver\nimport "os"\n'
+             'var _ = func() int { os.Exit(0); return 0 }()\n'),
+            ("comment-split variable initializer exit", "shadow.go",
+             'package httpserver\nimport "os"\n'
+             'var _ = func() int { os /* gap */ . Exit(0); return 0 }()\n'),
+            ("aliased variable initializer exit", "shadow.go",
+             'package httpserver\nimport "os"\n'
+             'var terminate = os.Exit\n'
+             'var _ = func() int { terminate(0); return 0 }()\n'),
+            ("new test variable initializer exit", "shadow_test.go",
+             'package httpserver\nimport "os"\n'
+             'var _ = func() int { os.Exit(0); return 0 }()\n')):
         if name in package_sources:
             raise RuntimeError("focused Go init fixture name collision")
         changed_tests = dict(package_sources)
@@ -3390,6 +3428,20 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
                 raise
         else:
             raise RuntimeError("focused Go package init negative accepted: " + label)
+    helper = "deletion_worker_sigkill_recovery_linux_test.go"
+    if package_sources[helper].count("os.Exit(70)") != 1:
+        raise RuntimeError("focused Go reviewed exit fixture anchor drift")
+    changed_tests = dict(package_sources)
+    changed_tests[helper] = package_sources[helper].replace(
+        "os.Exit(70)", "os.Exit(0)", 1
+    )
+    try:
+        require_reviewed_upload_route_package_init(changed_tests)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route package init bypass":
+            raise
+    else:
+        raise RuntimeError("focused Go reviewed helper exit negative accepted")
     soak = "sustained_local_soak_test.go"
     reviewed_tail = "\t_ = sort.Ints\n}"
     if package_sources[soak].count(reviewed_tail) != 1:
