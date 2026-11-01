@@ -785,31 +785,22 @@ def prove_negative_subprocess_redaction(validator) -> None:
 
 
 def prove_private_helper_import(validator) -> None:
-    """No Python-level private import output or raw exception may escape."""
+    """Only reviewed pinned helper bytes may execute, with private diagnostics."""
     module = validator.load_module(validator.WRITER, "memory_os_drill_request_import_positive")
     require(callable(getattr(module, "require_cli_authorities", None)),
             "drill request canonical writer positive import failed")
 
-    original_spec = validator.importlib.util.spec_from_file_location
-    original_module = validator.importlib.util.module_from_spec
+    original_source = validator.pinned_reviewed_source
     marker = "synthetic-secret-drill-request-import"
-
-    class LoudLoader:
-        def __init__(self, should_fail):
-            self.should_fail = should_fail
-
-        def exec_module(self, module):
-            print(marker)
-            print(marker, file=sys.stderr)
-            module.positive = True
-            if self.should_fail:
-                raise OSError(marker)
-
     try:
         for should_fail in (False, True):
-            spec = types.SimpleNamespace(loader=LoudLoader(should_fail))
-            validator.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: spec
-            validator.importlib.util.module_from_spec = lambda _spec: types.SimpleNamespace()
+            source = (
+                f"print({marker!r})\n"
+                f"import sys\nprint({marker!r}, file=sys.stderr)\n"
+                "positive = True\n"
+                + (f"raise OSError({marker!r})\n" if should_fail else "")
+            ).encode("utf-8")
+            validator.pinned_reviewed_source = lambda *_args, _source=source, **_kwargs: _source
             output, errors = io.StringIO(), io.StringIO()
             with redirect_stdout(output), redirect_stderr(errors):
                 if should_fail:
@@ -827,9 +818,36 @@ def prove_private_helper_import(validator) -> None:
             require(marker not in output.getvalue() + errors.getvalue(),
                     "drill request import disclosed private stdout/stderr")
     finally:
-        validator.importlib.util.spec_from_file_location = original_spec
-        validator.importlib.util.module_from_spec = original_module
-    print("PASS: drill request canonical helper import suppresses Python output and private exceptions")
+        validator.pinned_reviewed_source = original_source
+
+    try:
+        validator.load_module(validator.CONTRACT, "unreviewed_drill_request_helper")
+    except validator.Fail as exc:
+        require(str(exc) == "unreviewed drill request canonical helper",
+                "drill request unreviewed helper rejected at wrong boundary")
+    else:
+        raise Fail("drill request unreviewed helper accepted")
+
+    with tempfile.TemporaryDirectory(prefix="drill-request-helper-source-") as tmp:
+        injected = Path(tmp) / "substituted.py"
+        injected.write_text("raise RuntimeError('synthetic substituted helper')\n",
+                            encoding="utf-8")
+        real_open = validator.os.open
+
+        def swapped_leaf_open(path, flags, *args, **kwargs):
+            if path == validator.WRITER.name and "dir_fd" in kwargs:
+                return real_open(injected, validator.os.O_RDONLY)
+            return real_open(path, flags, *args, **kwargs)
+
+        with patch.object(validator.os, "open", side_effect=swapped_leaf_open):
+            try:
+                validator.load_module(validator.WRITER, "swapped_drill_request_helper")
+            except validator.Fail as exc:
+                require(str(exc) == "drill request canonical helper import failed",
+                        "drill request substituted helper failure class drift")
+            else:
+                raise Fail("drill request substituted helper FD accepted")
+    print("PASS: drill request canonical helper import uses pinned source, closed targets and private diagnostics")
 
 
 def prove_drill_request_json_reader(validator) -> None:

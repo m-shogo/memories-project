@@ -194,23 +194,26 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 def load_module(path: Path, name: str):
-    repo_relative(path)
+    reviewed = {WRITER: WRITER_REL, ELIGIBILITY_HELPER: ELIGIBILITY_HELPER_REL}
+    require(path in reviewed, "unreviewed drill request canonical helper")
     try:
+        source = pinned_reviewed_source(path, reviewed[path])
         with open(os.devnull, "w", encoding="utf-8") as private_sink:
             with redirect_stdout(private_sink), redirect_stderr(private_sink):
                 spec = importlib.util.spec_from_file_location(name, path)
                 require(spec is not None and spec.loader is not None,
                         "drill request canonical helper import failed")
                 module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                # Never re-open a mutable source pathname after pinning.
+                exec(compile(source, str(path), "exec"), module.__dict__)
     except Exception:
         raise Fail("drill request canonical helper import failed") from None
     return module
 
 
-def pinned_negative_source() -> bytes:
-    """Acquire reviewed negative-suite source from pinned no-follow descriptors."""
-    require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
+def pinned_reviewed_source(path: Path, relative: Path) -> bytes:
+    """Acquire reviewed Python source from pinned no-follow descriptors."""
+    require_exact_repo_file(path, relative, "drill request negative validator")
     owned: list[int] = []
     try:
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -218,7 +221,7 @@ def pinned_negative_source() -> bytes:
         require(type(parent_fd) is int and parent_fd >= 0,
                 "drill request negative source invalid directory descriptor")
         owned.append(parent_fd)
-        for component in NEGATIVE_REL.parts[:-1]:
+        for component in relative.parts[:-1]:
             parent_fd = os.open(component, directory_flags, dir_fd=parent_fd)
             require(type(parent_fd) is int and parent_fd >= 0,
                     "drill request negative source invalid directory descriptor")
@@ -230,7 +233,7 @@ def pinned_negative_source() -> bytes:
         require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
                     for item in parents_before),
                 "drill request negative source unsafe parent directory")
-        fd = os.open(NEGATIVE_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+        fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                      dir_fd=parent_fd)
         require(type(fd) is int and fd >= 0,
                 "drill request negative source invalid descriptor")
@@ -251,7 +254,7 @@ def pinned_negative_source() -> bytes:
             remaining -= len(part)
         source = b"".join(chunks)
         after = os.fstat(fd)
-        leaf = os.stat(NEGATIVE_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        leaf = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (
             item.st_dev, item.st_ino, item.st_mode, item.st_size,
             item.st_mtime_ns, item.st_ctime_ns
@@ -260,15 +263,15 @@ def pinned_negative_source() -> bytes:
                 and identity(before) == identity(after) == identity(leaf),
                 "drill request negative source changed during read")
         for index, parent_before in enumerate(parents_before):
-            pathname = ROOT if index == 0 else ROOT.joinpath(*NEGATIVE_REL.parts[:index])
+            pathname = ROOT if index == 0 else ROOT.joinpath(*relative.parts[:index])
             opened = os.fstat(owned[index])
             lexical = os.lstat(pathname)
             require(stat.S_ISDIR(lexical.st_mode)
                     and parent_identity(parent_before)
                     == parent_identity(opened) == parent_identity(lexical),
                     "drill request negative source parent changed during read")
-        require_exact_repo_file(NEGATIVE, NEGATIVE_REL, "drill request negative validator")
-        require(identity(NEGATIVE.stat()) == identity(after),
+        require_exact_repo_file(path, relative, "drill request negative validator")
+        require(identity(path.stat()) == identity(after),
                 "drill request negative source pathname changed during read")
         return source
     except (OSError, ValueError, TypeError, OverflowError):
@@ -283,6 +286,10 @@ def pinned_negative_source() -> bytes:
                 cleanup_failed = True
         if cleanup_failed and not primary_failure:
             raise Fail("drill request negative source descriptor cleanup failed (raw output withheld)") from None
+
+
+def pinned_negative_source() -> bytes:
+    return pinned_reviewed_source(NEGATIVE, NEGATIVE_REL)
 
 
 def run_negative() -> None:
