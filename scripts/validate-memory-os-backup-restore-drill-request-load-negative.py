@@ -970,7 +970,7 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         try:
             reconciler.os.open = track_open
             reconciler.os.close = fail_after_close
-            candidate.write_bytes(b"{\\xff}")
+            candidate.write_bytes(bytes((123, 255, 125)))
             rejected(candidate, "drill request reconcile authority read invalid or unavailable",
                      "primary UTF-8 rejection survives secondary close fault")
             candidate.write_bytes(positive)
