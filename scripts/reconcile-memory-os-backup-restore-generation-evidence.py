@@ -196,15 +196,27 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 
 def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
     require_exact_repo_file(path, expected_relative, label)
-    completed = subprocess.run(
-        [sys.executable, str(path)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(path)],
+            cwd=ROOT,
+            env=child_env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=90,
+        )
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
+        raise Fail(f"{label} unavailable or timed out (raw output withheld)") from None
+    require(
+        isinstance(completed, subprocess.CompletedProcess)
+        and type(completed.returncode) is int and completed.returncode == 0,
+        f"{label} failed (raw output withheld)",
     )
-    require(completed.returncode == 0, f"{label} failed:\n{completed.stdout[-7000:]}{completed.stderr[-7000:]}")
 
 
 def main() -> int:

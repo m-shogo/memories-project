@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import subprocess
 import secrets
 import shutil
 import stat
@@ -14,6 +15,7 @@ import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
@@ -383,6 +385,90 @@ def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     print("PASS rollback: generation-evidence restore failure still attempts all four authorities")
 
 
+def prove_post_validator_transport(reconciler) -> None:
+    """Three canonical child validators must run bounded, isolated and without raw diagnostics."""
+    original_run = reconciler.subprocess.run
+    marker = "synthetic-private-generation-post-validator-output"
+    seen: list[int | bool | None] = []
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_GENERATION_POST_VALIDATOR_ENV": "preserved",
+    }
+    targets = (
+        (reconciler.BINDING_VALIDATOR, reconciler.BINDING_VALIDATOR_REL, "generation binding validator"),
+        (reconciler.VALIDATOR, reconciler.VALIDATOR_REL, "generation evidence validator"),
+        (reconciler.OPERABILITY_VALIDATOR, reconciler.OPERABILITY_VALIDATOR_REL, "operability validator"),
+    )
+
+    def fake_run(exit_code):
+        def run(argv, **kwargs):
+            require(argv[0] == reconciler.sys.executable
+                    and argv[1] in [str(path) for path, _, _ in targets],
+                    "generation post-validator child target drift")
+            require(kwargs.get("cwd") == reconciler.ROOT,
+                    "generation post-validator cwd drift")
+            require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
+                    and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
+                    "generation post-validator raw diagnostics captured")
+            require(kwargs.get("timeout") == 90 and kwargs.get("check") is False,
+                    "generation post-validator runtime budget drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "generation post-validator child environment missing")
+            require(child_env.get("SAFE_GENERATION_POST_VALIDATOR_ENV") == "preserved",
+                    "generation post-validator benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "generation post-validator inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in reconciler.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "generation post-validator child environment authority drift")
+            seen.append(exit_code)
+            return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
+        return run
+
+    env_patch = patch.dict(reconciler.os.environ, poisoned)
+    env_patch.start()
+    try:
+        for path, relative, label in targets:
+            reconciler.subprocess.run = fake_run(0)
+            reconciler.run_post_validator(path, relative, label)
+            for code in (1, False, None):
+                reconciler.subprocess.run = fake_run(code)
+                try:
+                    reconciler.run_post_validator(path, relative, label)
+                except reconciler.Fail as exc:
+                    require(str(exc) == f"{label} failed (raw output withheld)",
+                            "generation post-validator failure class drift")
+                    require(marker not in str(exc), "generation post-validator leaked private output")
+                else:
+                    raise Fail("generation post-validator invalid return accepted")
+            for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                            subprocess.TimeoutExpired(["synthetic"], 90, output=marker, stderr=marker)):
+                def raise_failure(*_args, **_kwargs):
+                    raise failure
+                reconciler.subprocess.run = raise_failure
+                try:
+                    reconciler.run_post_validator(path, relative, label)
+                except reconciler.Fail as exc:
+                    require(str(exc) == f"{label} unavailable or timed out (raw output withheld)",
+                            "generation post-validator unavailable class drift")
+                    require(marker not in str(exc), "generation post-validator leaked exception details")
+                else:
+                    raise Fail("generation post-validator unavailable/timeout accepted")
+    finally:
+        reconciler.subprocess.run = original_run
+        env_patch.stop()
+    require(seen == [0, 1, False, None] * 3,
+            "generation post-validator positive and negative controls incomplete")
+    print("PASS: generation evidence post-validators use isolated bounded private transport")
+
+
 def main() -> int:
     require(RECONCILER.is_file(), "generation evidence reconciler missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
@@ -406,6 +492,7 @@ def main() -> int:
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     reconciler = load_reconciler()
+    prove_post_validator_transport(reconciler)
 
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)
