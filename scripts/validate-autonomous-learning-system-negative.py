@@ -3196,6 +3196,27 @@ def require_no_upload_route_testmain(package_tests: dict[str, str]) -> None:
         raise RuntimeError(failure)
 
 
+def require_reviewed_upload_route_package_init(package_tests: dict[str, str]) -> None:
+    """Allow only the reviewed, non-exiting legacy soak initializer."""
+    import re
+    failure = "unreviewed Upload Route package init bypass"
+    # Go runs package initializers before its test runner. A new init that
+    # calls os.Exit(0) can report a green go test without running any tests.
+    reviewed = re.compile(
+        r"(?m)^func init\(\) \{\n(?:\t//[^\n]*\n)*\t_ = sort\.Ints\n\}\s*\Z"
+    )
+    if "sustained_local_soak_test.go" not in package_tests:
+        raise RuntimeError(failure)
+    for name, source in package_tests.items():
+        if type(source) is not str:
+            raise RuntimeError(failure)
+        if name == "sustained_local_soak_test.go":
+            if len(re.findall(r"\binit\b", source)) != 1 or not reviewed.search(source):
+                raise RuntimeError(failure)
+        elif re.search(r"\binit\b", source):
+            raise RuntimeError(failure)
+
+
 def require_reviewed_upload_route_focused_go_tests(sources: dict[str, str]) -> None:
     import re
     failure = "unreviewed Upload Route focused Go test target"
@@ -3311,6 +3332,7 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
     if not {"route_authority_test.go", "server_live_test.go"} <= set(package_tests):
         raise RuntimeError("unreviewed Upload Route package TestMain bypass")
     require_no_upload_route_testmain(package_tests)
+    require_reviewed_upload_route_package_init(package_tests)
     for label, name, declaration in (
             ("existing test file", "route_authority_test.go",
              "func TestMain(m *testing.M) {}"),
@@ -3337,6 +3359,39 @@ def prove_upload_route_focused_go_test_negatives(source_root: Path) -> None:
                 raise
         else:
             raise RuntimeError("focused Go package TestMain negative accepted: " + label)
+    # Package-level init executes before the Go test runner. Preserve the
+    # sole reviewed soak initializer, but reject new or modified initializers.
+    for label, source in (
+            ("new init exit", 'package httpserver\nimport "os"\n'
+             'func init() { os.Exit(0) }\n'),
+            ("comment-split init exit", 'package httpserver\nimport "os"\n'
+             'func /* split */ init() { os.Exit(0) }\n')):
+        if "shadow_test.go" in package_tests:
+            raise RuntimeError("focused Go init fixture name collision")
+        changed_tests = dict(package_tests)
+        changed_tests["shadow_test.go"] = source
+        try:
+            require_reviewed_upload_route_package_init(changed_tests)
+        except RuntimeError as exc:
+            if str(exc) != "unreviewed Upload Route package init bypass":
+                raise
+        else:
+            raise RuntimeError("focused Go package init negative accepted: " + label)
+    soak = "sustained_local_soak_test.go"
+    reviewed_tail = "\t_ = sort.Ints\n}"
+    if package_tests[soak].count(reviewed_tail) != 1:
+        raise RuntimeError("focused Go reviewed init fixture anchor drift")
+    changed_tests = dict(package_tests)
+    changed_tests[soak] = package_tests[soak].replace(
+        reviewed_tail, "\tos.Exit(0)\n" + reviewed_tail, 1
+    )
+    try:
+        require_reviewed_upload_route_package_init(changed_tests)
+    except RuntimeError as exc:
+        if str(exc) != "unreviewed Upload Route package init bypass":
+            raise
+    else:
+        raise RuntimeError("focused Go reviewed init exit negative accepted")
     route, live = tuple(REVIEWED_UPLOAD_ROUTE_FOCUSED_GO_TESTS)
     def reject(label: str, path: str, old: str, new: str) -> None:
         if files[path].count(old) != 1:
