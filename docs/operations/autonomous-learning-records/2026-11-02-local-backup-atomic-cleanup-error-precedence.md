@@ -1,0 +1,25 @@
+# Supplemental OPS learning — local backup atomic cleanup error precedence (2026-11-02)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This is **not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, objective, reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate or promotion evidence.
+
+## Material failure — secondary temporary unlink error could mask primary authority write failure
+
+- **symptom:** Both legacy local backup authority atomic writers could replace the original write failure with a secondary `Path.unlink()` OSError during temporary cleanup.
+- **evidence:** At `10975552`, `atomic_write_bytes` wrapped OSError from the write/replace phase into a fixed authority failure but called `temp_path.unlink()` unguarded in `finally`. A synthetic initial `os.replace` failure followed by an unlink failure would override the primary error. No actual production-status corruption or failed cleanup in CI was observed.
+- **rootCauseOrUnknown:** Verified Python exception precedence in an unguarded finally cleanup; the secondary OSError overrides the primary ReconcileFailure/Fail. Actual occurrence outside the synthetic negative is unknown.
+- **failedApproach:** Assuming that an unguarded finally cleanup preserves the original write/rollback diagnostic even when cleanup itself fails.
+- **correction:** [`ded3c917`](https://github.com/m-shogo/memories-project/commit/ded3c9171f8c914dce850e724af8734a9d5e7996) preserves an active primary write exception when temporary unlink also fails; a standalone cleanup failure without a primary exception remains a fixed-class failure. An orphan temporary file remains detectable by existing clean-source/rollback checks rather than being treated as successful publication.
+- **recurrenceGuard:** The existing CI-reached backup authority atomic negative suite now forces an `os.replace` OSError and a secondary temporary `Path.unlink` OSError for both the backup normalizer and coherent reconciler, verifies the original fixed-class write failure, checks production-status bytes unchanged, and removes only newly created synthetic temporary files in a finally block.
+- **retryCondition:** Revisit only on reviewed atomic-writer cleanup/rollback changes or exact-source negative CI regression. Do not retry unchanged MinIO HTTP 401, workflow write permissions or missing human production evidence.
+
+## Material success — primary atomic-write failure remains authoritative
+
+- **outcome:** Secondary cleanup failures can no longer mask the original local backup authority atomic-write failure; synthetic negative checks verify both legacy writers leave the protected status unchanged.
+- **evidence:** Exact-source [Reconcile Backup Authority #41326223115](https://github.com/m-shogo/memories-project/actions/runs/41326223115) completed **SUCCESS** at `ded3c917`, including the existing atomic negative suite and subsequent local backup/coherent reconciliation. Git compare `10975552..ded3c917` changes only the two legacy local reconcilers and their existing negative suite.
+- **whySafe:** This is failure-path hardening and synthetic negative testing only. No production status, OPS-P0-007 snapshot, generation/objective/request/evidence/typed/promotion registry, reviewed workflow, credentials or traffic was modified.
+- **reusableMechanism:** Preserve active primary exceptions across cleanup with `sys.exc_info()`, fail closed on standalone cleanup errors, and test double-fault precedence using a scoped temporary-file canary and byte-exact protected-authority comparison.
+- **protectedAuthorityCheck:** Ten protected Git blob SHAs remained unchanged: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, generation registry `bfd1b045`, recovery objective registry `f4d74f33`, drill request registry `acebcd02`, generation evidence registry `ae7e57ef`, typed eight-domain registry `26bb1cc7`, promotion registry `99cb895f`. `productionDecision=NO_GO` remains authoritative; the OPS-P0-007 admission snapshot remains `PREREQUISITES_BLOCKED` with registered/semantically eligible generations 0/0, approved objectives 0, executable reviewed requests 0, request-bound recovery evidence 0, complete typed eight-domain coverage 0 and final candidates 0. Preflight requires distinct unsuperseded semantically eligible environments plus a human-approved current objective, reviewed requests alone are planning authority, complete typed eight-domain coverage and independent review remain mandatory, and human promotion is separate and nonautomatic.
+
+## Next safe target
+
+Audit additional local atomic-writer cleanup and rollback exception precedence in read-only negative harnesses, and inspect source-bound MinIO-independent Go test options without changing protected production authority.
