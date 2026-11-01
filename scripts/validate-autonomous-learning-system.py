@@ -118,6 +118,8 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
                     (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
                     or live.st_ctime_ns != before.st_ctime_ns):
                 raise ValidationFailure(diagnostic)
+            if len(raw) != before.st_size:
+                raise ValidationFailure(f"unreadable authority: {path}")
             return raw
     except (OSError, ValueError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
