@@ -366,7 +366,6 @@ def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | Non
         result[name] = tuple(paths)
     return result
 
-
 def source_negative_reachability_issues(relative: str, source: str, script_exists) -> list[str]:
     """Check that each independent CI path actually invokes its bound scripts."""
     issues: list[str] = []
@@ -3112,7 +3111,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         ('expected_count != len(commits)', 'expected_count == len(commits)'),
         ('len(set(commits)) != len(commits)', 'len(set(commits)) == len(commits)'),
         ('set(independent) != set(commits)', 'set(independent) == set(commits)'),
-        ('"rev-list", "--topo-order"', '"rev-list", "--reverse"'),
+        ('git(root, "rev-list", "--topo-order", f"{baseline}..{head}")',
+         'git(root, "rev-list", "--reverse", f"{baseline}..{head}")'),
         ('commits[-1] != head', 'commits[-1] == head'),
         (r'rb"(?:0|[1-9][0-9]{0,18})\n"',
          r'rb"[0-9]+\n"'),
