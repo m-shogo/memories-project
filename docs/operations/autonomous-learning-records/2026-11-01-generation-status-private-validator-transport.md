@@ -1,0 +1,25 @@
+# Supplemental OPS learning — generation-status validator private transport (2026-11-01)
+
+Append-only learning subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. **Not** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment-generation, recovery-objective, executable reviewed-request, request-bound recovery, typed eight-domain non-resurrection, independent-review, final-candidate or human-promotion evidence.
+
+## Material failure — unbounded inherited child validation in generation-status reconciliation
+
+- **symptom:** Three generation-status validator launches inherited Python/loader/Git overrides, could run indefinitely and forwarded child stdout/stderr to the parent CI stream.
+- **evidence:** Initial source at `ef089bc0` used `subprocess.run([sys.executable, str(ROOT / relative)], cwd=ROOT, check=False)` in `scripts/reconcile-memory-os-backup-restore-generation-status.py`. Prior [child environment learning](2026-11-01-child-validator-environment-isolation.md) contains an isolated synthetic `PYTHONPATH` early-success bypass. This was a verified source-level trust boundary gap, **not** evidence of actual CI or production compromise.
+- **rootCauseOrUnknown:** Verified implicit environment inheritance, missing timeout and inherited child output streams; external adversary control and actual disclosure are unknown.
+- **failedApproach:** Relying on a canonical file path and integer-looking exit code without explicit environment, output, time and return-type constraints.
+- **correction:** [`d466a2b1`](https://github.com/m-shogo/memories-project/commit/d466a2b166e931f546eca1eb61d7c5a5a43c0dec) filters `PYTHON*`, `LD_*`, `DYLD_*`, `GIT_*`, bounds execution to 120 seconds, suppresses raw streams and requires a real `CompletedProcess` with exact integer-zero exit. OSError, ValueError, TypeError and timeout are class-only failures.
+- **recurrenceGuard:** The existing CI-reachable `scripts/validate-memory-os-backup-restore-generation-status-authority-negative.py` now exercises all three canonical validator targets under six synthetic poisoned environment variables and a preserved benign canary, rejects `1`, `False`, `None`, and rejects four transport exceptions without exposing a private marker. Code and negative test were atomically committed under an expected-HEAD lease.
+- **retryCondition:** Revisit on changed reviewed child execution topology, environment boundary, timeout policy or exact-source CI. Do not retry unchanged Quay MinIO HTTP 401, workflow permission or human evidence blockers.
+
+## Material success — generation-status child execution guarded
+
+- **outcome:** The pre-write generation-binding validator and two post-write backup/operability validators now share bounded, isolated and private child execution. Existing canonical blocker, rollback and production decision logic remain unchanged.
+- **evidence:** Exact-source [Backup Restore Generation Binding Readonly #41317951369](https://github.com/m-shogo/memories-project/actions/runs/41317951369) completed **SUCCESS** on `d466a2b1`. Its CI-reachable read-only workflow invokes the generation-status authority-negative script through the existing workflow-readonly validator. Other long-running workflows are not claimed successful here.
+- **whySafe:** Git compare showed exactly the generation-status Python reconciler and its CI-reachable authority-negative test changed. No production status, generation/objective/request/evidence/typed/promotion registry, workflow, credential or traffic was written. Synthetic fixtures are not real recovery evidence.
+- **reusableMechanism:** Use explicit child `env`, DEVNULL output, bounded timeout, exact typed subprocess return and poisoned/benign environment controls on every pre/post-validator boundary; keep the change paired with executable CI negatives.
+- **protectedAuthorityCheck:** Ten protected blob SHAs remain unchanged across the code change and subsequent inspected `so` tree: canonical learning `b809c69d`, learning contract `87712ea9`, production status `b55ee4ad`, OPS-P0-007 snapshot `dbaa36b0`, environment generation registry `bfd1b045`, recovery objective registry `f4d74f33`, reviewed drill request registry `acebcd02`, generation evidence registry `ae7e57ef`, typed eight-domain registry `26bb1cc7`, human promotion registry `99cb895f`. `productionDecision=NO_GO`. Registered and semantically eligible generations remain separate; preflight still requires unsuperseded eligible distinct environments and explicit current human-approved objective. Reviewed requests are planning-only until executable, recovery evidence remains request-bound, complete typed eight-domain coverage and independent review remain required, and human promotion is separate/nonautomatic.
+
+## Next safe target
+
+Inspect promotion-review post-validator environment isolation and exact-source negative CI. Keep all learning outside production evidence and readiness.
