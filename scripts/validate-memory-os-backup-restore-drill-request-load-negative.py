@@ -859,11 +859,49 @@ def prove_drill_request_json_reader(validator) -> None:
             rejected(path, "drill request JSON unreadable or invalid", "raced-open descriptor")
         finally:
             validator.os.open = original_open
+        # A secondary close fault cannot mask a primary JSON rejection.
+        # The same fault must fail closed when parsing itself succeeded.
+        original_open = validator.os.open
+        original_close = validator.os.close
+        owned = []
+        marker = "synthetic-secret-drill-request-close"
+        def track_open(candidate, flags, *args, **kwargs):
+            descriptor = original_open(candidate, flags, *args, **kwargs)
+            if Path(candidate) == path:
+                owned.append(descriptor)
+            return descriptor
+        def fail_after_close(descriptor):
+            original_close(descriptor)
+            if descriptor in owned:
+                raise OSError(errno.EIO, marker)
+        try:
+            validator.os.open = track_open
+            validator.os.close = fail_after_close
+            path.write_bytes(b'{"safe":true,"safe":false}')
+            rejected(path, "drill request JSON duplicate key refused",
+                     "primary duplicate rejection survives secondary close fault")
+            path.write_bytes(positive)
+            rejected(path, "drill request JSON descriptor cleanup failed",
+                     "standalone descriptor cleanup fault")
+        finally:
+            validator.os.open = original_open
+            validator.os.close = original_close
+        require(len(owned) == 2, "drill request JSON close fault controls not exercised")
+        for descriptor in owned:
+            try:
+                os.fstat(descriptor)
+            except OSError as exc:
+                require(exc.errno == errno.EBADF,
+                        "drill request JSON close fault unexpected descriptor error")
+            else:
+                raise Fail("drill request JSON close fault leaked descriptor")
+        require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
+                "drill request JSON post-close-fault positive control failed")
         require(validator.load(path) == {"safe": True, "nested": {"count": 1}},
                 "drill request JSON post-race positive control failed")
         require(path.read_bytes() == positive, "drill request JSON modified positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "drill request JSON mutated protected authorities")
-    print("PASS: actual drill request JSON reader positive and 16 fail-closed negatives")
+    print("PASS: actual drill request JSON reader positive and 18 fail-closed negatives")
 
 
 def prove_reconciler_bounded_reader(reconciler) -> None:

@@ -165,11 +165,15 @@ def load(path: Path) -> dict[str, Any]:
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, OverflowError, RecursionError):
         raise Fail("drill request JSON unreadable or invalid") from None
     finally:
+        # A failed close must not replace an already active parsing or read
+        # rejection. A standalone close failure still fails closed.
+        primary_failure = sys.exc_info()[0] is not None
         if fd is not None:
             try:
                 os.close(fd)
             except OSError:
-                raise Fail("drill request JSON descriptor cleanup failed") from None
+                if not primary_failure:
+                    raise Fail("drill request JSON descriptor cleanup failed") from None
     require(isinstance(value, dict), "drill request JSON root must be object")
     return value
 
