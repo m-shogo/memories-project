@@ -32,7 +32,7 @@ def load_module():
 
 
 def prove_atomic_replace_failure(module) -> None:
-    for replace_scenario in ("before-effect", "after-effect"):
+    for replace_scenario in ("before-effect", "after-effect", "after-effect-probe-failure"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-atomic-") as temp_dir:
             target = Path(temp_dir) / "authority.txt"
             original = b"exact-original-bytes\n"
@@ -40,6 +40,8 @@ def prove_atomic_replace_failure(module) -> None:
             canary = Path(temp_dir) / "external-replace-canary.txt"
             canary.write_bytes(b"independent-replace-canary")
             original_replace = module.os.replace
+            original_stat = module.os.stat
+            replace_fault_seen = [False]
             pattern = f".{target.name}.*.tmp"
             before = {item.name for item in target.parent.glob(pattern)}
 
@@ -47,12 +49,21 @@ def prove_atomic_replace_failure(module) -> None:
                 if Path(destination) == target or (
                     destination == target.name and kwargs.get("dst_dir_fd") is not None
                 ):
-                    if replace_scenario == "after-effect":
+                    if replace_scenario != "before-effect":
                         original_replace(source, destination, *args, **kwargs)
+                        replace_fault_seen[0] = True
                     raise OSError("synthetic atomic replace rejection")
                 original_replace(source, destination, *args, **kwargs)
 
+            def reject_probe_stat(candidate, *args, **kwargs):
+                if (replace_scenario == "after-effect-probe-failure"
+                        and replace_fault_seen[0] and candidate == target.name
+                        and kwargs.get("dir_fd") is not None):
+                    raise OSError("synthetic post-replace stat rejection")
+                return original_stat(candidate, *args, **kwargs)
+
             module.os.replace = reject_replace
+            module.os.stat = reject_probe_stat
             try:
                 try:
                     module.atomic_write_bytes(target, b"partial-mutation\n")
@@ -63,6 +74,10 @@ def prove_atomic_replace_failure(module) -> None:
                         require(any("atomic replace outcome unknown; staged inode visible after error" in note
                                     for note in getattr(exc, "__notes__", [])),
                                 "post-effect replace lacked explicit uncertain publication diagnostic")
+                    elif replace_scenario == "after-effect-probe-failure":
+                        require(any("atomic replace outcome unknown; post-error probe unavailable (OSError)" in note
+                                    for note in getattr(exc, "__notes__", [])),
+                                "post-effect replace probe failure masked primary error or lacked uncertainty diagnostic")
                 else:
                     raise Fail("upload-route atomic writer accepted replacement failure")
                 expected = original if replace_scenario == "before-effect" else b"partial-mutation\n"
@@ -74,6 +89,7 @@ def prove_atomic_replace_failure(module) -> None:
                 require(after == before,
                         f"upload-route atomic writer left temporary residue: {sorted(after - before)}")
             finally:
+                module.os.stat = original_stat
                 module.os.replace = original_replace
 
 
