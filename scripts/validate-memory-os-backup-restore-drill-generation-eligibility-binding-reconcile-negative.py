@@ -855,9 +855,44 @@ def prove_pinned_json_path_boundaries() -> None:
                 module.os.fstat = original_fstat
                 module.os.close = original_close
                 original_close(canary_fd)
+
+            canary_fd = original_open(authority, os.O_RDONLY)
+            try:
+                for fail_at, invalid in ((2, True), (len(authority.parts), None)):
+                    calls = [0]
+                    acquired: list[int] = []
+                    closed: list[int] = []
+                    def partial_open(*args, **kwargs):
+                        calls[0] += 1
+                        if calls[0] == fail_at:
+                            return invalid
+                        fd = original_open(*args, **kwargs)
+                        acquired.append(fd)
+                        return fd
+                    def tracked_close(fd: int) -> None:
+                        require(fd in acquired and fd not in closed,
+                                name + " invalid acquisition closed unowned/recycled FD")
+                        closed.append(fd)
+                        original_close(fd)
+                    try:
+                        module.os.open = partial_open
+                        module.os.close = tracked_close
+                        reject(prefix + " JSON authority invalid descriptor",
+                               "invalid intermediate/leaf FD " + repr(invalid))
+                    finally:
+                        module.os.open = original_open
+                        module.os.close = original_close
+                    require(calls[0] == fail_at and len(acquired) == fail_at - 1,
+                            name + " partial acquisition fixture did not reach intended FD")
+                    require(sorted(closed) == sorted(acquired),
+                            name + " partially acquired descriptors not closed exactly once")
+                    require(original_fstat(canary_fd).st_size > 0,
+                            name + " partial acquisition affected external canary")
+            finally:
+                original_close(canary_fd)
     assert_canonical_unchanged(canonical_contract, canonical_registry,
                                "pinned JSON authority negative cases")
-    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault, invalid FD; fragmented positive")
+    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault, invalid FD and partial acquisition; fragmented positive")
 
 
 def prove_validator_negative_suite_private_transport() -> None:
