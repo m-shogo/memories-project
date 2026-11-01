@@ -207,6 +207,50 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
             finally:
                 alias.unlink()
 
+
+            # A group/world-writable executable source is not canonical.
+            approved.chmod(0o666)
+            try:
+                try:
+                    validator.load_module(
+                        approved, Path("pkg/approved.py"), "binding_writable", "fixture"
+                    )
+                except validator.Fail as exc:
+                    require(str(exc) == "fixture module source type/size drift",
+                            f"writable module source rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("writable module source unexpectedly executed")
+            finally:
+                approved.chmod(0o644)
+            require(not marker.exists(), "writable module executed untrusted marker")
+
+            # Mode changes after the pinned pre-read snapshot also invalidate
+            # execution, even when source bytes remain identical.
+            original_read = validator.os.read
+            mode_changed = False
+            def writable_during_read(fd: int, count: int):
+                nonlocal mode_changed
+                if not mode_changed:
+                    mode_changed = True
+                    approved.chmod(0o666)
+                return original_read(fd, count)
+            validator.os.read = writable_during_read
+            try:
+                try:
+                    validator.load_module(
+                        approved, Path("pkg/approved.py"), "binding_mode_race", "fixture"
+                    )
+                except validator.Fail as exc:
+                    require(str(exc) == "fixture module source changed during read",
+                            f"module mode mutation rejected at wrong boundary: {exc}")
+                else:
+                    raise Fail("module mode mutation unexpectedly executed")
+            finally:
+                validator.os.read = original_read
+                approved.chmod(0o644)
+            require(mode_changed and not marker.exists(),
+                    "module mode race fixture not reached or executed marker")
+
             approved.write_bytes(b"#" * (validator.MAX_BINDING_AUTHORITY_BYTES + 1))
             try:
                 validator.load_module(
@@ -342,7 +386,7 @@ def prove_validator_pinned_module_import(module_path: Path = VALIDATOR) -> None:
         finally:
             validator.require_exact_repo_file = original_check
             validator.ROOT = original_root
-    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, size, mid-read, fragmented, EOF, nonbytes, invalid acquired FDs")
+    print("PASS pinned module import: " + module_path.name + " positive control, leaf/parent swaps, cleanup/double faults (OSError/ValueError), hardlink, writable mode, mode race, size, mid-read, fragmented, EOF, nonbytes, invalid acquired FDs")
 
 
 def prove_validator_execution_identity() -> None:

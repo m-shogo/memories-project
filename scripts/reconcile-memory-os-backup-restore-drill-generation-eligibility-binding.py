@@ -203,6 +203,7 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         before = os.fstat(source_fd)
         require(
             stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            and not (before.st_mode & 0o022)
             and 0 <= before.st_size <= MAX_BINDING_AUTHORITY_BYTES,
             f"{field} module source type/size drift",
         )
@@ -220,7 +221,8 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
         after = os.fstat(source_fd)
         leaf = os.stat(expected_relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (
-            item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
         )
         require(
             len(source) <= MAX_BINDING_AUTHORITY_BYTES
