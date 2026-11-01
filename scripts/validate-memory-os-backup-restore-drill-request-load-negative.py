@@ -19,6 +19,7 @@ import weakref
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/request-memory-os-backup-restore-drill.py"
@@ -689,24 +690,48 @@ def prove_negative_subprocess_redaction(validator) -> None:
                     "drill request negative runner captured private output")
             require(kwargs.get("timeout") == 120 and kwargs.get("check") is False,
                     "drill request negative runner budget drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "drill request negative child environment missing")
+            require(child_env.get("SAFE_DRILL_NEGATIVE_ENV") == "preserved",
+                    "drill request negative benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "drill request negative inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in validator.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "drill request negative child environment drift")
             observed.append(exit_code)
             return validator.subprocess.CompletedProcess(argv, exit_code, marker, marker)
         return run
 
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_DRILL_NEGATIVE_ENV": "preserved",
+    }
+    env_patch = patch.dict(validator.os.environ, poisoned)
+    env_patch.start()
     try:
         validator.subprocess.run = fake_run(0)
         validator.run_negative()
-        validator.subprocess.run = fake_run(1)
-        try:
-            validator.run_negative()
-        except validator.Fail as exc:
-            require(str(exc) == "drill request negative suite failed (raw output withheld)",
-                    "drill request negative runner leaked output or lost fixed failure class")
-            require(marker not in str(exc), "drill request private marker disclosed")
-        else:
-            raise Fail("drill request negative subprocess failure accepted")
+        for code in (1, False, None):
+            validator.subprocess.run = fake_run(code)
+            try:
+                validator.run_negative()
+            except validator.Fail as exc:
+                require(str(exc) == "drill request negative suite failed (raw output withheld)",
+                        "drill request negative runner leaked output or lost fixed failure class")
+                require(marker not in str(exc), "drill request private marker disclosed")
+            else:
+                raise Fail("drill request negative subprocess invalid return accepted")
 
-        for failure in (OSError(marker), validator.subprocess.TimeoutExpired(["synthetic"], 120)):
+        for failure in (OSError(marker), ValueError(marker), TypeError(marker),
+                        validator.subprocess.TimeoutExpired(["synthetic"], 120)):
             def raise_failure(*_args, **_kwargs):
                 raise failure
             validator.subprocess.run = raise_failure
@@ -720,9 +745,10 @@ def prove_negative_subprocess_redaction(validator) -> None:
                 raise Fail("drill request negative subprocess unavailable/timeout accepted")
     finally:
         validator.subprocess.run = original_run
+        env_patch.stop()
 
-    require(observed == [0, 1], "drill request negative runner positive/failure controls missing")
-    print("PASS: drill request negative subprocess bounded execution and fixed private failure classes")
+    require(observed == [0, 1, False, None], "drill request negative runner positive/failure controls missing")
+    print("PASS: drill request negative subprocess bounded isolated execution and fixed private failure classes")
 
 
 def prove_private_helper_import(validator) -> None:
