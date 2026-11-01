@@ -124,23 +124,28 @@ def write_text(path: Path, text: str) -> None:
             dir=path.parent,
             text=True,
         )
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            fd = None  # The stream context manager owns the descriptor now.
+        # Keep the raw descriptor owned by this function throughout stream use.
+        with os.fdopen(fd, "w", encoding="utf-8", newline="", closefd=False) as handle:
             os.fchmod(handle.fileno(), existing_mode)
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
+        owned_fd = fd
+        fd = None  # Never retry a potentially post-effect close by numeric FD.
+        os.close(owned_fd)
         os.replace(temp_name, path)
         temp_name = None
     except OSError as exc:
         raise Fail(f"cannot atomically write {relative}: {exc}") from exc
     finally:
         if fd is not None:
-            # fdopen can fail before taking ownership of mkstemp's descriptor.
+            # closefd=False keeps the raw FD ours; release it only once.
+            owned_fd = fd
+            fd = None
             try:
-                os.close(fd)
+                os.close(owned_fd)
             except OSError:
-                pass  # Preserve the primary write failure.
+                pass  # Preserve the primary write failure; never re-close.
         if temp_name is not None:
             try:
                 os.unlink(temp_name)

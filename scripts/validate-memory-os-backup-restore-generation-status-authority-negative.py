@@ -232,7 +232,9 @@ def prove_generation_status_fdopen_ownership(reconciler) -> None:
         original_fdopen = reconciler.os.fdopen
         captured = []
 
-        def reject_fdopen(fd, *_args, **_kwargs):
+        def reject_fdopen(fd, *_args, **kwargs):
+            require(kwargs.get("closefd") is False,
+                    "generation-status fdopen did not retain explicit raw-FD ownership")
             captured.append(fd)
             raise OSError("synthetic generation-status fdopen failure")
 
