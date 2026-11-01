@@ -826,6 +826,43 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                 real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical nonbyte recovery corrupted authority")
+        # Stable fstat identity does not prove that the stream returned
+        # every byte. Reject both truncated and fabricated surplus payloads.
+        for label, payload in (
+                ("short binary read", b"sta"),
+                ("surplus binary read", b"stableX")):
+            opened.clear()
+            guard_fd = real_open(canary, os.O_RDONLY)
+            def incomplete_stream(descriptor, mode, **kwargs):
+                underlying = actual_fdopen(descriptor, mode, **kwargs)
+                class IncompleteStream:
+                    def fileno(self):
+                        return underlying.fileno()
+                    def read(self, size=-1):
+                        return payload
+                    def close(self):
+                        underlying.close()
+                return IncompleteStream()
+            try:
+                with mock.patch.object(module.os, "open", side_effect=capture_open), \
+                     mock.patch.object(module.os, "fdopen", side_effect=incomplete_stream):
+                    reject(label, f"unreadable authority: {target}")
+                if len(opened) != 1:
+                    raise RuntimeError("canonical short-read FD inventory drift")
+                try:
+                    os.fstat(opened[0])
+                except OSError as exc:
+                    if exc.errno != errno.EBADF:
+                        raise RuntimeError("canonical short-read wrong FD state") from exc
+                else:
+                    real_close(opened[0])
+                    raise RuntimeError("canonical short-read leaked raw FD")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical short-read corrupted external canary")
+            finally:
+                real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical short-read recovery corrupted authority")
         # A close that fails before effect must fail closed without silently
         # leaking the still-owned raw FD in this disposable fault fixture.
         opened.clear()
