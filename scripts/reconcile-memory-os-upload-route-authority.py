@@ -551,7 +551,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
                 if staging_guard_fd is not None:
                     try:
                         os.close(staging_guard_fd)
-                    except OSError as guard_close_exc:
+                    except Exception as guard_close_exc:
                         # Do not retry an ambiguously completed descriptor close.
                         if original_failure is None:
                             raise
