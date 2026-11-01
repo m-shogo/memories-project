@@ -18,6 +18,7 @@ import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any, Callable
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 DRILL_REQUEST_LOAD_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-drill-request-load-negative.py"
@@ -680,6 +681,17 @@ def prove_post_validator_transport(reconciler: Any) -> None:
                     "post-validator target drift")
             require(kwargs.get("cwd") == reconciler.ROOT,
                     "post-validator cwd drift")
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "drill post-validator child environment missing")
+            require(child_env.get("SAFE_DRILL_POST_VALIDATOR_ENV") == "preserved",
+                    "drill post-validator benign environment lost")
+            for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                        "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+                require(key not in child_env, "drill post-validator inherited override: " + key)
+            require(child_env == {
+                key: value for key, value in reconciler.os.environ.items()
+                if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+            }, "drill post-validator child environment authority drift")
             require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL
                     and kwargs.get("stderr") == reconciler.subprocess.DEVNULL,
                     "post-validator captured private output")
@@ -689,6 +701,17 @@ def prove_post_validator_transport(reconciler: Any) -> None:
             return subprocess.CompletedProcess(argv, exit_code, stdout=marker, stderr=marker)
         return run
 
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT_PATH",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_DRILL_POST_VALIDATOR_ENV": "preserved",
+    }
+    env_patch = patch.dict(reconciler.os.environ, poisoned)
+    env_patch.start()
     try:
         for path, label in ((reconciler.VALIDATOR, "drill request"),
                             (reconciler.OPERABILITY_VALIDATOR, "operability")):
@@ -718,6 +741,7 @@ def prove_post_validator_transport(reconciler: Any) -> None:
                     raise Fail("post-validator unavailable/timeout accepted")
     finally:
         reconciler.subprocess.run = original_run
+        env_patch.stop()
     require(seen == [0, 1, False, 0, 1, False], "post-validator positive/failure controls incomplete")
     print("PASS: drill request post-validators use bounded class-only subprocess transport")
 

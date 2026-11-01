@@ -278,10 +278,15 @@ def expected_decision(
 def run_post_validator(path: Path, label: str) -> None:
     """Execute read-only post-write validators with bounded private diagnostics."""
     require(label in ("drill request", "operability"), "drill request post-validator class drift")
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(path)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
