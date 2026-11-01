@@ -38,6 +38,8 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
                                 capture_output=True, timeout=20, check=False)
     except (OSError, subprocess.TimeoutExpired):
         raise GuardFailure("Git history inspection unavailable") from None
+    if type(result.returncode) is not int or result.returncode < 0:
+        raise GuardFailure("invalid supplemental Git exit status")
     if result.returncode and not allow_failure:
         raise GuardFailure("Git history inspection failed closed")
     if result.returncode == 0 and result.stderr:
@@ -290,6 +292,17 @@ def self_test() -> None:
                 raise
         else:
             raise GuardFailure("Git success with unexpected stderr accepted")
+
+    # A bool/float/string or signal exit is not a genuine successful Git status.
+    for invalid_status in (False, True, 0.0, 1.0, "0", -9):
+        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess(
+            args=["git"], returncode=invalid_status, stdout=b"safe\n", stderr=b""
+        )):
+            expect_guard_failure(
+                lambda: git(Path("."), "rev-parse", "HEAD", allow_failure=True),
+                "invalid supplemental Git exit status",
+                "invalid-git-status-" + repr(invalid_status),
+            )
 
     # Successful Git commands with malformed object identities must fail
     # for the exact transport reason, not an unrelated ancestry failure.

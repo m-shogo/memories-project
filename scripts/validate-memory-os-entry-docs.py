@@ -2955,7 +2955,8 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
                 "malformed supplemental commit enumeration",
                 "malformed supplemental parent enumeration",
                 "malformed supplemental parent inventory"}
-            and len(type_checks) == 4)
+            and len(type_checks) == 4 and any(
+                isinstance(n, ast.If) and ast.unparse(n.test) == "type(result.returncode) is not int or result.returncode < 0" and len(n.body) == 1 and ast.unparse(n.body[0]) == "raise GuardFailure(\'invalid supplemental Git exit status\')" for n in functions[0].body[:-2]))
 
 def supplemental_history_enumeration_bound(source: str) -> bool:
     """Independently bind complete-range count and terminal HEAD proof."""
@@ -3087,7 +3088,7 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         r'rb"[0-9a-f]{40}(?: [0-9a-f]{40})+\n"',
         "malformed supplemental HEAD oid",
         "malformed supplemental commit enumeration",
-        "malformed supplemental parent enumeration",
+        "malformed supplemental parent enumeration", "invalid supplemental Git exit status", "type(result.returncode) is not int or result.returncode < 0",
     ):
         weakened = guard_source.replace(needle, "unreviewed", 1)
         if weakened == guard_source or supplemental_history_git_transport_bound(weakened):
