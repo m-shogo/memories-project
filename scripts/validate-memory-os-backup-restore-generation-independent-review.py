@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import os
 import re
 import subprocess
 from datetime import datetime
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+TRUSTED_GIT = "/usr/bin/git"
 CONTRACT_REL = Path("contracts/operations/backup-restore-generation-evidence-contract.v1.json")
 REGISTRY_REL = Path("contracts/operations/backup-restore-generation-evidence-registry.v1.json")
 MATERIAL_DELTA_VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-material-delta-review.py")
@@ -88,6 +90,15 @@ def enforce_runtime_authorities() -> None:
 
 
 MAX_JSON_BYTES = 1024 * 1024
+
+
+def trusted_git_env() -> dict[str, str]:
+    """Remove inherited Git and loader overrides from candidate review history."""
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("GIT_", "LD_", "DYLD_"))}
+    env.update(GIT_NO_REPLACE_OBJECTS="1", GIT_CONFIG_NOSYSTEM="1",
+               GIT_CONFIG_GLOBAL=os.devnull)
+    return env
 
 
 def load_json(path: Path, field: str) -> dict[str, Any]:
@@ -189,8 +200,8 @@ def git_history(ref: str, field: str) -> list[str]:
     # Do not let Git stderr, a stalled subprocess or an unbounded history enter CI diagnostics.
     try:
         completed = subprocess.run(
-            ["git", "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
-            cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            [TRUSTED_GIT, "log", "--format=%H", "--max-count=2", "--follow", "--", ref],
+            cwd=ROOT, env=trusted_git_env(), text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -211,7 +222,7 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
     object_ref = f"{commits[0]}:{ref}"
     try:
         size_result = subprocess.run(
-            ["git", "cat-file", "-s", object_ref], cwd=ROOT, text=True,
+            [TRUSTED_GIT, "cat-file", "-s", object_ref], cwd=ROOT, env=trusted_git_env(), text=True,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -233,7 +244,7 @@ def require_append_only_review(ref: str, path: Path, field: str) -> None:
     require(len(current) <= MAX_JSON_BYTES, f"{field} current review bytes size limit exceeded")
     try:
         completed = subprocess.run(
-            ["git", "show", object_ref], cwd=ROOT,
+            [TRUSTED_GIT, "show", object_ref], cwd=ROOT, env=trusted_git_env(),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False, timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -311,6 +322,7 @@ CANONICAL_EXECUTION_HELPERS = (
     load_json,
     validate_contract_authority,
     canonical_ref,
+    trusted_git_env,
     git_history,
     require_append_only_review,
     require_utc_rfc3339,
@@ -336,6 +348,7 @@ CANONICAL_AUTHORITY_CONFIG = (
     tuple(sorted(ROLE_BY_REF.items())),
     tuple(sorted(BOUND_RULE_BY_FIELD.items())),
     REVIEWER_ID.pattern,
+    TRUSTED_GIT,
 )
 
 
@@ -360,6 +373,7 @@ def enforce_execution_authority(
         load_json,
         validate_contract_authority,
         canonical_ref,
+        trusted_git_env,
         git_history,
         require_append_only_review,
         require_utc_rfc3339,
@@ -389,6 +403,7 @@ def enforce_execution_authority(
         tuple(sorted(ROLE_BY_REF.items())),
         tuple(sorted(BOUND_RULE_BY_FIELD.items())),
         REVIEWER_ID.pattern,
+        TRUSTED_GIT,
     )
     if current_config != canonical_config:
         raise Fail("generation independent-review semantic authority drift")
