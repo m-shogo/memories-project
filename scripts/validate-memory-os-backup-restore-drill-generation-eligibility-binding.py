@@ -91,6 +91,9 @@ def load(path: Path) -> dict[str, Any]:
         """Read a bounded authority from pinned no-follow directory descriptors."""
         require(path.is_absolute() and ".." not in path.parts,
                 "drill generation binding validator JSON authority unsafe path")
+        # Only reviewed checkout-local planning authorities may be read.
+        require(path.parts[:len(ROOT.parts)] == ROOT.parts,
+                "drill generation binding validator JSON authority unsafe path")
         owned: list[int] = []
         try:
             parent_fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -103,6 +106,15 @@ def load(path: Path) -> dict[str, Any]:
                 require(type(parent_fd) is int and parent_fd >= 0,
                         "drill generation binding validator JSON authority invalid descriptor")
                 owned.append(parent_fd)
+            # External sticky-writable ancestors are not reviewed authority;
+            # pin the checkout root and each descendant directory instead.
+            trusted_first = len(ROOT.parts) - 1
+            trusted_before = [os.fstat(fd) for fd in owned[trusted_first:]]
+            require(
+                all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in trusted_before),
+                "drill generation binding validator JSON authority parent directory unsafe",
+            )
             source_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                                 dir_fd=parent_fd)
             require(type(source_fd) is int and source_fd >= 0,
@@ -141,6 +153,18 @@ def load(path: Path) -> dict[str, Any]:
                         "drill generation binding validator JSON authority parent pathname drift")
             require(identity(os.lstat(path)) == identity(after),
                     "drill generation binding validator JSON authority pathname drift")
+            trusted_identity = lambda item: (
+                item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+            )
+            for index, original in enumerate(trusted_before, start=trusted_first):
+                opened = os.fstat(owned[index])
+                lexical = os.lstat(Path(*path.parts[:index + 1]))
+                require(
+                    stat.S_ISDIR(lexical.st_mode)
+                    and trusted_identity(original)
+                    == trusted_identity(opened) == trusted_identity(lexical),
+                    "drill generation binding validator JSON authority parent directory changed during read",
+                )
             return raw
         except (OSError, ValueError, TypeError, OverflowError):
             raise Fail("drill generation binding validator JSON authority unavailable or unsafe") from None
