@@ -90,11 +90,9 @@ LEARNING_GUARDS = (
 LEARNING_GUARD_TIMEOUT_SECONDS = 120
 MIN_LEARNING_NEGATIVE_CASES = 601
 
-
 def learning_guard_timeout_reviewed(seconds: object) -> bool:
     """A longer nested deadline would conceal a measured regression."""
     return type(seconds) is int and seconds == 120
-
 
 def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[str]) -> bool:
     """An exit-zero child without its actual PASS proof is not an executed guard."""
@@ -123,7 +121,6 @@ def learning_guard_passed(relative: str, completed: subprocess.CompletedProcess[
         return int(count) >= MIN_LEARNING_NEGATIVE_CASES
     return False
 
-
 def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
     """Keep child failure evidence bounded and on one CI log line."""
     # An unexpected capture type is a diagnostic failure, never an excuse
@@ -136,7 +133,6 @@ def bounded_learning_guard_failure_detail(completed: subprocess.CompletedProcess
     # Reject every Unicode nonprintable, including soft hyphen, joiners and
     # surrogate code points that an enumerated control regex can overlook.
     return "".join(char if char.isprintable() else " " for char in raw[-800:])
-
 
 def prove_learning_guard_classifier(failures: list[str]) -> None:
     """Prove that a no-op, truncated suite or spurious success cannot pass."""
@@ -206,7 +202,6 @@ def prove_learning_guard_classifier(failures: list[str]) -> None:
         completed = subprocess.CompletedProcess([], 1, stdout, stderr)
         if bounded_learning_guard_failure_detail(completed) != expected:
             failures.append(f"learning guard failure detail misclassified: {name}")
-
 
 def validate_learning_guards(failures: list[str]) -> None:
     """Keep autonomous-learning guards reachable from the existing operability CI path."""
@@ -315,7 +310,6 @@ SOURCE_NEGATIVE_JOB_CONDITION = (
     "if: github.event_name == 'pull_request' || "
     "(github.event_name == 'push' && github.ref == 'refs/heads/so')"
 )
-
 
 def source_negative_event_paths(source: str) -> dict[str, tuple[str, ...]] | None:
     """Fail closed on duplicate YAML event authority and unreviewed event filters.
@@ -2964,6 +2958,7 @@ def supplemental_history_git_transport_bound(source: str) -> bool:
     required = {
         "git(root, 'rev-parse', '--verify', 'HEAD^{commit}')": 2,
         "git(root, 'rev-list', '--reverse', f'{baseline}..{head}')": 1,
+        "git(root, 'rev-list', '--topo-order', f'{baseline}..{head}')": 1,
         "git(root, 'rev-list', '--parents', '-n', '1', commit)": 1,
     }
     if any(commands.count(command) != count for command, count in required.items()):
@@ -2996,6 +2991,9 @@ expected_count = int(count_raw[:-1])
 if (expected_count != len(commits) or len(set(commits)) != len(commits)
         or (head != baseline and (not commits or commits[-1] != head))
         or (head == baseline and commits)):
+    raise GuardFailure("supplemental history enumeration incomplete")
+independent = git(root, "rev-list", "--topo-order", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
+if len(independent) != len(commits) or set(independent) != set(commits):
     raise GuardFailure("supplemental history enumeration incomplete")
 '''
     expected = [ast.dump(node, include_attributes=False)
@@ -3113,6 +3111,8 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
         ('"rev-list", "--count"', '"rev-list", "--reverse"'),
         ('expected_count != len(commits)', 'expected_count == len(commits)'),
         ('len(set(commits)) != len(commits)', 'len(set(commits)) == len(commits)'),
+        ('set(independent) != set(commits)', 'set(independent) == set(commits)'),
+        ('"rev-list", "--topo-order"', '"rev-list", "--reverse"'),
         ('commits[-1] != head', 'commits[-1] == head'),
         (r'rb"(?:0|[1-9][0-9]{0,18})\n"',
          r'rb"[0-9]+\n"'),

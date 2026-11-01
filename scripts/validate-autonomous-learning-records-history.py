@@ -49,7 +49,7 @@ def git(root: Path, *args: str, allow_failure: bool = False) -> subprocess.Compl
         if args == ("rev-parse", "--verify", "HEAD^{commit}"):
             if type(raw) is not bytes or re.fullmatch(rb"[0-9a-f]{40}\n", raw) is None:
                 raise GuardFailure("malformed supplemental HEAD oid")
-        elif len(args) == 3 and args[:2] == ("rev-list", "--reverse"):
+        elif len(args) == 3 and args[:2] in (("rev-list", "--reverse"), ("rev-list", "--topo-order")):
             if type(raw) is not bytes or re.fullmatch(rb"(?:[0-9a-f]{40}\n)*", raw) is None:
                 raise GuardFailure("malformed supplemental commit enumeration")
         elif len(args) == 5 and args[:4] == ("rev-list", "--parents", "-n", "1"):
@@ -140,6 +140,11 @@ def check_history(root: Path, baseline: str) -> None:
     if (expected_count != len(commits) or len(set(commits)) != len(commits)
             or (head != baseline and (not commits or commits[-1] != head))
             or (head == baseline and commits)):
+        raise GuardFailure("supplemental history enumeration incomplete")
+    # A same-length replacement of an interior OID evades count, uniqueness,
+    # and terminal-HEAD checks. Cross-check an independently ordered range.
+    independent = git(root, "rev-list", "--topo-order", f"{baseline}..{head}").stdout.decode("ascii").splitlines()
+    if len(independent) != len(commits) or set(independent) != set(commits):
         raise GuardFailure("supplemental history enumeration incomplete")
     seen: dict[bytes, bytes] = {}
     for commit in commits:
@@ -279,6 +284,9 @@ def self_test() -> None:
         (("rev-list", "--reverse", "base..head"), oid + b"\n",
          (b" " + oid + b"\n", oid + b"\n\n", oid,
           b"z" * 40 + b"\n", oid.decode("ascii") + "\n"),
+         "malformed supplemental commit enumeration"),
+        (("rev-list", "--topo-order", "base..head"), oid + b"\n",
+         (oid + b" \n", oid + b"\r\n", oid, b"z" * 40 + b"\n"),
          "malformed supplemental commit enumeration"),
         (("rev-list", "--parents", "-n", "1", "head"), oid + b" " + oid + b"\n",
          (oid + b"\n", oid + b"\t" + oid + b"\n",
@@ -562,6 +570,40 @@ def self_test() -> None:
             with patch(__name__ + ".git", side_effect=tampered_enumeration):
                 expect_guard_failure(
                     lambda: check_history(root, baseline), expected, label,
+                )
+        check_history(root, baseline)
+    finally:
+        temp.cleanup()
+
+
+    # Same-count middle substitution must fail even with a valid final HEAD.
+    # Each injected stream is syntactically valid and has three distinct OIDs.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        for index in range(2):
+            (root / SCOPES[0] / f"extra-{index}.md").write_text(
+                f"extra-{index}\n", encoding="utf-8")
+            git(root, "add", ".")
+            git(root, "commit", "-qm", f"append {index}")
+        head = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        original_git = git
+        genuine = original_git(root, "rev-list", "--reverse",
+                               f"{baseline}..{head}").stdout.splitlines()
+        if len(genuine) != 3 or len(set(genuine)) != 3:
+            raise GuardFailure("supplemental middle-substitution fixture invalid")
+        forged = b"\n".join((genuine[0], baseline.encode("ascii"), genuine[-1])) + b"\n"
+        for selector in ("--reverse", "--topo-order"):
+            def forge_middle(path: Path, *args: str, **kwargs):
+                result = original_git(path, *args, **kwargs)
+                if path == root and args[:2] == ("rev-list", selector):
+                    return subprocess.CompletedProcess(result.args, 0, forged, b"")
+                return result
+
+            with patch(__name__ + ".git", side_effect=forge_middle):
+                expect_guard_failure(
+                    lambda: check_history(root, baseline),
+                    "supplemental history enumeration incomplete",
+                    "same-count-middle-substitution-" + selector,
                 )
         check_history(root, baseline)
     finally:
