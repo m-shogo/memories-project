@@ -832,9 +832,32 @@ def prove_pinned_json_path_boundaries() -> None:
             finally:
                 module.os.read = original_read
                 module.os.close = original_close
+
+            original_open = module.os.open
+            original_fstat = module.os.fstat
+            original_close = module.os.close
+            canary_fd = original_open(authority, os.O_RDONLY)
+            def forbidden_fstat(*_args, **_kwargs):
+                raise Fail(name + " invalid open result reached fstat")
+            def forbidden_close(*_args, **_kwargs):
+                raise Fail(name + " invalid open result reached close")
+            try:
+                for invalid in (None, True, -1, 1.5, "7"):
+                    module.os.open = lambda *_args, **_kwargs: invalid
+                    module.os.fstat = forbidden_fstat
+                    module.os.close = forbidden_close
+                    reject(prefix + " JSON authority invalid descriptor",
+                           "invalid acquired FD " + repr(invalid))
+                    require(original_fstat(canary_fd).st_size > 0,
+                            name + " invalid FD closed external canary")
+            finally:
+                module.os.open = original_open
+                module.os.fstat = original_fstat
+                module.os.close = original_close
+                original_close(canary_fd)
     assert_canonical_unchanged(canonical_contract, canonical_registry,
                                "pinned JSON authority negative cases")
-    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault; fragmented positive")
+    print("PASS pinned JSON: both readers reject leaf/parent symlink, hardlink, EOF, nonbytes and mutation, parent swap, cleanup double fault, invalid FD; fragmented positive")
 
 
 def prove_validator_negative_suite_private_transport() -> None:

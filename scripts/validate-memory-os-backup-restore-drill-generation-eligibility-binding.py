@@ -94,13 +94,19 @@ def load(path: Path) -> dict[str, Any]:
         owned: list[int] = []
         try:
             parent_fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    "drill generation binding validator JSON authority invalid descriptor")
             owned.append(parent_fd)
             for component in path.parts[1:-1]:
                 parent_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
                                     dir_fd=parent_fd)
+                require(type(parent_fd) is int and parent_fd >= 0,
+                        "drill generation binding validator JSON authority invalid descriptor")
                 owned.append(parent_fd)
             source_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                                 dir_fd=parent_fd)
+            require(type(source_fd) is int and source_fd >= 0,
+                    "drill generation binding validator JSON authority invalid descriptor")
             owned.append(source_fd)
             before = os.fstat(source_fd)
             require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1,
