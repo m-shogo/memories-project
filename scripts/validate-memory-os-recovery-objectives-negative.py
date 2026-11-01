@@ -232,6 +232,42 @@ def prove_recovery_objective_json_reader(validator) -> None:
     print("PASS: actual recovery objective JSON reader positive and 17 fail-closed negatives")
 
 
+def prove_negative_subprocess_environment(validator) -> None:
+    """No untrusted interpreter/loader/Git environment reaches the reviewed child."""
+    original_run = validator.subprocess.run
+    original_env = dict(validator.os.environ)
+    seen = []
+    try:
+        validator.os.environ.update({
+            "PYTHONPATH": "/unreviewed/python",
+            "PYTHONSTARTUP": "/unreviewed/startup",
+            "LD_PRELOAD": "/unreviewed/loader",
+            "DYLD_INSERT_LIBRARIES": "/unreviewed/dylib",
+            "GIT_CONFIG_GLOBAL": "/unreviewed/git",
+            "MEMORY_OS_OBJECTIVE_NEGATIVE_SAFE_SENTINEL": "preserved",
+        })
+
+        def fake_run(argv, **kwargs):
+            child_env = kwargs.get("env")
+            require(isinstance(child_env, dict), "objective child explicit environment missing")
+            require(not any(key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+                            for key in child_env),
+                    "objective child inherited unsafe interpreter/loader/Git environment")
+            require(child_env.get("MEMORY_OS_OBJECTIVE_NEGATIVE_SAFE_SENTINEL") == "preserved",
+                    "objective child dropped unrelated reviewed environment")
+            seen.append(True)
+            return validator.subprocess.CompletedProcess(argv, 0)
+
+        validator.subprocess.run = fake_run
+        validator.run_negative()
+        require(seen == [True], "objective child environment positive control not reached")
+    finally:
+        validator.subprocess.run = original_run
+        validator.os.environ.clear()
+        validator.os.environ.update(original_env)
+    print("PASS: objective negative subprocess environment excludes interpreter, loader and Git overrides")
+
+
 def prove_negative_subprocess_redaction(validator) -> None:
     """Prove failure classes remain fixed without exposing private subprocess output."""
     original_run = validator.subprocess.run
@@ -517,6 +553,7 @@ def main() -> int:
     prove_writer_json_reader(writer)
     prove_recovery_objective_json_reader(validator)
     prove_negative_subprocess_redaction(validator)
+    prove_negative_subprocess_environment(validator)
 
     canonical_lock = writer.LOCK
     writer.LOCK = ROOT / "contracts/operations/.backup-restore-generation-evidence.lock"
