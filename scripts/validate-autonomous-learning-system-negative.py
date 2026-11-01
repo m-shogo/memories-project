@@ -817,6 +817,35 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
                     real_close(guard_fd)
         if read() != b"stable":
             raise RuntimeError("canonical path-fault recovery corrupted authority")
+        # A metadata provider may return a malformed object instead of
+        # raising OSError. Neither a parent nor the leaf may be dereferenced
+        # through a newly acquired descriptor after that invalid preflight.
+        for metadata_path in (target.parent, target):
+            for malformed in (None, object()):
+                guard_fd = real_open(canary, os.O_RDONLY)
+                unexpected_opens: list[Path] = []
+                def malformed_lstat(path):
+                    if path == metadata_path:
+                        return malformed
+                    return real_lstat(path)
+                def forbid_canonical_open(path, flags):
+                    if Path(path) == target:
+                        unexpected_opens.append(Path(path))
+                        raise RuntimeError("canonical malformed metadata opened authority")
+                    return real_open(path, flags)
+                try:
+                    with mock.patch.object(module.Path, "lstat", new=malformed_lstat), \
+                         mock.patch.object(module.os, "open", side_effect=forbid_canonical_open):
+                        reject("malformed canonical metadata",
+                               f"unreadable authority: {target}")
+                    if unexpected_opens:
+                        raise RuntimeError("canonical malformed metadata reached descriptor acquisition")
+                    if os.read(guard_fd, 8) != b"external":
+                        raise RuntimeError("canonical malformed metadata corrupted external canary")
+                finally:
+                    real_close(guard_fd)
+        if read() != b"stable":
+            raise RuntimeError("canonical malformed metadata recovery corrupted authority")
         # Invalid os.open results confer no raw descriptor ownership. In
         # particular bool is an int subclass and must not alias fd 0 or 1.
         for invalid_fd in (None, True, -1, 1.5, "3"):
