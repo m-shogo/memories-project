@@ -3385,7 +3385,7 @@ def require_reviewed_upload_route_transitive_callsite(function_source: str) -> N
                   if isinstance(node, ast.For) and
                   isinstance(node.target, ast.Name) and node.target.id == "file"
                   and isinstance(node.iter, ast.Name) and node.iter.id == "files"]
-    if len(file_loops) != 1:
+    if len(file_loops) != 1 or file_loops[0] not in loops[0].body:
         raise RuntimeError(failure)
     calls = [node for node in ast.walk(definition)
              if isinstance(node, ast.Call) and
@@ -3431,8 +3431,11 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
     read = '            source = file.read_text(encoding="utf-8")\n'
     while_anchor = "    while pending:\n"
     after_while = "    if len(visited) < 22:\n"
+    file_anchor = "        for file in files:\n"
+    after_file = "        if len(inputs) > 512:\n"
     if (source.count(anchor) != 1 or source.count(read + anchor) != 1 or
-            source.count(while_anchor) != 1 or source.count(after_while) != 1):
+            source.count(while_anchor) != 1 or source.count(after_while) != 1 or
+            source.count(file_anchor) != 1 or source.count(after_file) != 1):
         raise RuntimeError("transitive Go callsite fixture anchor drift")
     start = source.index(while_anchor)
     end = source.index(after_while, start)
@@ -3440,6 +3443,12 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
                    "".join("    " + line if line.strip() else line
                            for line in source[start:end].splitlines(keepends=True)) +
                    source[end:])
+    file_start = source.index(file_anchor, start)
+    file_end = source.index(after_file, file_start)
+    nested_file_loop = (source[:file_start] + "        if False:\n" +
+                        "".join("    " + line if line.strip() else line
+                                for line in source[file_start:file_end].splitlines(keepends=True)) +
+                        source[file_end:])
     for label, changed in (
         ("removed", source.replace(anchor, "", 1)),
         ("comment decoy", source.replace(anchor, "            # " + anchor.lstrip(), 1)),
@@ -3482,6 +3491,7 @@ def prove_upload_route_transitive_callsite_negatives() -> None:
         ("pre-loop builtin exit zero", source.replace(
             while_anchor, "    exit(0)\n" + while_anchor, 1)),
         ("unreachable wrapper", nested_loop),
+        ("unreachable file loop", nested_file_loop),
         ("duplicate call", source.replace(anchor, anchor + anchor, 1)),
     ):
         try:
