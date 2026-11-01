@@ -939,6 +939,21 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         os.mkfifo(fifo)
         rejected(fifo, "drill request reconcile authority not regular file", "FIFO")
 
+        hardlink = directory / "hardlink.json"
+        os.link(candidate, hardlink)
+        try:
+            rejected(candidate, "drill request reconcile authority unsafe file mode or link",
+                     "hardlinked authority")
+        finally:
+            hardlink.unlink()
+        original_mode = candidate.stat().st_mode & 0o7777
+        try:
+            candidate.chmod(0o666)
+            rejected(candidate, "drill request reconcile authority unsafe file mode or link",
+                     "writable authority")
+        finally:
+            candidate.chmod(original_mode)
+
         original_open = reconciler.os.open
         marker = "synthetic-secret-raced-open"
         def raced_open(path, flags, *args, **kwargs):
@@ -952,6 +967,24 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
             rejected(candidate, "drill request reconcile authority read invalid or unavailable", "raced open")
         finally:
             reconciler.os.open = original_open
+        original_read = reconciler.os.read
+        mutated = False
+        def change_after_first_read(descriptor, count):
+            nonlocal mutated
+            part = original_read(descriptor, count)
+            if part and not mutated:
+                mutated = True
+                candidate.write_bytes(positive + b" ")
+            return part
+        try:
+            reconciler.os.read = change_after_first_read
+            rejected(candidate, "drill request reconcile authority changed during read",
+                     "in-place authority mutation during read")
+        finally:
+            reconciler.os.read = original_read
+            candidate.write_bytes(positive)
+        require(mutated, "drill reconcile reader mutation injection not reached")
+
         # The primary UTF-8 rejection must survive a secondary close fault;
         # a close fault after a successful read remains a hard failure.
         original_open = reconciler.os.open
@@ -995,7 +1028,7 @@ def prove_reconciler_bounded_reader(reconciler) -> None:
         require(candidate.read_bytes() == positive, "drill reconcile reader mutated positive fixture")
     require(tuple(path.read_bytes() for path in protected) == before,
             "drill reconcile reader mutated protected authorities")
-    print("PASS: drill reconcile reader positive, oversized, UTF-8, symlink, FIFO, directory, raced-open and double-close-fault negatives")
+    print("PASS: drill reconcile reader positive, unsafe-link/mode, in-read mutation and private close-fault negatives")
 
 
 def prove_reconciler_strict_json(reconciler) -> None:

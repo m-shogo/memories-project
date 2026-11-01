@@ -120,8 +120,11 @@ def read_text(path: Path) -> str:
     fd = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        require(stat.S_ISREG(os.fstat(fd).st_mode),
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode),
                 "drill request reconcile authority not regular file")
+        require(before.st_nlink == 1 and not (before.st_mode & 0o022),
+                "drill request reconcile authority unsafe file mode or link")
         raw = bytearray()
         while len(raw) <= MAX_AUTHORITY_BYTES:
             part = os.read(fd, min(65536, MAX_AUTHORITY_BYTES + 1 - len(raw)))
@@ -130,6 +133,15 @@ def read_text(path: Path) -> str:
             raw.extend(part)
         require(len(raw) <= MAX_AUTHORITY_BYTES,
                 "drill request reconcile authority exceeds 1 MiB")
+        after = os.fstat(fd)
+        leaf = os.lstat(path)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns,
+        )
+        require(len(raw) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "drill request reconcile authority changed during read")
         return raw.decode("utf-8")
     except (OSError, UnicodeDecodeError):
         raise Fail("drill request reconcile authority read invalid or unavailable") from None
