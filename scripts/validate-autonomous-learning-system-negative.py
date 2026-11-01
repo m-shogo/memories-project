@@ -1233,6 +1233,38 @@ def prove_canonical_descriptor_read_negatives(source_root: Path) -> None:
         if module.read_canonical_authority_bytes(
                 nested, 10, too_large="reviewed source oversized") != b"stable":
             raise RuntimeError("canonical parent-mode restoration failed")
+        # A malformed *second* parent metadata read must fail closed after
+        # the leaf has been opened, without leaking the owned FD or replacing
+        # the external canary. This differs from preflight malformed metadata.
+        for malformed in (None, object()):
+            parent_reads = 0
+            guard_fd = real_open(canary, os.O_RDONLY)
+            def corrupt_postread_parent(path):
+                nonlocal parent_reads
+                if path == parent:
+                    parent_reads += 1
+                    if parent_reads == 2:
+                        return malformed
+                return real_lstat(path)
+            try:
+                with mock.patch.object(module.Path, "lstat", new=corrupt_postread_parent):
+                    try:
+                        module.read_canonical_authority_bytes(
+                            nested, 10, too_large="reviewed source oversized")
+                    except module.ValidationFailure as exc:
+                        if str(exc) != f"unreadable authority: {nested}":
+                            raise RuntimeError("canonical postread metadata wrong diagnostic") from exc
+                    else:
+                        raise RuntimeError("canonical malformed postread parent accepted")
+                if parent_reads != 2:
+                    raise RuntimeError("canonical postread parent lstat reachability drift")
+                if os.read(guard_fd, 8) != b"external":
+                    raise RuntimeError("canonical postread metadata corrupted external canary")
+            finally:
+                real_close(guard_fd)
+            if module.read_canonical_authority_bytes(
+                    nested, 10, too_large="reviewed source oversized") != b"stable":
+                raise RuntimeError("canonical postread metadata recovery failed")
         def swap_parent_after_open(path, flags):
             fd = original_open(path, flags)
             if Path(path) == nested:
