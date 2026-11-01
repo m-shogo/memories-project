@@ -168,12 +168,16 @@ def load_module(path: Path, expected_relative: Path, name: str, field: str):
     except (OSError, ValueError, TypeError, OverflowError) as exc:
         raise Fail(f"{field} module source unavailable or unsafe") from exc
     finally:
+        primary_failure = sys.exc_info()[0] is not None
+        cleanup_failed = False
         for owned_fd in reversed(owned):
             try:
                 os.close(owned_fd)
             except OSError:
-                # Do not retry a potentially recycled descriptor.
-                pass
+                # Never retry a potentially recycled descriptor after a post-effect error.
+                cleanup_failed = True
+        if cleanup_failed and not primary_failure:
+            raise Fail(f"{field} module descriptor cleanup failed") from None
 
     spec = importlib.util.spec_from_file_location(name, path)
     require(spec is not None and spec.loader is not None, f"cannot load {path.name}")
