@@ -216,10 +216,15 @@ def run_validator(path: Path, label: str) -> None:
     else:
         raise Fail("unreviewed promotion review post-reconcile validator")
     require_exact_repo_file(path, expected, "post-reconcile validator")
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(path)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,

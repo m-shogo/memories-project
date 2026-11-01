@@ -14,6 +14,7 @@ import tempfile
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-promotion-review.py"
@@ -454,11 +455,33 @@ def prove_private_post_reconcile_transport(reconciler: Any) -> None:
                 and kwargs.get("timeout") == 180
                 and "text" not in kwargs,
                 "promotion reconcile subprocess privacy/timeout drift")
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict), "promotion reconcile child environment missing")
+        require(child_env.get("SAFE_PROMOTION_POST_VALIDATOR_ENV") == "preserved",
+                "promotion reconcile benign environment lost")
+        for key in ("PYTHONPATH", "PYTHONHOME", "PYTHONWARNINGS",
+                    "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "GIT_CONFIG_GLOBAL"):
+            require(key not in child_env, "promotion reconcile inherited override: " + key)
+        require(child_env == {
+            key: value for key, value in reconciler.os.environ.items()
+            if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+        }, "promotion reconcile child environment authority drift")
         calls.append(tuple(args))
         if state["error"] is not None:
             raise state["error"]
         return subprocess.CompletedProcess(args, state["returncode"], stdout=marker, stderr=marker)
 
+    poisoned = {
+        "PYTHONPATH": "SYNTHETIC_UNTRUSTED_IMPORT",
+        "PYTHONHOME": "SYNTHETIC_UNTRUSTED_HOME",
+        "PYTHONWARNINGS": "SYNTHETIC_UNTRUSTED_WARNINGS",
+        "LD_PRELOAD": "SYNTHETIC_UNTRUSTED_LOADER",
+        "DYLD_INSERT_LIBRARIES": "SYNTHETIC_UNTRUSTED_DYLD",
+        "GIT_CONFIG_GLOBAL": "SYNTHETIC_UNTRUSTED_GIT_CONFIG",
+        "SAFE_PROMOTION_POST_VALIDATOR_ENV": "preserved",
+    }
+    env_patch = patch.dict(reconciler.os.environ, poisoned)
+    env_patch.start()
     reconciler.subprocess.run = fake_run
     try:
         reconciler.run_validator(reconciler.VALIDATOR, "promotion review validator")
@@ -492,7 +515,8 @@ def prove_private_post_reconcile_transport(reconciler: Any) -> None:
                 "promotion reconcile subprocess case multiplicity drift")
     finally:
         reconciler.subprocess.run = original_run
-    print("PASS: promotion reconcile post-validation transport private, bounded and source-pinned (5 negatives)")
+        env_patch.stop()
+    print("PASS: promotion reconcile post-validation transport private, bounded, isolated and source-pinned (5 negatives)")
 
 
 
