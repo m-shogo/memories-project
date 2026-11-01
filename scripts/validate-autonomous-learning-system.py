@@ -99,6 +99,10 @@ def read_canonical_authority_bytes(path: Path, max_bytes: int, *, too_large: str
         # do not acquire a descriptor merely to rediscover its link count.
         if preflight.st_nlink != 1:
             raise ValidationFailure(diagnostic)
+        # A pre-existing group/world-writable leaf is not canonical.
+        # Keep the pinned-FD mode check for changes after preflight.
+        if preflight.st_mode & 0o022:
+            raise ValidationFailure(diagnostic)
     except (OSError, ValueError, TypeError, AttributeError):
         raise ValidationFailure(f"unreadable authority: {path}") from None
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
