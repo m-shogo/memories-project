@@ -124,21 +124,33 @@ def write_text(path: Path, text: str) -> None:
     require(len(payload) <= MAX_AUTHORITY_BYTES,
             "promotion reconcile write size limit exceeded")
     temp_name: str | None = None
+    fd: int | None = None
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
         fd, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
         )
         os.fchmod(fd, mode)
-        with os.fdopen(fd, "wb") as handle:
+        # Explicit non-owning stream: retain and release the raw FD exactly once.
+        with os.fdopen(fd, "wb", closefd=False) as handle:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        owned_fd = fd
+        fd = None  # Never retry a possibly post-effect numeric close.
+        os.close(owned_fd)
         os.replace(temp_name, path)
         temp_name = None
     except (OSError, ValueError, TypeError):
         raise Fail("promotion reconcile authority atomic write failed") from None
     finally:
+        if fd is not None:
+            owned_fd = fd
+            fd = None
+            try:
+                os.close(owned_fd)
+            except OSError:
+                pass  # Preserve the primary failure; never re-close.
         if temp_name is not None:
             try:
                 os.unlink(temp_name)

@@ -239,6 +239,56 @@ def prove_atomic_write_failure(reconciler: Any, original_contract: bytes, origin
     print("PASS boundary: failed atomic promotion-review write preserves isolated bytes/modes and canonical authorities")
 
 
+def prove_promotion_atomic_fd_ownership(reconciler: Any, original_contract: bytes, original_registry: bytes) -> None:
+    canonical_contract_mode = CANONICAL_CONTRACT.stat().st_mode & 0o777
+    canonical_registry_mode = CANONICAL_REGISTRY.stat().st_mode & 0o777
+    with isolated_reconcile_authorities(reconciler):
+        fixture_contract = reconciler.CONTRACT.read_bytes()
+        fixture_registry = reconciler.REGISTRY.read_bytes()
+        reconciler.CONTRACT.chmod(0o640)
+        reconciler.REGISTRY.chmod(0o640)
+        for operation in ("fchmod", "fdopen"):
+            original_operation = getattr(reconciler.os, operation)
+            captured = []
+
+            def reject(fd, *_args, **kwargs):
+                if operation == "fdopen":
+                    require(kwargs.get("closefd") is False,
+                            "promotion-review fdopen must retain explicit raw-FD ownership")
+                captured.append(fd)
+                raise OSError("synthetic-private-promotion-" + operation + "-failure")
+
+            setattr(reconciler.os, operation, reject)
+            try:
+                try:
+                    reconciler.write_text(reconciler.CONTRACT, fixture_contract.decode("utf-8"))
+                except reconciler.Fail as exc:
+                    require(str(exc) == "promotion reconcile authority atomic write failed"
+                            and exc.__suppress_context__,
+                            f"promotion-review {operation} failure wrong private class: {exc}")
+                else:
+                    raise Fail(f"promotion-review {operation} failure unexpectedly accepted")
+            finally:
+                setattr(reconciler.os, operation, original_operation)
+
+            require(len(captured) == 1, f"promotion-review {operation} injection not reached")
+            try:
+                os.fstat(captured[0])
+            except OSError:
+                pass
+            else:
+                os.close(captured[0])
+                raise Fail(f"promotion-review {operation} failure leaked raw descriptor")
+            assert_fixture_unchanged(reconciler, fixture_contract, fixture_registry,
+                                     f"promotion-review {operation} FD failure", 0o640, 0o640)
+            require(not list(reconciler.CONTRACT.parent.glob(f".{reconciler.CONTRACT.name}.*.tmp")),
+                    f"promotion-review {operation} failure left temporary authority")
+    assert_canonical_unchanged(original_contract, original_registry,
+                               "promotion-review FD ownership negative",
+                               canonical_contract_mode, canonical_registry_mode)
+    print("PASS boundary: promotion-review fchmod/fdopen faults close retained raw descriptors")
+
+
 def prove_second_replace_failure_rolls_back_transaction(
     reconciler: Any,
     original_contract: bytes,
@@ -768,6 +818,7 @@ def main() -> int:
     prove_mode_preserving_atomic_write(reconciler, original_contract, original_registry)
     prove_private_atomic_write_path_guards(reconciler, original_contract, original_registry)
     prove_atomic_write_failure(reconciler, original_contract, original_registry)
+    prove_promotion_atomic_fd_ownership(reconciler, original_contract, original_registry)
     prove_second_replace_failure_rolls_back_transaction(reconciler, original_contract, original_registry)
     prove_rollback_attempts_all_authorities(reconciler)
     prove_writer_close_failure_releases_lock()
