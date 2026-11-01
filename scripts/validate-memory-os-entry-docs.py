@@ -3019,18 +3019,18 @@ def supplemental_history_diff_confirmation_bound(source: str) -> bool:
     if len(loops) != 1:
         return False
     reviewed = '''confirmation = git(
-    root, "diff", "--quiet", "--no-ext-diff", "--no-textconv",
+    root, "diff", "--no-ext-diff", "--no-textconv",
+    "--no-renames", "--name-status", "-z",
     parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES),
     allow_failure=True,
 )
 if (type(confirmation.returncode) is not int
-        or confirmation.returncode not in (0, 1)
+        or confirmation.returncode != 0
         or type(confirmation.stdout) is not bytes
-        or confirmation.stdout != b""
         or type(confirmation.stderr) is not bytes
         or confirmation.stderr):
     raise GuardFailure("supplemental history diff confirmation unavailable")
-if (confirmation.returncode == 0) != (raw == b""):
+if confirmation.stdout != raw:
     raise GuardFailure("supplemental history diff enumeration incomplete")
 '''
     expected = [ast.dump(node, include_attributes=False)
@@ -3122,9 +3122,9 @@ def validate_supplemental_learning_history(failures: list[str]) -> None:
             failures.append("supplemental history enumeration mutation accepted")
             return
     for original, altered in (
-        ('"diff", "--quiet"', '"diff", "--stat"'),
-        ('confirmation.returncode == 0', 'confirmation.returncode != 0'),
-        ('raw == b""', 'raw != b""'),
+        ('"diff", "--no-ext-diff"', '"diff", "--stat"'),
+        ('confirmation.returncode != 0', 'confirmation.returncode == 0'),
+        ('confirmation.stdout != raw', 'confirmation.stdout == raw'),
         ('confirmation.returncode not in (0, 1)',
          'confirmation.returncode not in (0, 2)'),
     ):

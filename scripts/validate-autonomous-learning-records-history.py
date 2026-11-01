@@ -157,18 +157,18 @@ def check_history(root: Path, baseline: str) -> None:
             # A syntactically valid empty name-status stream is not proof
             # that the two immutable trees have no scoped changes.
             confirmation = git(
-                root, "diff", "--quiet", "--no-ext-diff", "--no-textconv",
+                root, "diff", "--no-ext-diff", "--no-textconv",
+                "--no-renames", "--name-status", "-z",
                 parent, commit, "--", *(scope.rstrip("/") for scope in SCOPES),
                 allow_failure=True,
             )
             if (type(confirmation.returncode) is not int
-                    or confirmation.returncode not in (0, 1)
+                    or confirmation.returncode != 0
                     or type(confirmation.stdout) is not bytes
-                    or confirmation.stdout != b""
                     or type(confirmation.stderr) is not bytes
                     or confirmation.stderr):
                 raise GuardFailure("supplemental history diff confirmation unavailable")
-            if (confirmation.returncode == 0) != (raw == b""):
+            if confirmation.stdout != raw:
                 raise GuardFailure("supplemental history diff enumeration incomplete")
             if not raw:
                 continue
@@ -639,6 +639,49 @@ def self_test() -> None:
             with patch(__name__ + ".git", side_effect=tampered_diff):
                 expect_guard_failure(lambda: check_history(root, baseline),
                                      expected, label)
+    finally:
+        temp.cleanup()
+
+
+    # A forged partial diff-tree can contain a real addition while omitting
+    # a modification on the same parent edge. A nonempty quiet-diff alone
+    # cannot detect this; the independent full name-status stream must match.
+    root, baseline, temp = fixture("add", SCOPES[0])
+    try:
+        (root / SCOPES[0] / "original.md").write_text("modified\n", encoding="utf-8")
+        (root / SCOPES[0] / "mixed-add.md").write_text("new\n", encoding="utf-8")
+        git(root, "add", "-A")
+        git(root, "commit", "-qm", "mixed addition and modification")
+        parent = git(root, "rev-parse", "HEAD^").stdout.decode("ascii").strip()
+        commit = git(root, "rev-parse", "HEAD").stdout.decode("ascii").strip()
+        original_git = git
+        raw = original_git(root, "diff-tree", "-r", "--no-renames",
+                           "--name-status", "-z", parent, commit, "--",
+                           *(scope.rstrip("/") for scope in SCOPES)).stdout
+        fields = raw.split(b"\0")
+        pairs = list(zip(fields[:-1:2], fields[1:-1:2]))
+        if fields[-1] != b"" or {status for status, _ in pairs} != {b"A", b"M"}:
+            raise GuardFailure("mixed parent-edge omission fixture invalid")
+        addition = next(path for status, path in pairs if status == b"A")
+        forged = b"A\0" + addition + b"\0"
+
+        def omit_modified_edge(path: Path, *args: str, **kwargs):
+            result = original_git(path, *args, **kwargs)
+            if (path == root and args and args[0] == "diff-tree"
+                    and parent in args and commit in args):
+                return subprocess.CompletedProcess(result.args, 0, forged, b"")
+            return result
+
+        with patch(__name__ + ".git", side_effect=omit_modified_edge):
+            expect_guard_failure(
+                lambda: check_history(root, baseline),
+                "supplemental history diff enumeration incomplete",
+                "mixed-parent-edge-partial-diff",
+            )
+        expect_guard_failure(
+            lambda: check_history(root, baseline),
+            "supplemental history is not append-only", "mixed-parent-edge-real-mutation",
+        )
     finally:
         temp.cleanup()
 
