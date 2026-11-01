@@ -388,7 +388,7 @@ def self_test() -> None:
     # canonical history wrapper still invokes the pinned system Git.
     with tempfile.TemporaryDirectory(prefix="supplemental-git-path-negative-") as temp:
         fake = Path(temp) / "git"
-        fake.write_text("#!/bin/sh\\nprintf 'DECOY_GIT_EXECUTED\\\\n'\\n", encoding="utf-8")
+        fake.write_text("#!/bin/sh\nprintf 'DECOY_GIT_EXECUTED\\n'\n", encoding="utf-8")
         fake.chmod(0o755)
         previous_path = os.environ.get("PATH")
         try:
@@ -396,7 +396,7 @@ def self_test() -> None:
             decoy = subprocess.run(
                 ["git", "--version"], capture_output=True, timeout=20, check=False,
             )
-            if decoy.returncode != 0 or decoy.stdout != b"DECOY_GIT_EXECUTED\\n":
+            if decoy.returncode != 0 or decoy.stdout != b"DECOY_GIT_EXECUTED\n":
                 raise GuardFailure("supplemental Git PATH decoy control ineffective")
             observed = git(Path("."), "--version").stdout
             if not observed.startswith(b"git version ") or b"DECOY" in observed:
