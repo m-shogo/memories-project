@@ -147,7 +147,10 @@ def load(path: Path) -> dict[str, Any]:
     fd: int | None = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        require(stat.S_ISREG(os.fstat(fd).st_mode), "drill request JSON path unsafe")
+        before = os.fstat(fd)
+        require(stat.S_ISREG(before.st_mode), "drill request JSON path unsafe")
+        require(before.st_nlink == 1 and not (before.st_mode & 0o022),
+                "drill request JSON unsafe file mode or link")
         raw = bytearray()
         while len(raw) <= MAX_JSON_BYTES:
             part = os.read(fd, min(65536, MAX_JSON_BYTES + 1 - len(raw)))
@@ -155,6 +158,15 @@ def load(path: Path) -> dict[str, Any]:
                 break
             raw.extend(part)
         require(len(raw) <= MAX_JSON_BYTES, "drill request JSON size limit exceeded")
+        after = os.fstat(fd)
+        leaf = os.lstat(path)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns,
+        )
+        require(len(raw) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "drill request JSON changed during read")
         value = json.loads(
             raw.decode("utf-8"),
             object_pairs_hook=reject_duplicates,

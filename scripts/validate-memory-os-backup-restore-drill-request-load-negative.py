@@ -837,6 +837,21 @@ def prove_drill_request_json_reader(validator) -> None:
         alias.symlink_to(path)
         rejected(alias, "drill request JSON path unsafe", "symlink")
         rejected(Path(directory), "drill request JSON path unsafe", "directory")
+        hardlink = Path(directory) / "hardlink.json"
+        os.link(path, hardlink)
+        try:
+            rejected(path, "drill request JSON unsafe file mode or link",
+                     "hardlinked authority")
+        finally:
+            hardlink.unlink()
+        original_mode = path.stat().st_mode & 0o7777
+        try:
+            path.chmod(0o666)
+            rejected(path, "drill request JSON unsafe file mode or link",
+                     "writable authority")
+        finally:
+            path.chmod(original_mode)
+
         rejected(Path(directory) / "missing.json", "drill request JSON path missing or outside repository", "missing")
         rejected("candidate.json", "drill request JSON path invalid", "non-Path")
         with tempfile.TemporaryDirectory(prefix="memory-os-drill-request-json-canary-") as outside:
@@ -859,6 +874,24 @@ def prove_drill_request_json_reader(validator) -> None:
             rejected(path, "drill request JSON unreadable or invalid", "raced-open descriptor")
         finally:
             validator.os.open = original_open
+        original_read = validator.os.read
+        mutated = False
+        def change_after_first_read(descriptor, count):
+            nonlocal mutated
+            part = original_read(descriptor, count)
+            if part and not mutated:
+                mutated = True
+                path.write_bytes(positive + b" ")
+            return part
+        try:
+            validator.os.read = change_after_first_read
+            rejected(path, "drill request JSON changed during read",
+                     "in-place authority mutation during read")
+        finally:
+            validator.os.read = original_read
+            path.write_bytes(positive)
+        require(mutated, "drill request JSON reader mutation injection not reached")
+
         # A secondary close fault cannot mask a primary JSON rejection.
         # The same fault must fail closed when parsing itself succeeded.
         original_open = validator.os.open
@@ -901,7 +934,7 @@ def prove_drill_request_json_reader(validator) -> None:
                 "drill request JSON post-race positive control failed")
         require(path.read_bytes() == positive, "drill request JSON modified positive fixture")
     require(tuple(path.read_bytes() for path in protected_paths) == before, "drill request JSON mutated protected authorities")
-    print("PASS: actual drill request JSON reader positive and 18 fail-closed negatives")
+    print("PASS: actual drill request JSON reader positive, unsafe-link/mode, mutation and close-fault negatives")
 
 
 def prove_reconciler_bounded_reader(reconciler) -> None:
