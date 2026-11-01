@@ -539,7 +539,7 @@ def atomic_write_bytes(path: Path, payload: bytes) -> None:
             finally:
                 try:
                     os.close(parent_fd)
-                except OSError as parent_close_exc:
+                except Exception as parent_close_exc:
                     # A failed close may already have consumed this capability.
                     if original_failure is None:
                         raise
