@@ -338,6 +338,61 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     print("PASS boundary: failed atomic generation-evidence write is fixture-isolated and preserves canonical bytes and modes")
 
 
+def prove_atomic_cleanup_failure_precedence(reconciler: object) -> None:
+    canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
+    original_replace = reconciler.os.replace
+    original_unlink = reconciler.os.unlink
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-cleanup-", parent=TMP_PARENT) as tmpdir:
+        target = Path(tmpdir) / "generation-evidence-cleanup.json"
+        target.write_text("{}\\n", encoding="utf-8")
+        target.chmod(0o640)
+        before_bytes, before_mode = target.read_bytes(), mode(target)
+        original_temps = set(target.parent.glob(f".{target.name}.*.tmp"))
+        attempted_cleanup = []
+
+        def reject_replace(_source, _destination):
+            raise OSError("synthetic primary generation-evidence replace rejection")
+
+        def reject_cleanup(path, *args, **kwargs):
+            require(Path(path).parent == target.parent and Path(path).name.startswith(f".{target.name}."),
+                    "generation-evidence cleanup targeted an unexpected path")
+            attempted_cleanup.append(Path(path))
+            raise ValueError("synthetic secondary generation-evidence cleanup rejection")
+
+        try:
+            reconciler.os.replace = reject_replace
+            reconciler.os.unlink = reject_cleanup
+            try:
+                reconciler.write_text(target, '{"notPublished": true}\\n')
+            except reconciler.Fail as exc:
+                require("cannot atomically write" in str(exc),
+                        f"generation-evidence cleanup masked primary write failure: {exc}")
+                require("synthetic primary generation-evidence replace rejection" in str(exc),
+                        "generation-evidence cleanup lost primary diagnostic")
+                require("secondary" not in str(exc),
+                        "generation-evidence cleanup leaked secondary diagnostic")
+            else:
+                raise Fail("generation-evidence double-fault write unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+            created = set(target.parent.glob(f".{target.name}.*.tmp")) - original_temps
+            for path in created:
+                original_unlink(path)
+
+        require(len(attempted_cleanup) == 1 and attempted_cleanup[0] in created,
+                "generation-evidence secondary cleanup rejection not exercised")
+        require(target.read_bytes() == before_bytes and mode(target) == before_mode,
+                "generation-evidence cleanup double fault mutated fixture authority")
+        require(set(target.parent.glob(f".{target.name}.*.tmp")) == original_temps,
+                "generation-evidence cleanup double fault left synthetic temporary authority")
+
+    for path, (expected_bytes, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected_bytes and mode(path) == expected_mode,
+                f"generation-evidence cleanup double fault mutated canonical authority: {path.name}")
+    print("PASS boundary: generation-evidence primary atomic failure survives secondary cleanup exception")
+
+
 def prove_mode_preserving_write(reconciler: object) -> None:
     with guarded_temporary_directory(prefix=".tmp-generation-evidence-mode-", parent=TMP_PARENT) as tmpdir:
         target = Path(tmpdir) / "mode-preservation.json"
@@ -508,6 +563,7 @@ def main() -> int:
 
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)
+    prove_atomic_cleanup_failure_precedence(reconciler)
     prove_mode_preserving_write(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
 
