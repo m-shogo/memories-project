@@ -832,59 +832,63 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
 
     # A cleanup stat fault must not mask the primary publication error or
     # delete a stage whose current pathname ownership cannot be established.
-    with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-stat-") as temp_dir:
-        root = Path(temp_dir)
-        target = root / "authority.txt"
-        target.write_bytes(b"original")
-        original_replace = module.os.replace
-        original_stat = module.os.stat
-        original_stage = module.create_pinned_stage
-        staged_names: list[str] = []
-        replace_failed = [False]
+    for cleanup_stat_case in ("oserror", "valueerror"):
+        with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-stat-") as temp_dir:
+            root = Path(temp_dir)
+            target = root / "authority.txt"
+            target.write_bytes(b"original")
+            canary = root / "external-canary.txt"
+            canary.write_bytes(b"independent-cleanup-stat-canary")
+            original_replace = module.os.replace
+            original_stat = module.os.stat
+            original_stage = module.create_pinned_stage
+            staged_names: list[str] = []
+            replace_failed = [False]
 
-        def capture_cleanup_stage(parent_fd, leaf):
-            fd, name = original_stage(parent_fd, leaf)
-            staged_names.append(name)
-            return fd, name
+            def capture_cleanup_stage(parent_fd, leaf):
+                fd, name = original_stage(parent_fd, leaf)
+                staged_names.append(name)
+                return fd, name
 
-        def fail_primary_replace(*args, **kwargs):
-            replace_failed[0] = True
-            raise OSError("synthetic primary publication failure")
+            def fail_primary_replace(*args, **kwargs):
+                replace_failed[0] = True
+                raise OSError("synthetic primary publication failure")
 
-        def fail_cleanup_stat(candidate, *args, **kwargs):
-            if (replace_failed[0] and staged_names and candidate == staged_names[0]
-                    and kwargs.get("dir_fd") is not None):
-                raise PermissionError("synthetic private cleanup stat failure")
-            return original_stat(candidate, *args, **kwargs)
+            def fail_cleanup_stat(candidate, *args, **kwargs):
+                if (replace_failed[0] and staged_names and candidate == staged_names[0]
+                        and kwargs.get("dir_fd") is not None):
+                    raise (ValueError("synthetic private cleanup stat ValueError") if cleanup_stat_case == "valueerror" else PermissionError("synthetic private cleanup stat failure"))
+                return original_stat(candidate, *args, **kwargs)
 
-        module.create_pinned_stage = capture_cleanup_stage
-        module.os.replace = fail_primary_replace
-        module.os.stat = fail_cleanup_stat
-        try:
+            module.create_pinned_stage = capture_cleanup_stage
+            module.os.replace = fail_primary_replace
+            module.os.stat = fail_cleanup_stat
             try:
-                module.atomic_write_bytes(target, b"unpublished")
-            except OSError as exc:
-                require(str(exc) == "synthetic primary publication failure",
-                        f"cleanup stat masked primary publication error: {exc}")
-                require(any("private staged cleanup skipped in pinned parent" in note
-                            and "PermissionError" in note for note in getattr(exc, "__notes__", [])),
-                        "cleanup stat failure lacked bounded retention diagnostic")
-            else:
-                raise Fail("cleanup stat failure unexpectedly published")
-        finally:
-            module.create_pinned_stage = original_stage
-            module.os.replace = original_replace
-            module.os.stat = original_stat
-        require(replace_failed[0] and len(staged_names) == 1,
-                "cleanup stat fault did not reach actual publication failure")
-        require(target.read_bytes() == b"original",
-                "cleanup stat failure changed original authority")
-        require((root / staged_names[0]).read_bytes() == b"unpublished",
-                "cleanup stat failure removed an unverified private stage")
+                try:
+                    module.atomic_write_bytes(target, b"unpublished")
+                except OSError as exc:
+                    require(str(exc) == "synthetic primary publication failure",
+                            f"cleanup stat masked primary publication error: {exc}")
+                    require(any("private staged cleanup skipped in pinned parent" in note
+                                and ("ValueError" if cleanup_stat_case == "valueerror" else "PermissionError") in note for note in getattr(exc, "__notes__", [])),
+                            "cleanup stat failure lacked bounded retention diagnostic")
+                else:
+                    raise Fail("cleanup stat failure unexpectedly published")
+            finally:
+                module.create_pinned_stage = original_stage
+                module.os.replace = original_replace
+                module.os.stat = original_stat
+            require(replace_failed[0] and len(staged_names) == 1,
+                    "cleanup stat fault did not reach actual publication failure")
+            require(target.read_bytes() == b"original",
+                    "cleanup stat failure changed original authority")
+            require((root / staged_names[0]).read_bytes() == b"unpublished"
+                    and canary.read_bytes() == b"independent-cleanup-stat-canary",
+                    "cleanup stat failure removed an unverified private stage")
 
     # An unlink syscall can fail before or after removing its own name.
     # Preserve the primary publication error without claiming cleanup succeeded.
-    for unlink_scenario in ("before-unlink", "after-unlink"):
+    for unlink_scenario in ("before-unlink", "after-unlink", "before-unlink-valueerror", "after-unlink-valueerror"):
         with tempfile.TemporaryDirectory(prefix="memory-os-upload-route-cleanup-unlink-") as temp_dir:
             root = Path(temp_dir)
             target = root / "authority.txt"
@@ -910,8 +914,10 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
             def fail_cleanup_unlink(candidate, *args, **kwargs):
                 if (replace_failed[0] and staged_names and candidate == staged_names[0]
                         and kwargs.get("dir_fd") is not None):
-                    if unlink_scenario == "after-unlink":
+                    if unlink_scenario.startswith("after-unlink"):
                         original_unlink(candidate, *args, **kwargs)
+                    if unlink_scenario.endswith("valueerror"):
+                        raise ValueError("synthetic private cleanup unlink ValueError")
                     raise PermissionError("synthetic private cleanup unlink failure")
                 return original_unlink(candidate, *args, **kwargs)
 
@@ -925,7 +931,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     require(str(exc) == "synthetic primary publication failure",
                             f"cleanup unlink masked primary publication error: {exc}")
                     require(any("private staged unlink status unknown in pinned parent" in note
-                                and "PermissionError" in note for note in getattr(exc, "__notes__", [])),
+                                and ("ValueError" if unlink_scenario.endswith("valueerror") else "PermissionError") in note for note in getattr(exc, "__notes__", [])),
                             "cleanup unlink failure lacked bounded uncertainty diagnostic")
                 else:
                     raise Fail("cleanup unlink failure unexpectedly published")
@@ -940,7 +946,7 @@ def prove_atomic_initial_fstat_failure_cleanup(module) -> None:
                     and canary.read_bytes() == b"independent",
                     "cleanup unlink failure changed original or external authority")
             staged = root / staged_names[0]
-            if unlink_scenario == "before-unlink":
+            if unlink_scenario.startswith("before-unlink"):
                 require(staged.read_bytes() == b"unpublished",
                         "pre-unlink fault removed the retained stage")
             else:
