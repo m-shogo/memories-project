@@ -283,6 +283,24 @@ def classify_objective_publisher_coupling(source: str) -> bool:
     end = "  workflow_dispatch:\n"
     if source.count(marker) != 1 or source.count(end) != 1:
         raise SystemExit("recovery objective publisher trigger topology unknown")
+    # Fail closed on duplicate or unexpected YAML event/top-level keys.
+    lines = source.splitlines()
+    quote_chars = chr(39) + chr(34)
+    top_keys = [
+        line.split(":", 1)[0].strip().strip(quote_chars)
+        for line in lines if line and not line[0].isspace() and ":" in line
+    ]
+    if (any(top_keys.count(name) != 1 for name in ("on", "jobs", "permissions"))
+            or lines.count("on:") != 1 or lines.count("permissions:") != 1):
+        raise SystemExit("recovery objective publisher trigger topology unknown")
+    event_lines = lines[lines.index("on:") + 1:lines.index("permissions:")]
+    event_keys = [
+        line[2:].split(":", 1)[0].strip().strip(quote_chars)
+        for line in event_lines
+        if line.startswith("  ") and not line.startswith("   ") and ":" in line
+    ]
+    if sorted(event_keys) != ["pull_request", "push", "workflow_dispatch"]:
+        raise SystemExit("recovery objective publisher trigger topology unknown")
     push = source.split(marker, 1)[1].split(end, 1)[0]
     target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"'
     if target not in push.splitlines():
@@ -296,8 +314,18 @@ def classify_objective_publisher_coupling(source: str) -> bool:
     if lines.count(job_marker) != 1:
         raise SystemExit("recovery objective publisher stale-source guard missing")
     job_lines = lines[lines.index(job_marker) + 1:]
+    def job_key_count(name: str, indent: int) -> int:
+        prefix = " " * indent
+        return sum(
+            line.startswith(prefix) and not line.startswith(prefix + " ")
+            and line[indent:].split(":", 1)[0].strip().strip(quote_chars) == name
+            for line in job_lines if ":" in line
+        )
+
     if (job_lines.count(branch_guard) != 1
-            or job_lines.count("    permissions:") != 1
+            or job_key_count("if", 4) != 1
+            or job_key_count("permissions", 4) != 1
+            or job_key_count("contents", 6) != 1
             or job_lines.count("      contents: write") != 1):
         raise SystemExit("recovery objective publisher stale-source guard missing")
     required = (
@@ -350,6 +378,46 @@ def prove_objective_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"recovery objective publisher {label} branch bypass accepted")
+    nl = chr(10)
+    for label, mutated in (
+        ("duplicate-on", source + nl + "'on':" + nl + "  push: {}" + nl),
+        ("duplicate-jobs", source + nl + "jobs:" + nl + "  shadow: {}" + nl),
+        ("duplicate-permissions", source + nl + "'permissions':" + nl
+         + "  contents: write" + nl),
+        ("duplicate-push", source.replace(
+            "  workflow_dispatch:" + nl,
+            "  workflow_dispatch:" + nl + "  'push':" + nl + "    branches: [main]" + nl, 1,
+        )),
+        ("unreviewed-event", source.replace(
+            "  workflow_dispatch:" + nl,
+            "  workflow_dispatch:" + nl + "  schedule:" + nl
+            + "    - cron: '0 0 * * *'" + nl, 1,
+        )),
+    ):
+        if mutated == source:
+            raise SystemExit(f"recovery objective publisher {label} event negative was inert")
+        try:
+            classify_objective_publisher_coupling(mutated)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective publisher trigger topology unknown":
+                raise
+        else:
+            raise SystemExit(f"recovery objective publisher {label} event shadow accepted")
+    for label, original, duplicate in (
+        ("if", branch_guard, "    'if': github.event_name == 'workflow_dispatch'"),
+        ("permissions", "    permissions:", "    'permissions':"),
+        ("contents", "      contents: write", "      'contents': read"),
+    ):
+        shadowed = source.replace(original, original + nl + duplicate, 1)
+        if shadowed == source:
+            raise SystemExit(f"recovery objective publisher {label} job negative was inert")
+        try:
+            classify_objective_publisher_coupling(shadowed)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective publisher stale-source guard missing":
+                raise
+        else:
+            raise SystemExit(f"recovery objective publisher {label} job shadow accepted")
     marker = "  push:\n    branches:\n      - so\n    paths:\n"
     prefix, suffix = source.split(marker, 1)
     target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"\n'
@@ -358,7 +426,7 @@ def prove_objective_publisher_coupling_guard() -> None:
     removed = prefix + marker + suffix.replace(target, "", 1)
     if classify_objective_publisher_coupling(removed):
         raise SystemExit("recovery objective removed publisher trigger still coupled")
-    print("PASS: recovery objective publisher source lease and branch guard (5 negatives)")
+    print("PASS: recovery objective publisher source lease, branch and YAML shadow guards (13 negatives)")
 
 
 
