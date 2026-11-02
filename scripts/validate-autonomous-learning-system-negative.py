@@ -9806,6 +9806,16 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
                 line,
         ) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
+        # Shell traps and commands following ;, && or || can rewrite the
+        # original run SHA without beginning a line with an assignment.
+        # The reviewed publisher step has no such commands.
+        if any(re.search(
+                r"(?:^|[;&|])\s*(?:if\s+)?(?:!\s*)?(?:(?:builtin|command)\s+)?"
+                r"(?:trap|declare|typeset|local|let)\s+|"
+                r"(?:^|[;&|])\s*(?:if\s+)?(?:!\s*)?\(\(",
+                line,
+        ) for line in lines):
+            raise RuntimeError("saturation source SHA provenance drift")
         if (value.count(rebase) != 1
                 or lines.count("          verify_critical_source") != 1
                 or lines.count("            verify_critical_source") != 1
@@ -9890,6 +9900,26 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             binding, binding + "          let 'source_sha=1'\n", 1)),
         ("if negated let source assignment", body.replace(
             binding, binding + "          if ! let 'source_sha=1'; then :; fi\n", 1)),
+        ("debug trap source rebind", body.replace(
+            binding, binding + "          trap 'source_sha=changed' DEBUG\n", 1)),
+        ("builtin debug trap source rebind", body.replace(
+            binding, binding + "          builtin trap 'source_sha=changed' DEBUG\n", 1)),
+        ("command debug trap source rebind", body.replace(
+            binding, binding + "          command trap 'source_sha=changed' DEBUG\n", 1)),
+        ("if debug trap source rebind", body.replace(
+            binding, binding + "          if trap 'source_sha=changed' DEBUG; then :; fi\n", 1)),
+        ("if negated debug trap source rebind", body.replace(
+            binding, binding + "          if ! trap 'source_sha=changed' DEBUG; then :; fi\n", 1)),
+        ("semicolon debug trap source rebind", body.replace(
+            binding, binding + "          :; trap 'source_sha=changed' DEBUG\n", 1)),
+        ("semicolon declare source rebind", body.replace(
+            binding, binding + "          :; declare -g source_sha=changed\n", 1)),
+        ("and typeset github SHA rebind", body.replace(
+            binding, binding + "          true && typeset -g GITHUB_SHA=changed\n", 1)),
+        ("or let source rebind", body.replace(
+            binding, binding + "          false || let 'source_sha=1'\n", 1)),
+        ("semicolon arithmetic source rebind", body.replace(
+            binding, binding + "          :; ((source_sha=1))\n", 1)),
         ("source dynamic shell", body.replace(
             binding, binding + "          source ./unreviewed.sh\n", 1)),
         ("dot source dynamic shell", body.replace(
