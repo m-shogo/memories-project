@@ -469,6 +469,47 @@ def prove_atomic_parent_swap_before_commit(reconciler: object) -> None:
     print("PASS: recovery objective atomic parent swap before commit refuses replace")
 
 
+def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
+    """Malformed mkstemp descriptors must not be used or closed as owned FDs."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        before, before_mode = path.read_bytes(), file_mode(path)
+        original_mkstemp = reconciler.tempfile.mkstemp
+        canary = reconciler.ROOT / "objective-unowned-descriptor-canary"
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_UNOWNED_DESCRIPTOR_CANARY")
+        wrong_fd = os.open(canary, os.O_RDONLY)
+        try:
+            for label, forged_fd in (("boolean", True), ("negative", -1),
+                                      ("unrelated-regular", wrong_fd)):
+                def forge_mkstemp(*args, **kwargs):
+                    real_fd, name = original_mkstemp(*args, **kwargs)
+                    os.close(real_fd)
+                    return forged_fd, name
+
+                reconciler.tempfile.mkstemp = forge_mkstemp
+                try:
+                    expect_domain_fail(
+                        f"recovery objective {label} temporary descriptor",
+                        lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                        reconciler.Fail,
+                        "recovery objective reconcile temporary descriptor unsafe",
+                    )
+                finally:
+                    reconciler.tempfile.mkstemp = original_mkstemp
+                require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                        f"{label} temporary descriptor left residue")
+            require(os.fstat(wrong_fd).st_ino == canary.stat().st_ino,
+                    "atomic writer closed an unowned unrelated descriptor")
+        finally:
+            reconciler.tempfile.mkstemp = original_mkstemp
+            os.close(wrong_fd)
+        require(canary.read_bytes() == b"PRIVATE_OBJECTIVE_UNOWNED_DESCRIPTOR_CANARY",
+                "atomic writer changed unowned descriptor canary")
+        require(path.read_bytes() == before and file_mode(path) == before_mode,
+                "atomic descriptor identity negatives mutated authority fixture")
+    print("PASS: recovery objective atomic temporary FD ownership and inode identity")
+
+
 def prove_atomic_write_mode_preservation(reconciler: object) -> None:
     with isolated_authorities(reconciler):
         path = reconciler.CONTRACT
@@ -1438,6 +1479,7 @@ def main() -> int:
     prove_pinned_post_validator_execution(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_target_identity_guards(reconciler)
+    prove_atomic_temp_descriptor_identity(reconciler)
     prove_atomic_parent_swap_before_commit(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
