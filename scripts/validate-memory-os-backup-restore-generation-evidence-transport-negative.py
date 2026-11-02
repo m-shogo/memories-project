@@ -28,10 +28,15 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_validator_identity() -> None:
-    require(VALIDATOR == ROOT / VALIDATOR_REL
-            and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
-            and VALIDATOR.resolve(strict=True) == VALIDATOR,
-            "canonical generation-evidence validator source authority drift")
+    # The first path identity probe precedes the pinned-FD reader's try block.
+    # Private filesystem diagnostics must not escape read-only CI.
+    try:
+        valid = (VALIDATOR == ROOT / VALIDATOR_REL
+                 and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
+                 and VALIDATOR.resolve(strict=True) == VALIDATOR)
+    except (OSError, ValueError, TypeError):
+        raise Fail("generation evidence transport validator source authority unreadable") from None
+    require(valid, "canonical generation-evidence validator source authority drift")
 
 
 def pinned_validator_source() -> bytes:
@@ -155,6 +160,29 @@ def prove_pinned_validator_import() -> None:
         try:
             require(load_validator().SOURCE_MARKER == "reviewed",
                     "generation transport pinned validator positive control failed")
+            # Before acquiring any owned FD, a path probe can raise a private
+            # filesystem exception. It must produce only a fixed-domain Fail.
+            original_resolve = Path.resolve
+            for failure_type in (OSError, ValueError, TypeError):
+                marker = "PRIVATE_GENERATION_SOURCE_IDENTITY_CANARY"
+
+                def private_identity_probe(self, *args, **kwargs):
+                    if self == source:
+                        raise failure_type(marker)
+                    return original_resolve(self, *args, **kwargs)
+
+                Path.resolve = private_identity_probe
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence transport validator source authority unreadable"
+                                and exc.__suppress_context__ and marker not in str(exc),
+                                "generation evidence transport private identity probe diagnostic drift")
+                    else:
+                        raise Fail("generation evidence transport accepted private identity probe failure")
+                finally:
+                    Path.resolve = original_resolve
             # The real open sequence is ROOT, scripts ancestor, validator leaf.
             # Never use absolute path depth as an acquisition ordinal.
             for ordinal in (1, 2, 3):
