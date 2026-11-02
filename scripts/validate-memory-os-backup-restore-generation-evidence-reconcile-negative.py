@@ -431,10 +431,15 @@ def mode(path: Path) -> int:
 
 
 def require_reconciler_identity() -> None:
-    require(RECONCILER == ROOT / RECONCILER_REL and RECONCILER.is_file()
-            and not RECONCILER.is_symlink()
-            and RECONCILER.resolve(strict=True) == RECONCILER,
-            "generation evidence reconciler source authority drift")
+    # The initial path probe precedes the pinned reader's exception boundary.
+    # Classify private filesystem errors before any descriptor acquisition.
+    try:
+        canonical = (RECONCILER == ROOT / RECONCILER_REL and RECONCILER.is_file()
+                     and not RECONCILER.is_symlink()
+                     and RECONCILER.resolve(strict=True) == RECONCILER)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        raise Fail("generation evidence reconciler source authority drift") from None
+    require(canonical, "generation evidence reconciler source authority drift")
 
 
 def pinned_reconciler_source() -> bytes:
@@ -553,6 +558,34 @@ def prove_pinned_reconciler_import() -> None:
         try:
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler pinned import positive control failed")
+            # The pre-descriptor path check must not leak a private exception.
+            # Prove both a metadata syscall fault and a resolution-loop fault.
+            for method, failure_type in (("is_file", OSError), ("resolve", RuntimeError)):
+                original_method = getattr(Path, method)
+                invoked = False
+
+                def private_identity_failure(self, *args, **kwargs):
+                    nonlocal invoked
+                    if self == source:
+                        invoked = True
+                        raise failure_type("PRIVATE_RECONCILER_PATH_CANARY")
+                    return original_method(self, *args, **kwargs)
+
+                setattr(Path, method, private_identity_failure)
+                try:
+                    try:
+                        load_reconciler()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence reconciler source authority drift"
+                                and exc.__suppress_context__,
+                                "generation reconciler private " + method + " wrong rejection")
+                        require("PRIVATE_RECONCILER_PATH_CANARY" not in str(exc),
+                                "generation reconciler private path diagnostic leaked")
+                    else:
+                        raise Fail("generation reconciler accepted private " + method + " failure")
+                finally:
+                    setattr(Path, method, original_method)
+                require(invoked, "generation reconciler private " + method + " fixture inert")
             # Actual os.open acquisition order: ROOT, scripts ancestor, reconciler leaf.
             # Do not infer acquisition ordinals from the absolute path depth.
             for ordinal in (1, 2, 3):
