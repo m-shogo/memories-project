@@ -11454,7 +11454,9 @@ def main() -> int:
     worker_state = local()
     with tempfile.TemporaryDirectory(prefix="learning-negative-workers-") as tmp:
         available_parents = SimpleQueue()
-        for index in range(2):
+        # Three precreated disjoint fixture parents reduce nested deadline
+        # contention without changing the 120-second reviewed deadline.
+        for index in range(3):
             parent = Path(tmp) / f"worker-{index}"
             parent.mkdir()
             available_parents.put(parent)
@@ -11468,7 +11470,7 @@ def main() -> int:
             require_failure(source_root, name, mutate, parent)
             return name
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
+        with ThreadPoolExecutor(max_workers=3) as executor:
             completed = list(executor.map(execute_case, cases))
     if completed != [name for name, _ in cases]:
         raise RuntimeError("canonical negative worker result/order drift")
