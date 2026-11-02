@@ -174,6 +174,55 @@ def prove_pinned_writer_import() -> None:
             else:
                 raise Fail("writable generation transaction writer accepted")
             source.chmod(0o644)
+            alias = fixture / "hardlink-transaction-writer.py"
+            os.link(source, alias)
+            try:
+                try:
+                    load_writer()
+                except Fail as exc:
+                    require(str(exc) == "generation evidence transaction writer source metadata unsafe",
+                            "hardlinked generation transaction writer wrong rejection")
+                else:
+                    raise Fail("hardlinked generation transaction writer accepted")
+            finally:
+                alias.unlink()
+
+            def expect_mid_read_chmod(path: Path, unsafe_mode: int, safe_mode: int,
+                                      expected: str, label: str) -> None:
+                original_read = os.read
+                mutated = False
+
+                def read_then_chmod(fd: int, count: int) -> bytes:
+                    nonlocal mutated
+                    chunk = original_read(fd, count)
+                    if not mutated:
+                        path.chmod(unsafe_mode)
+                        mutated = True
+                    return chunk
+
+                os.read = read_then_chmod
+                try:
+                    try:
+                        load_writer()
+                    except Fail as exc:
+                        require(str(exc) == expected, label + " wrong rejection")
+                    else:
+                        raise Fail(label + " accepted")
+                finally:
+                    os.read = original_read
+                    path.chmod(safe_mode)
+                require(mutated, label + " fixture was inert")
+
+            expect_mid_read_chmod(
+                source, 0o666, 0o644,
+                "generation evidence transaction writer source changed during read",
+                "mid-read writable generation transaction writer",
+            )
+            expect_mid_read_chmod(
+                parent, 0o777, 0o755,
+                "generation evidence transaction writer parent changed during read",
+                "mid-read writable generation transaction parent",
+            )
             parent.rename(parked)
             parent.symlink_to(redirected, target_is_directory=True)
             try:
@@ -208,7 +257,7 @@ def prove_pinned_writer_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation transaction writer pinned source rejects writable and swapped paths")
+    print("PASS: generation transaction writer pinned source rejects hardlinks, mid-read chmod and swaps")
 
 
 
