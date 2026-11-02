@@ -10423,6 +10423,25 @@ git() {
         if execute(body, ancestry, critical) != expected:
             raise RuntimeError("saturation aggregate shell behavior drift: " + label)
 
+    # Assert the command-order classifier itself rejects missing or extra Git calls.
+    sequence_mutants = (
+        ("missing critical Git invocation", body.replace(
+            'if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then',
+            "if false; then", 1)),
+        ("unexpected extra Git invocation", body +
+         'git merge-base --is-ancestor "$GITHUB_SHA" HEAD' + chr(10)),
+    )
+    for label, mutant in sequence_mutants:
+        if mutant == body:
+            raise RuntimeError("saturation aggregate Git sequence fixture drift: " + label)
+        try:
+            execute(mutant, "0", "0")
+        except RuntimeError as exc:
+            if str(exc) != "saturation aggregate shell Git call sequence drift":
+                raise
+        else:
+            raise RuntimeError("saturation aggregate Git sequence mutation accepted: " + label)
+
     mutants = (
         ("ancestry bypass", body.replace(
             'if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then',
