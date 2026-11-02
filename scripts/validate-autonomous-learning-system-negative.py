@@ -10236,6 +10236,99 @@ def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
         raise RuntimeError("saturation critical array Bash expansion drift")
 
 
+def prove_saturation_aggregate_source_binding(source_root: Path) -> None:
+    """Bind the aggregate mixed-source guard to the publisher's 16 paths.
+
+    This independently checks the aggregate's ancestry, critical diff and
+    fail-closed exit without executing or modifying the writer workflow.
+    """
+    source = (
+        source_root / ".github/workflows/controlled-saturation-repeatability.yml"
+    ).read_text(encoding="utf-8")
+    publisher_start = "      - name: Publish append-only repeatability run\n"
+    publisher_end = "      - name: Record privacy-safe ramp diagnostic\n"
+    aggregate_start = "      - name: Reject mixed-source repeatability aggregate\n"
+    aggregate_end = (
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+    )
+    if any(source.count(token) != 1 for token in (
+            publisher_start, publisher_end, aggregate_start, aggregate_end)):
+        raise RuntimeError("saturation aggregate source step boundary drift")
+    publisher = source.split(publisher_start, 1)[1].split(publisher_end, 1)[0]
+    aggregate = source.split(aggregate_start, 1)[1].split(aggregate_end, 1)[0]
+    opening = "          critical=(\n"
+    publisher_close = "          )\n          verify_critical_source() {\n"
+    aggregate_close = (
+        '          )\n'
+        '          if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then\n'
+    )
+    ancestry = (
+        '          if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then\n'
+        '            echo "Original repeatability source is not an ancestor; refusing aggregate."\n'
+        '            exit 75\n'
+        '          fi\n'
+    )
+    critical = (
+        '          if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then\n'
+        '            echo "Critical repeatability source changed since ramp; refusing mixed-source aggregate."\n'
+        '            exit 75\n'
+        '          fi\n'
+    )
+    if publisher.count(opening) != 1 or publisher.count(publisher_close) != 1:
+        raise RuntimeError("saturation aggregate publisher array boundary drift")
+    reviewed_raw = publisher.split(opening, 1)[1].split(publisher_close, 1)[0]
+
+    def require_aggregate(value: str) -> None:
+        if (value.count(opening) != 1 or value.count(aggregate_close) != 1
+                or value.count(ancestry) != 1 or value.count(critical) != 1
+                or value.count("          set -euo pipefail\n") != 1):
+            raise RuntimeError("saturation aggregate source authority drift")
+        raw = value.split(opening, 1)[1].split(aggregate_close, 1)[0]
+        if raw != reviewed_raw:
+            raise RuntimeError("saturation aggregate source authority drift")
+        if not (
+            value.index("          set -euo pipefail\n")
+            < value.index(ancestry)
+            < value.index(opening)
+            < value.index(aggregate_close)
+        ):
+            raise RuntimeError("saturation aggregate source authority drift")
+
+    require_aggregate(aggregate)
+    needle = "            services/import-api/internal/upload\n"
+    other = "            services/import-api/internal/objectstore\n"
+    mutants = (
+        ("removed path", aggregate.replace(needle, "", 1)),
+        ("duplicate path", aggregate.replace(needle, needle + needle, 1)),
+        ("reordered paths", aggregate.replace(needle + other, other + needle, 1)),
+        ("commented path", aggregate.replace(
+            needle, "            # services/import-api/internal/upload\n", 1)),
+        ("expanded path", aggregate.replace(
+            needle, "            services/import-api/internal/upload $HOME\n", 1)),
+        ("injected command", aggregate.replace(
+            needle, "            services/import-api/internal/upload; git push origin HEAD:so\n", 1)),
+        ("ancestry bypass", aggregate.replace(
+            'if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then',
+            "if false; then", 1)),
+        ("critical comparison bypass", aggregate.replace(
+            'git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"',
+            'git diff --quiet HEAD HEAD -- "${critical[@]}"', 1)),
+        ("false ancestry success", aggregate.replace("exit 75", "exit 0", 1)),
+        ("missing fail-closed shell", aggregate.replace(
+            "          set -euo pipefail\n", "", 1)),
+    )
+    for label, mutant in mutants:
+        if mutant == aggregate:
+            raise RuntimeError("saturation aggregate mutation fixture drift: " + label)
+        try:
+            require_aggregate(mutant)
+        except RuntimeError as exc:
+            if str(exc) != "saturation aggregate source authority drift":
+                raise
+        else:
+            raise RuntimeError("saturation aggregate mutation accepted: " + label)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -10936,6 +11029,7 @@ def main() -> int:
     prove_soak_critical_path_precheck_inventory(source_root)
     prove_soak_precheck_shell_error_classes(source_root)
     prove_saturation_critical_path_array_binding(source_root)
+    prove_saturation_aggregate_source_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
