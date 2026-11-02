@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -13,7 +14,7 @@ import stat
 import sys
 import tempfile
 import weakref
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from pathlib import Path
 from typing import Callable
 from unittest.mock import patch
@@ -510,9 +511,31 @@ def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[
     except fail_type:
         print(f"PASS reject: {name}")
         return
-    except Exception as exc:
-        raise Fail(f"{name} leaked non-domain exception: {type(exc).__name__}: {exc}") from exc
+    except Exception:
+        raise Fail(f"{name} leaked non-domain exception") from None
     raise Fail(f"negative case unexpectedly accepted: {name}")
+
+
+def prove_private_negative_failure_classifier() -> None:
+    """A wrong exception class cannot publish synthetic private diagnostics."""
+    marker = "PRIVATE_GENERATION_RECONCILER_CLASSIFIER_CANARY"
+
+    def raise_private() -> None:
+        raise TypeError(marker)
+
+    captured = io.StringIO()
+    with redirect_stdout(captured):
+        try:
+            expect_domain_fail("private classifier", raise_private, Fail)
+        except Fail as exc:
+            require(str(exc) == "private classifier leaked non-domain exception"
+                    and exc.__suppress_context__ and marker not in str(exc),
+                    "generation reconciler negative classifier diagnostic drift")
+        else:
+            raise Fail("generation reconciler negative classifier accepted private exception")
+    require(not captured.getvalue(),
+            "generation reconciler negative classifier emitted success")
+    print("PASS: generation reconciler negative classifier private exception redaction")
 
 
 def expect_direct_authority_rejected(
@@ -1111,6 +1134,7 @@ def main() -> int:
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_pinned_reconciler_import()
+    prove_private_negative_failure_classifier()
     reconciler = load_reconciler()
     prove_post_validator_transport(reconciler)
     prove_pinned_generation_writer_import(reconciler)
