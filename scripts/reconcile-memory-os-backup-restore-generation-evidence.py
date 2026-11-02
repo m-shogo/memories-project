@@ -184,42 +184,42 @@ def load(path: Path) -> dict[str, Any]:
 
 
 def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
-    """Bind reviewed reviewed source bytes to owned directory/file descriptors, not a mutable path."""
+    """Bind reviewed executable bytes to owned directory/file descriptors, not a mutable path."""
     require_exact_repo_file(path, relative, field)
     require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
-            "generation evidence reviewed source pinned import platform unsafe")
+            "generation evidence reviewed executable pinning platform unsafe")
     owned: list[int] = []
     try:
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         parent_fd = os.open(ROOT, directory_flags)
-        require(type(parent_fd) is int and parent_fd >= 0, "reviewed source directory descriptor invalid")
+        require(type(parent_fd) is int and parent_fd >= 0, "reviewed executable directory descriptor invalid")
         owned.append(parent_fd)
         for part in relative.parts[:-1]:
             parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
-            require(type(parent_fd) is int and parent_fd >= 0, "reviewed source directory descriptor invalid")
+            require(type(parent_fd) is int and parent_fd >= 0, "reviewed executable directory descriptor invalid")
             owned.append(parent_fd)
         before_parents = [os.fstat(fd) for fd in owned]
         parent_identity = lambda value: (
             value.st_dev, value.st_ino, value.st_mode, value.st_ctime_ns
         )
         require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
-                    for item in before_parents), "reviewed source parent directory unsafe")
+                    for item in before_parents), "reviewed executable parent directory unsafe")
         source_fd = os.open(
             relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
             dir_fd=parent_fd,
         )
-        require(type(source_fd) is int and source_fd >= 0, "reviewed source source descriptor invalid")
+        require(type(source_fd) is int and source_fd >= 0, "reviewed executable descriptor invalid")
         owned.append(source_fd)
         before = os.fstat(source_fd)
         require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
                 and not (before.st_mode & 0o022)
                 and 0 <= before.st_size <= MAX_REVIEWED_SOURCE_BYTES,
-                "reviewed source source type/size unsafe")
+                "reviewed executable type/size unsafe")
         chunks: list[bytes] = []
         remaining = MAX_REVIEWED_SOURCE_BYTES + 1
         while remaining:
             chunk = os.read(source_fd, remaining)
-            require(type(chunk) is bytes, "reviewed source source read type invalid")
+            require(type(chunk) is bytes, "reviewed executable read type invalid")
             if not chunk:
                 break
             chunks.append(chunk)
@@ -234,7 +234,7 @@ def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
         require(len(source) <= MAX_REVIEWED_SOURCE_BYTES
                 and len(source) == before.st_size
                 and identity(before) == identity(after) == identity(leaf),
-                "reviewed source source changed during read")
+                "reviewed executable changed during read")
         for index, fd in enumerate(owned[:-1]):
             current = os.fstat(fd)
             lexical = ROOT if index == 0 else ROOT.joinpath(*relative.parts[:index])
@@ -242,10 +242,10 @@ def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
             require(stat.S_ISDIR(visible.st_mode)
                     and parent_identity(before_parents[index])
                     == parent_identity(current) == parent_identity(visible),
-                    "reviewed source parent changed during read")
+                    "reviewed executable parent changed during read")
         require_exact_repo_file(path, relative, field)
         require(identity(path.stat()) == identity(after),
-                "reviewed source pathname changed during read")
+                "reviewed executable pathname changed during read")
         return source
     finally:
         primary = sys.exc_info()[0] is not None
@@ -256,7 +256,7 @@ def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
             except Exception:
                 failed = True
         if failed and not primary:
-            raise Fail("reviewed source descriptor cleanup failed") from None
+            raise Fail("reviewed executable descriptor cleanup failed") from None
 
 
 def pinned_writer_source() -> bytes:
