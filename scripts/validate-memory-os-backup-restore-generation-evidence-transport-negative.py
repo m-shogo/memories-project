@@ -193,6 +193,45 @@ def prove_pinned_validator_import() -> None:
                     require(closed == list(reversed(acquired)),
                             "generation transport invalid FD ownership/cleanup drift")
 
+            # Preserve the primary pinned-read rejection when a secondary
+            # descriptor close faults. With no primary, close failures must
+            # be private, deterministic and must not strand owned FDs.
+            for with_primary in (False, True):
+                original_close, original_read = os.close, os.read
+                close_count = 0
+                private_marker = "PRIVATE_GENERATION_TRANSPORT_CLOSE_CANARY"
+
+                def injected_close(descriptor: int) -> None:
+                    nonlocal close_count
+                    close_count += 1
+                    original_close(descriptor)
+                    if close_count == 1:
+                        raise ValueError(private_marker)
+
+                os.close = injected_close
+                if with_primary:
+                    os.read = lambda *_args: b""
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        expected = (
+                            "generation evidence transport validator source changed during read"
+                            if with_primary else
+                            "generation evidence transport validator descriptor cleanup failed"
+                        )
+                        require(str(exc) == expected and private_marker not in str(exc),
+                                "generation transport descriptor cleanup failure precedence drift")
+                        if not with_primary:
+                            require(exc.__suppress_context__,
+                                    "generation transport descriptor cleanup context exposed")
+                    else:
+                        raise Fail("generation transport descriptor close fault accepted")
+                finally:
+                    os.close, os.read = original_close, original_read
+                require(close_count == len(VALIDATOR_REL.parts) + 1,
+                        "generation transport descriptor close ownership drift")
+
             original_read = os.read
             fragments = 0
 
