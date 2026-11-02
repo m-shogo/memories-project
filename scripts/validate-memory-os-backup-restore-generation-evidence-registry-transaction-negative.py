@@ -261,6 +261,43 @@ def prove_pinned_writer_import() -> None:
             finally:
                 os.read = original_read
 
+            # A close fault after closing an owned FD must not mask a primary
+            # source-read failure or disclose the underlying private diagnostic.
+            original_close = os.close
+            closed: list[int] = []
+
+            def close_then_fail(fd: int) -> None:
+                original_close(fd)
+                closed.append(fd)
+                raise OSError("PRIVATE_GENERATION_TRANSACTION_CLOSE_CANARY")
+
+            for label, read_fault, expected in (
+                ("close-only", None,
+                 "generation evidence transaction writer descriptor cleanup failed"),
+                ("read-and-close", private_read_value_failure,
+                 "generation evidence transaction writer pinned source unreadable"),
+            ):
+                closed.clear()
+                os.close = close_then_fail
+                if read_fault is not None:
+                    os.read = read_fault
+                try:
+                    try:
+                        load_writer()
+                    except Fail as exc:
+                        require(str(exc) == expected and exc.__suppress_context__,
+                                "generation transaction " + label + " cleanup precedence drift")
+                        require("PRIVATE_GENERATION_TRANSACTION_CLOSE_CANARY" not in str(exc)
+                                and "PRIVATE_GENERATION_TRANSACTION_READ_CANARY" not in str(exc),
+                                "generation transaction " + label + " private diagnostic leaked")
+                    else:
+                        raise Fail("generation transaction accepted " + label)
+                finally:
+                    os.close = original_close
+                    os.read = original_read
+                require(len(closed) == 3 and len(set(closed)) == 3,
+                        "generation transaction " + label + " descriptor cleanup count drift")
+
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 setattr(os, flag, 0)
@@ -366,7 +403,7 @@ def prove_pinned_writer_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation transaction pinned writer import rejects EOF, nonbytes, oversized reads, private read errors, hardlinks, chmod and swaps; fragmented reads work")
+    print("PASS: generation transaction pinned writer import rejects EOF, nonbytes, oversized reads, private read and close faults, hardlinks, chmod and swaps; fragmented reads work")
 
 
 
