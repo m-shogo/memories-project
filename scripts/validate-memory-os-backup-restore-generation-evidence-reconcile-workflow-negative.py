@@ -6,6 +6,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -370,6 +371,15 @@ def classify_generation_publisher_coupling(source: str) -> bool:
     )
     if source.count("  validate:\n") != 1 or source.count(guarded_job) != 1:
         raise SystemExit("generation evidence publisher bounded source guard missing")
+    # A later duplicate YAML key can shadow the reviewed job-level guard.
+    # Count all syntactic job-level variants, not only the first safe substring.
+    job_body = source.split("  validate:\n", 1)[1]
+    job_lines = job_body.splitlines()
+    if (sum(bool(re.match(r"^ {4}(?:if|['\\\"]if['\\\"])\\s*:", line))
+            for line in job_lines) != 1
+            or sum(bool(re.match(r"^ {4}(?:permissions|['\\\"]permissions['\\\"])\\s*:", line))
+                   for line in job_lines) != 1):
+        raise SystemExit("generation evidence publisher bounded source guard missing")
     required = (
         "for reconcile_attempt in 1 2; do",
         "revalidate_latest_authority",
@@ -426,6 +436,21 @@ def prove_generation_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"generation evidence publisher {label} branch guard bypass accepted")
+    # Duplicate YAML keys may override the first reviewed branch guard.
+    # These are semantic negatives, not production workflow mutations.
+    for label, duplicate in (
+        ("duplicate-if", "    if: github.event_name == 'workflow_dispatch'\n"),
+        ("quoted-if", "    'if': github.event_name == 'workflow_dispatch'\n"),
+        ("duplicate-permissions", "    permissions:\n      contents: read\n"),
+    ):
+        shadowed = source.replace(branch_guard, branch_guard + duplicate, 1)
+        try:
+            classify_generation_publisher_coupling(shadowed)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence publisher bounded source guard missing":
+                raise
+        else:
+            raise SystemExit(f"generation evidence publisher {label} YAML shadow accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
@@ -436,7 +461,7 @@ def prove_generation_publisher_coupling_guard() -> None:
     removed = prefix + push_marker + suffix.replace(target, "", 1)
     if classify_generation_publisher_coupling(removed):
         raise SystemExit("generation evidence removed publisher trigger still classified coupled")
-    print("PASS: generation evidence publisher trigger, source lease and job branch guard (5 negatives)")
+    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (8 negatives)")
 
 
 
