@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import stat
 import subprocess
@@ -110,11 +111,14 @@ def enforce_runtime_authorities() -> None:
 
 
 def read_text(path: Path) -> str:
+    """Consume bounded, stable JSON bytes from the reviewed pinned-FD reader."""
     relative = repo_relative(path)
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise Fail(f"cannot read {relative}: {exc}") from exc
+        return pinned_reviewed_source(
+            path, relative, "generation evidence JSON authority",
+        ).decode("utf-8")
+    except (Fail, OSError, UnicodeError, ValueError, TypeError):
+        raise Fail(f"generation evidence JSON authority unreadable: {relative}") from None
 
 
 def write_text(path: Path, text: str) -> None:
@@ -186,11 +190,37 @@ def restore_original_text(original_text: dict[Path, str]) -> None:
 
 
 def load(path: Path) -> dict[str, Any]:
+    """Reject ambiguous and non-finite JSON before any reconciliation decision."""
     relative = repo_relative(path)
+
+    def unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            require(key not in result, f"generation evidence JSON duplicate key: {relative}")
+            result[key] = value
+        return result
+
+    def reject_constant(_value: str) -> None:
+        raise Fail(f"generation evidence JSON nonfinite number: {relative}")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        require(math.isfinite(number), f"generation evidence JSON nonfinite number: {relative}")
+        return number
+
+    def bounded_int(value: str) -> int:
+        require(len(value.lstrip("-")) <= 128,
+                f"generation evidence JSON oversized integer: {relative}")
+        return int(value)
+
     try:
-        value = json.loads(read_text(path))
-    except json.JSONDecodeError as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        value = json.loads(
+            read_text(path), object_pairs_hook=unique_keys,
+            parse_constant=reject_constant, parse_float=finite_float,
+            parse_int=bounded_int,
+        )
+    except (json.JSONDecodeError, ValueError, OverflowError, RecursionError):
+        raise Fail(f"generation evidence JSON invalid: {relative}") from None
     require(isinstance(value, dict), f"root must be object: {relative}")
     return value
 
