@@ -3737,11 +3737,13 @@ import sys
 from pathlib import Path
 
 target = sys.argv[1]
-for fault in ("syntax", "read"):
+for fault in ("syntax", "read", "value", "type", "runtime", "attribute"):
     original_parse, original_open = ast.parse, os.open
-    if fault == "syntax":
+    if fault in ("syntax", "value", "type", "runtime", "attribute"):
         def fault_parse(*args, **kwargs):
-            raise SyntaxError("PRIVATE_VALIDATOR_SYNTAX_CANARY")
+            kinds = {"syntax": SyntaxError, "value": ValueError, "type": TypeError,
+                     "runtime": RuntimeError, "attribute": AttributeError}
+            raise kinds[fault]("PRIVATE_VALIDATOR_SYNTAX_CANARY")
         ast.parse = fault_parse
     else:
         def fault_open(file, *args, **kwargs):
@@ -3762,7 +3764,7 @@ for fault in ("syntax", "read"):
         ast.parse, os.open = original_parse, original_open
     combined = stdout.getvalue() + stderr.getvalue()
     expected = (
-        "unexpected validator input failure" if fault == "syntax"
+        "unexpected validator input failure" if fault != "read"
         else "canonical target source read failed"
     )
     assert stdout.getvalue().strip() == (
@@ -3777,7 +3779,7 @@ for fault in ("syntax", "read"):
     )
     require(result.returncode == 0,
             "helper ancestor private entrypoint fault proof failed")
-    return 2
+    return 6
 
 
 MAX_TARGET_SOURCE_BYTES = 1024 * 1024
@@ -3905,7 +3907,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 136 * len(TARGETS) + 234, "ancestor negative count mismatch")
+        require(total == 136 * len(TARGETS) + 238, "ancestor negative count mismatch")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
@@ -3916,6 +3918,8 @@ if __name__ == "__main__":
     except GuardFailure as exc:
         print(f"HELPER ANCESTOR REACHABILITY FAILED: {exc}")
         raise SystemExit(1)
-    except (SyntaxError, OSError):
+    except Exception:
+        # Unexpected runtime exceptions may carry private paths or tokens.
+        # Keep a fixed-domain diagnostic rather than echoing the exception.
         print("HELPER ANCESTOR REACHABILITY FAILED: unexpected validator input failure")
         raise SystemExit(1)
