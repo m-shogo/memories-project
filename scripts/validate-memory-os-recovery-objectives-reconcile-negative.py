@@ -1027,11 +1027,13 @@ def prove_strict_objective_json(reconciler: object) -> None:
         marker = "PRIVATE_OBJECTIVE_RECONCILE_JSON_CANARY"
         original_open = reconciler.os.open
 
-        def raced_open(candidate, flags, *_args, **_kwargs):
-            require(candidate == path and flags & reconciler.os.O_NOFOLLOW
-                    and flags & reconciler.os.O_NONBLOCK,
-                    "reconciler JSON reader lost no-follow/nonblocking descriptor flags")
-            raise OSError(marker)
+        def raced_open(candidate, flags, *args, **kwargs):
+            if candidate == path.name and kwargs.get("dir_fd") is not None:
+                require(flags & reconciler.os.O_NOFOLLOW
+                        and flags & reconciler.os.O_NONBLOCK,
+                        "reconciler JSON reader lost no-follow/nonblocking descriptor flags")
+                raise OSError(marker)
+            return original_open(candidate, flags, *args, **kwargs)
 
         reconciler.os.open = raced_open
         try:
@@ -1100,6 +1102,57 @@ def prove_strict_objective_json(reconciler: object) -> None:
         require(reconciler.load(path) == expected,
                 "objective reconcile JSON restored positive failed")
     print("PASS: actual recovery objective reconcile JSON reader positive and 13 fail-closed negatives")
+
+
+
+def prove_json_parent_swap_rejection(reconciler: object) -> None:
+    """A swapped parent after directory-FD acquisition must fail closed."""
+    original_root = reconciler.ROOT
+    original_open = reconciler.os.open
+    with tempfile.TemporaryDirectory(prefix=".tmp-objective-json-parent-", dir=TMP_PARENT) as tmpdir:
+        root = Path(tmpdir)
+        parent = root / "contracts" / "operations"
+        parent.mkdir(parents=True)
+        reviewed = parent / "authority.json"
+        reviewed.write_text('{"safe":true}', encoding="utf-8")
+        redirected = root / "redirected"
+        redirected.mkdir()
+        canary = redirected / reviewed.name
+        canary.write_text('{"safe":false}', encoding="utf-8")
+        parked = root / "parked-operations"
+        swapped = False
+
+        def swap_at_leaf(candidate, flags, *args, **kwargs):
+            nonlocal swapped
+            if candidate == reviewed.name and kwargs.get("dir_fd") is not None and not swapped:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_open(candidate, flags, *args, **kwargs)
+
+        reconciler.ROOT = root
+        reconciler.os.open = swap_at_leaf
+        try:
+            try:
+                reconciler.load(reviewed)
+            except reconciler.Fail as exc:
+                require(str(exc) == "recovery objective reconcile authority unreadable"
+                        and exc.__suppress_context__,
+                        "recovery objective JSON parent swap rejection drift")
+            else:
+                raise Fail("recovery objective JSON parent swap unexpectedly accepted")
+            require(swapped and canary.read_text(encoding="utf-8") == '{"safe":false}',
+                    "recovery objective JSON parent swap canary drift")
+        finally:
+            reconciler.os.open = original_open
+            reconciler.ROOT = original_root
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        require(reviewed.read_text(encoding="utf-8") == '{"safe":true}',
+                "recovery objective JSON parent swap mutated reviewed fixture")
+    print("PASS: recovery objective JSON parent swap fails closed with pinned directory FDs")
 
 
 def main() -> int:
@@ -1193,6 +1246,7 @@ def main() -> int:
             expect_domain_fail("objective authority escapes repository", lambda: reconciler.load(outside), reconciler.Fail)
 
     prove_strict_objective_json(reconciler)
+    prove_json_parent_swap_rejection(reconciler)
     prove_private_writer_import(reconciler)
     prove_pinned_writer_import(reconciler)
     prove_reference_path_identity(reconciler)
