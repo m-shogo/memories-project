@@ -9283,6 +9283,108 @@ def prove_source_derived_writer_inventory(source_root: Path) -> None:
             raise RuntimeError("prewrite lexical writer inventory negative accepted: " + label)
 
 
+
+def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
+    """Pin the reviewed workflow_run -> actions dispatch -> writer chain."""
+    import hashlib
+    import re
+    import runpy
+
+    audit = runpy.run_path(
+        str(source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py")
+    )
+    directory = source_root / ".github/workflows"
+    sources = sorted(path for path in directory.iterdir()
+                     if path.suffix in (".yml", ".yaml"))
+    if len(sources) != 221 or any(path.is_symlink() for path in sources):
+        raise RuntimeError("indirect workflow source inventory drift")
+    verified = audit["require_workflow_git_index_identity"](source_root, sources)
+    if set(verified) != set(sources):
+        raise RuntimeError("indirect workflow Git source snapshot incomplete")
+    try:
+        texts = {path.name: verified[path].decode("utf-8") for path in sources}
+    except UnicodeDecodeError:
+        raise RuntimeError("indirect workflow source invalid UTF-8") from None
+
+    indirect = tuple(sorted(name for name, source in texts.items()
+                            if re.search(r"(?m)^\s*workflow_run\s*:", source)))
+    if indirect != ("converge-sustained-local-soak-authority.yml",):
+        raise RuntimeError("indirect workflow_run trigger inventory drift")
+    if any(re.search(r"(?m)^\s*(?:workflow_call|repository_dispatch)\s*:", source)
+           for source in texts.values()):
+        raise RuntimeError("unreviewed indirect workflow event authority")
+
+    converge = texts["converge-sustained-local-soak-authority.yml"]
+    upstream = texts["sustained-local-soak.yml"]
+    downstream = texts["reconcile-sustained-local-soak-authority.yml"]
+    if (not upstream.startswith("name: Sustained Local Soak\n")
+            or not downstream.startswith("name: Reconcile Sustained Local Soak Authority\n")
+            or "      contents: write\n" not in downstream):
+        raise RuntimeError("indirect dispatch target writer authority drift")
+
+    def reviewed(source: str) -> bool:
+        roots = [line for line in source.splitlines()
+                 if line and not line[0].isspace()
+                 and not line.lstrip().startswith("#")]
+        if roots != ["name: Converge Sustained Local Soak Authority",
+                     "on:", "permissions:", "concurrency:", "jobs:"]:
+            return False
+        events = source.split("\non:\n", 1)[1].split("\npermissions:\n", 1)[0]
+        event_rows = [line for line in events.splitlines()
+                      if line.startswith("  ") and not line.startswith("   ")
+                      and line.strip() and not line.lstrip().startswith("#")]
+        if event_rows != ["  workflow_run:", "  workflow_dispatch:", "  push:"]:
+            return False
+        required = (
+            "    workflows:\n      - Sustained Local Soak\n",
+            "    types:\n      - completed\n",
+            "  contents: read\n",
+            "  actions: write\n",
+            "      github.event_name != 'workflow_run' ||\n",
+            "      github.event.workflow_run.head_branch == 'so'\n",
+            "          gh workflow run reconcile-sustained-local-soak-authority.yml \\\n",
+            '            --repo "$GITHUB_REPOSITORY" \\\n',
+            "            --ref so\n",
+            '      - ".github/workflows/converge-sustained-local-soak-authority.yml"\n',
+        )
+        return (all(source.count(marker) == 1 for marker in required)
+                and source.count("gh workflow run ") == 1
+                and source.count("  workflow_run:\n") == 1
+                and source.count("    if: >-\n") == 1
+                and not re.search(r"(?m)^\s*(?:workflow_call|repository_dispatch):", source))
+
+    if not reviewed(converge):
+        raise RuntimeError("indirect workflow dispatch semantic boundary drift")
+    blob = converge.encode("utf-8")
+    actual_sha = hashlib.sha1(b"blob " + str(len(blob)).encode("ascii")
+                              + b"\0" + blob).hexdigest()
+    if actual_sha != "1b30280a0bb322e77beb5bcf05633959a87149ab":
+        raise RuntimeError("indirect workflow dispatch reviewed blob drift")
+
+    for label, old, new in (
+        ("broaden upstream", "      - Sustained Local Soak\n",
+         "      - Autonomous Learning Guard\n"),
+        ("remove branch gate", "      github.event.workflow_run.head_branch == 'so'\n",
+         "      true\n"),
+        ("change dispatch", "gh workflow run reconcile-sustained-local-soak-authority.yml",
+         "gh workflow run backup-restore-admission-chain.yml"),
+        ("change dispatch ref", "            --ref so\n", "            --ref main\n"),
+        ("escalate contents", "  contents: read\n", "  contents: write\n"),
+        ("remove actions authority", "  actions: write\n", "  actions: read\n"),
+        ("extra dispatch", "            --ref so\n",
+         "            --ref so\n          gh workflow run other.yml\n"),
+        ("shadow workflow event", "  workflow_run:\n",
+         "  workflow_run:\n  workflow_run:\n"),
+    ):
+        if converge.count(old) != 1:
+            raise RuntimeError("indirect workflow mutation anchor drift: " + label)
+        changed = converge.replace(old, new, 1)
+        if reviewed(changed):
+            raise RuntimeError("indirect workflow mutation accepted: " + label)
+    print("indirect workflow dispatch boundary PASS: 221 sources, 8 negatives; "
+          "one reviewed workflow_run -> actions:write dispatch; not readiness")
+
+
 def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
     """Prove a post-precheck critical-source advance needs a second guard.
 
@@ -11676,6 +11778,7 @@ def main() -> int:
     prove_prewrite_workflow_root_swap(source_root)
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     prove_source_derived_writer_inventory(source_root)
+    prove_indirect_workflow_dispatch_boundary(source_root)
     prove_sustained_soak_rebase_race_fixture(source_root)
     prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
