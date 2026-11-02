@@ -481,7 +481,7 @@ def prove_pinned_writer_import(reconciler: object) -> None:
     """A parent swap after source capture cannot execute an unreviewed writer."""
     with isolated_authorities(reconciler):
         writer = reconciler.WRITER
-        writer.write_text("SOURCE_MARKER = 'reviewed'\\n", encoding="utf-8")
+        writer.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
         require(reconciler.load_writer().SOURCE_MARKER == "reviewed",
                 "recovery objective pinned writer positive control failed")
         parent = writer.parent
@@ -489,7 +489,7 @@ def prove_pinned_writer_import(reconciler: object) -> None:
         redirected = reconciler.ROOT / "redirected"
         redirected.mkdir()
         canary = redirected / writer.name
-        canary.write_text("raise RuntimeError('PRIVATE_OBJECTIVE_WRITER_SWAP_CANARY')\\n",
+        canary.write_text("raise RuntimeError('PRIVATE_OBJECTIVE_WRITER_SWAP_CANARY')\n",
                           encoding="utf-8")
         original_spec = reconciler.importlib.util.spec_from_file_location
         swapped = False
