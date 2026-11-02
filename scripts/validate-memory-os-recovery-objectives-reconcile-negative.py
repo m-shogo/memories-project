@@ -454,10 +454,10 @@ def prove_atomic_parent_swap_before_commit(reconciler: object) -> None:
                 parent.unlink()
             if moved.exists():
                 moved.rename(parent)
-            # The current pathname-based cleanup cannot find a staged file
-            # while the parent is swapped; restore the fixture before removal.
-            for leftover in parent.glob(f".{path.name}.*.tmp"):
-                leftover.unlink()
+            # Pinned-FD cleanup must have removed the staged inode even
+            # while the reviewed parent was invisible at its old pathname.
+            require(not list(parent.glob(f".{path.name}.*.tmp")),
+                    "parent-swap negative left a staged temporary inode")
 
         require(swapped == [True] and not replace_calls,
                 "parent-swap negative reached replacement or missed the race")
@@ -467,6 +467,54 @@ def prove_atomic_parent_swap_before_commit(reconciler: object) -> None:
         require(not list(parent.glob(f".{path.name}.*.tmp")),
                 "parent-swap negative left temporary residue")
     print("PASS: recovery objective atomic parent swap before commit refuses replace")
+
+
+
+def prove_atomic_parent_swap_cleanup_on_replace_error(reconciler: object) -> None:
+    """A failed commit after a parent swap must clean the original parent FD."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        parent = path.parent
+        moved = parent.with_name(parent.name + "-replace-held")
+        canary_parent = reconciler.ROOT / "objective-replace-swap-canary"
+        canary_parent.mkdir()
+        canary = canary_parent / path.name
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_REPLACE_SWAP_CANARY")
+        original_replace = reconciler.os.replace
+        reached = []
+        residue_during_swap = None
+
+        def swap_then_fail(_source, _destination):
+            parent.rename(moved)
+            parent.symlink_to(canary_parent, target_is_directory=True)
+            reached.append(True)
+            raise OSError("PRIVATE_OBJECTIVE_REPLACE_SWAP_CANARY")
+
+        reconciler.os.replace = swap_then_fail
+        try:
+            expect_domain_fail(
+                "recovery objective parent swap at failing replace",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile authority atomic write failed",
+            )
+        finally:
+            reconciler.os.replace = original_replace
+            residue_during_swap = list(moved.glob(f".{path.name}.*.tmp"))
+            if parent.is_symlink():
+                parent.unlink()
+            if moved.exists():
+                moved.rename(parent)
+
+        require(reached == [True], "replacement-boundary parent swap was not exercised")
+        require(not residue_during_swap
+                and not list(parent.glob(f".{path.name}.*.tmp")),
+                "replacement-boundary swap left temporary inode in reviewed parent")
+        require(path.read_bytes() == original
+                and canary.read_bytes() == b"PRIVATE_OBJECTIVE_REPLACE_SWAP_CANARY",
+                "replacement-boundary swap mutated reviewed or canary bytes")
+    print("PASS: recovery objective atomic parent-FD cleanup after replace-boundary swap")
 
 
 def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
@@ -1481,6 +1529,7 @@ def main() -> int:
     prove_atomic_target_identity_guards(reconciler)
     prove_atomic_temp_descriptor_identity(reconciler)
     prove_atomic_parent_swap_before_commit(reconciler)
+    prove_atomic_parent_swap_cleanup_on_replace_error(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)
