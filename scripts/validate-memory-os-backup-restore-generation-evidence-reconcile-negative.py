@@ -466,6 +466,53 @@ def prove_strict_generation_json_authority(reconciler: object) -> None:
     print("PASS: generation evidence pinned JSON, strict parser, bounds and inode guards (11 negatives)")
 
 
+def prove_generation_json_parent_swap(reconciler: object) -> None:
+    """A parent swapped at JSON leaf open must not redirect reviewed bytes."""
+    with guarded_temporary_directory(
+        prefix=".tmp-generation-evidence-json-parent-", parent=TMP_PARENT,
+    ) as tmpdir:
+        root = Path(tmpdir)
+        parent = root / "reviewed"
+        parent.mkdir()
+        authority = parent / "authority.json"
+        authority.write_bytes(b'{"reviewed":true}')
+        redirected = root / "redirected"
+        redirected.mkdir()
+        canary = redirected / authority.name
+        canary.write_bytes(b'{"reviewed":false,"private":"CANARY"}')
+        parked = root / "reviewed-held"
+        original_open = reconciler.os.open
+        swapped: list[bool] = []
+
+        def swap_at_leaf(candidate, flags, *args, **kwargs):
+            if (candidate == authority.name and kwargs.get("dir_fd") is not None
+                    and not swapped):
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+                swapped.append(True)
+            return original_open(candidate, flags, *args, **kwargs)
+
+        reconciler.os.open = swap_at_leaf
+        try:
+            expect_domain_fail(
+                "generation evidence JSON parent swap",
+                lambda: reconciler.load(authority), reconciler.Fail,
+            )
+        finally:
+            reconciler.os.open = original_open
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        require(swapped == [True], "generation JSON parent-swap boundary not reached")
+        require(authority.read_bytes() == b'{"reviewed":true}'
+                and canary.read_bytes() == b'{"reviewed":false,"private":"CANARY"}',
+                "generation JSON parent-swap mutated reviewed or redirected bytes")
+        require(reconciler.load(authority) == {"reviewed": True},
+                "generation JSON parent-swap positive control not restored")
+    print("PASS: generation evidence JSON parent swap rejected at pinned leaf open")
+
+
 def prove_direct_authority_identity(reconciler: object) -> None:
     before = {path: path.read_bytes() for path in CANONICAL.values()}
     cases = (
@@ -946,6 +993,7 @@ def main() -> int:
     prove_pinned_generation_writer_import(reconciler)
 
     prove_strict_generation_json_authority(reconciler)
+    prove_generation_json_parent_swap(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_atomic_target_metadata_rejection(reconciler)
     prove_atomic_write_failure(reconciler)
