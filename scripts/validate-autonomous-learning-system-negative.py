@@ -9490,8 +9490,16 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         for index, line in enumerate(lines):
             if not re.fullmatch(r"\s*git pull --rebase origin so\s*", line):
                 continue
-            end = next(
+            # A later YAML step/job is a distinct shell process. A push in
+            # that step cannot prove the earlier rebase-to-push guard boundary.
+            step_end = next(
                 (i for i in range(index + 1, len(lines))
+                 if re.match(r"^      - name:\s", lines[i])
+                 or re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])),
+                len(lines),
+            )
+            end = next(
+                (i for i in range(index + 1, step_end)
                  if re.match(
                      r"^\s*(?:if\s+)?git push origin HEAD:so(?:\s*;|\s*$)",
                      lines[i],
@@ -9517,6 +9525,14 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
                 "git pull --rebase origin so\n# verify_critical_source\nif git push origin HEAD:so; then"
             ) != (False,)):
         raise RuntimeError("prewrite rebase guard regex/newline fixture drift")
+
+    if rebase_guard_status(
+        "      - name: first\n        run: |\n          git pull --rebase origin so\n"
+        "          verify_critical_source\n          if git push origin HEAD:so; then\n"
+        "      - name: second\n        run: |\n          git pull --rebase origin so\n"
+        "          if git push origin HEAD:so; then"
+    ) != (True, False):
+        raise RuntimeError("prewrite rebase YAML step scope positive drift")
 
     expected = (
         ("controlled-saturation-repeatability.yml", (True,)),
@@ -9551,6 +9567,8 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     for label, fixture in (
         ("absent push", "git pull --rebase origin so\nverify_critical_source"),
         ("comment-only push", "git pull --rebase origin so\nverify_critical_source\n# git push origin HEAD:so"),
+        ("push in next YAML step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - name: second\n        run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
+        ("push in next YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  second:\n    steps:\n      if git push origin HEAD:so; then"),
     ):
         try:
             rebase_guard_status(fixture)
