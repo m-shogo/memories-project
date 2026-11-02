@@ -10094,6 +10094,8 @@ git() {
             ("unchanged source", "0", (0, b"RESET\nPUSH\n")),
             ("critical drift", "1", (75, b"")),
             ("Git operational error", "128", (75, b"")),
+            ("Git usage error", "2", (75, b"")),
+            ("Git fatal error", "255", (75, b"")),
         ):
             if execute(body, code) != expected:
                 raise RuntimeError("soak precheck shell behavior drift: " + filename + ": " + label)
