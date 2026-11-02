@@ -51,10 +51,15 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
     # before mkdir, but the new child must stay beneath the opened directory.
     try:
         relative = parent.relative_to(ROOT)
-    except ValueError as exc:
-        raise Fail("reconcile negative temp parent escapes repository") from exc
-    require(ROOT.is_dir() and not ROOT.is_symlink(),
-            "reconcile negative repository root missing or symlinked")
+    except (OSError, ValueError, TypeError, RuntimeError):
+        raise Fail("reconcile negative temp parent escapes repository") from None
+    # These probes precede acquisition of the pinned root descriptor.
+    # A private filesystem diagnostic is not part of the failure authority.
+    try:
+        root_ok = ROOT.is_dir() and not ROOT.is_symlink()
+    except (OSError, ValueError, TypeError, RuntimeError):
+        raise Fail("reconcile negative repository root missing or symlinked") from None
+    require(root_ok, "reconcile negative repository root missing or symlinked")
     require(
         all(type(getattr(os, name, None)) is int and getattr(os, name) > 0
             for name in ("O_NOFOLLOW", "O_DIRECTORY"))
@@ -343,6 +348,50 @@ def prove_private_fixture_os_errors_redacted() -> None:
     require({p.name for p in TMP_PARENT.iterdir()} == before,
             "generation fixture private OS errors created unexpected child")
     print("PASS: generation reconcile fixture private OS/value/type errors redacted")
+
+
+def prove_private_fixture_preflight_errors_redacted() -> None:
+    """Pre-descriptor path probes must not expose private causes or create files."""
+    marker = "PRIVATE_GENERATION_FIXTURE_PREFLIGHT_CANARY"
+    before = {p.name for p in TMP_PARENT.iterdir()}
+    cases = (
+        ("relative_to", TMP_PARENT, ValueError,
+         "reconcile negative temp parent escapes repository"),
+        ("is_dir", ROOT, OSError,
+         "reconcile negative repository root missing or symlinked"),
+        ("is_symlink", ROOT, RuntimeError,
+         "reconcile negative repository root missing or symlinked"),
+    )
+    for method, target, failure_type, expected in cases:
+        original_method = getattr(Path, method)
+        invoked = False
+
+        def reject_preflight(self, *args, **kwargs):
+            nonlocal invoked
+            if self == target:
+                invoked = True
+                raise failure_type(marker)
+            return original_method(self, *args, **kwargs)
+
+        setattr(Path, method, reject_preflight)
+        try:
+            try:
+                guarded_temporary_directory(
+                    prefix=".tmp-generation-private-preflight-must-not-create-",
+                    parent=TMP_PARENT,
+                )
+            except Fail as exc:
+                require(str(exc) == expected and exc.__suppress_context__
+                        and marker not in str(exc),
+                        "generation fixture private " + method + " preflight diagnostic drift")
+            else:
+                raise Fail("generation fixture accepted private " + method + " preflight fault")
+        finally:
+            setattr(Path, method, original_method)
+        require(invoked, "generation fixture private " + method + " fixture inert")
+    require({p.name for p in TMP_PARENT.iterdir()} == before,
+            "generation fixture private preflight created unexpected child")
+    print("PASS: generation reconcile fixture private path preflight errors redacted")
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
@@ -1403,6 +1452,7 @@ def main() -> int:
     prove_invalid_fixture_descriptor_rejected()
     prove_fixture_cleanup_failure_precedence()
     prove_private_fixture_os_errors_redacted()
+    prove_private_fixture_preflight_errors_redacted()
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_pinned_reconciler_import()
