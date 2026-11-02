@@ -446,27 +446,19 @@ def prove_aggregate_validator_rollback(reconciler: object) -> None:
 
 
 def prove_private_writer_import(reconciler: object) -> None:
-    """The actual canonical import must hide synthetic output and error details."""
+    """Pinned import must hide source/spec errors and execute the reviewed positive source."""
     actual = reconciler.load_writer()
     require(Path(actual.__file__).resolve() == reconciler.WRITER.resolve(),
             "recovery objective writer import positive identity drift")
     original_spec = reconciler.importlib.util.spec_from_file_location
-    spec = original_spec("memory_os_objective_reconcile_import_negative", reconciler.WRITER)
-    require(spec is not None and spec.loader is not None,
-            "recovery objective writer import negative spec missing")
     marker = "PRIVATE_RECOVERY_OBJECTIVE_RECONCILE_IMPORT_CANARY"
 
-    class FailingLoader:
-        def create_module(self, _spec):
-            return None
+    def rejected_spec(*_args, **_kwargs):
+        print(marker)
+        print(marker, file=sys.stderr)
+        raise OSError(marker)
 
-        def exec_module(self, _module):
-            print(marker)
-            print(marker, file=sys.stderr)
-            raise OSError(marker)
-
-    spec.loader = FailingLoader()
-    reconciler.importlib.util.spec_from_file_location = lambda *_args, **_kwargs: spec
+    reconciler.importlib.util.spec_from_file_location = rejected_spec
     stdout, stderr = io.StringIO(), io.StringIO()
     try:
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -483,6 +475,47 @@ def prove_private_writer_import(reconciler: object) -> None:
     require(not stdout.getvalue() and not stderr.getvalue(),
             "recovery objective writer import leaked Python-level output")
     print("PASS: recovery objective writer import output and errors private")
+
+
+def prove_pinned_writer_import(reconciler: object) -> None:
+    """A parent swap after source capture cannot execute an unreviewed writer."""
+    with isolated_authorities(reconciler):
+        writer = reconciler.WRITER
+        writer.write_text("SOURCE_MARKER = 'reviewed'\\n", encoding="utf-8")
+        require(reconciler.load_writer().SOURCE_MARKER == "reviewed",
+                "recovery objective pinned writer positive control failed")
+        parent = writer.parent
+        parked = reconciler.ROOT / "parked-scripts"
+        redirected = reconciler.ROOT / "redirected"
+        redirected.mkdir()
+        canary = redirected / writer.name
+        canary.write_text("raise RuntimeError('PRIVATE_OBJECTIVE_WRITER_SWAP_CANARY')\\n",
+                          encoding="utf-8")
+        original_spec = reconciler.importlib.util.spec_from_file_location
+        swapped = False
+
+        def swap_after_capture(name, location, *args, **kwargs):
+            nonlocal swapped
+            if not swapped and Path(location) == writer:
+                swapped = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_spec(name, location, *args, **kwargs)
+
+        reconciler.importlib.util.spec_from_file_location = swap_after_capture
+        try:
+            loaded = reconciler.load_writer()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "recovery objective writer import followed swapped pathname")
+            require(canary.read_text(encoding="utf-8").startswith("raise RuntimeError"),
+                    "recovery objective redirected writer canary mutated")
+        finally:
+            reconciler.importlib.util.spec_from_file_location = original_spec
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: recovery objective writer executes pinned bytes after parent swap")
 
 
 def prove_reference_path_identity(reconciler: object) -> None:
@@ -873,6 +906,7 @@ def main() -> int:
 
     prove_strict_objective_json(reconciler)
     prove_private_writer_import(reconciler)
+    prove_pinned_writer_import(reconciler)
     prove_reference_path_identity(reconciler)
     prove_private_authority_path_diagnostics(reconciler)
     prove_private_delegated_registry_errors(reconciler)
