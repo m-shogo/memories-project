@@ -7270,6 +7270,19 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             ".github/workflows/autonomous-learning-guard.yml" not in entry_workflows):
         raise RuntimeError("prewrite entrypoint fanout CLI count/identity mismatch")
     entry_risk = entry_reports[0].group(1)
+    entry_advisory = (
+        "Direct matching alone is not permission or transitive closure proof."
+        if entry_risk == "BOUNDED_DIRECT_MATCH_ONLY"
+        else "Do not write until independent scoped review changes the precondition."
+    )
+    expected_entry_transcript = [
+        "prewrite direct path audit: scripts/validate-memory-os-entry-docs.py",
+        f"risk: {entry_risk}; matched workflow count: {len(entry_workflows)}",
+        *("- " + workflow for workflow in entry_workflows),
+        entry_advisory,
+    ]
+    if entry_lines != expected_entry_transcript:
+        raise RuntimeError("prewrite entrypoint audit path/transcript drift")
     if ((entry_risk == "BOUNDED_DIRECT_MATCH_ONLY" and
          (entry.returncode != 0 or len(entry_workflows) > 12)) or
             (entry_risk == "BLOCKED_HIGH_FANOUT" and
