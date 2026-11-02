@@ -37,7 +37,8 @@ def require_writer_identity() -> None:
 def pinned_writer_source() -> bytes:
     """Import only verified bytes from owned directory and source descriptors."""
     require_writer_identity()
-    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    require(all(type(getattr(os, name, None)) is int and getattr(os, name) > 0
+                for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
             "generation evidence transaction writer pinned import unavailable")
     owned: list[int] = []
     try:
@@ -151,6 +152,19 @@ def prove_pinned_writer_import() -> None:
         try:
             require(load_writer().SOURCE_MARKER == "reviewed",
                     "generation transaction pinned writer positive control failed")
+            for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
+                original_flag = getattr(os, flag)
+                setattr(os, flag, 0)
+                try:
+                    try:
+                        load_writer()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence transaction writer pinned import unavailable",
+                                "generation transaction zeroed " + flag + " rejected at wrong boundary")
+                    else:
+                        raise Fail("generation transaction accepted zeroed " + flag)
+                finally:
+                    setattr(os, flag, original_flag)
             source.chmod(0o666)
             try:
                 load_writer()
