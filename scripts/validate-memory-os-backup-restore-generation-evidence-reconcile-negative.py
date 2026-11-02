@@ -731,9 +731,21 @@ def prove_post_validator_transport(reconciler) -> None:
 
     def fake_run(exit_code):
         def run(argv, **kwargs):
-            require(argv[0] == reconciler.sys.executable
-                    and argv[1] in [str(path) for path, _, _ in targets],
-                    "generation post-validator child target drift")
+            expected_bootstrap = (
+                "import os, sys\n"
+                "path = sys.argv[1]\n"
+                "sys.path.insert(0, os.path.dirname(path))\n"
+                "sys.argv[:] = [path]\n"
+                "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+                "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+            )
+            require(argv in [
+                [reconciler.sys.executable, "-c", expected_bootstrap, str(path)]
+                for path, _, _ in targets
+            ], "generation post-validator child target drift")
+            require(type(kwargs.get("input")) is bytes
+                    and kwargs["input"] == Path(argv[3]).read_bytes(),
+                    "generation post-validator pinned source bytes drift")
             require(kwargs.get("cwd") == reconciler.ROOT,
                     "generation post-validator cwd drift")
             require(kwargs.get("stdout") == reconciler.subprocess.DEVNULL

@@ -53,7 +53,7 @@ REFS = (
     "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
     ".github/workflows/backup-restore-generation-evidence.yml",
 )
-MAX_WRITER_SOURCE_BYTES = 1024 * 1024
+MAX_REVIEWED_SOURCE_BYTES = 1024 * 1024
 EVIDENCE_PREFIX = "generation-bound backup/restore evidence admission is append-only and fail-closed:"
 
 
@@ -183,69 +183,69 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def pinned_writer_source() -> bytes:
-    """Bind reviewed writer bytes to owned directory/file descriptors, not a mutable path."""
-    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
+    """Bind reviewed reviewed source bytes to owned directory/file descriptors, not a mutable path."""
+    require_exact_repo_file(path, relative, field)
     require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
-            "generation evidence writer pinned import platform unsafe")
+            "generation evidence reviewed source pinned import platform unsafe")
     owned: list[int] = []
     try:
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         parent_fd = os.open(ROOT, directory_flags)
-        require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
+        require(type(parent_fd) is int and parent_fd >= 0, "reviewed source directory descriptor invalid")
         owned.append(parent_fd)
-        for part in WRITER_REL.parts[:-1]:
+        for part in relative.parts[:-1]:
             parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
-            require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
+            require(type(parent_fd) is int and parent_fd >= 0, "reviewed source directory descriptor invalid")
             owned.append(parent_fd)
         before_parents = [os.fstat(fd) for fd in owned]
         parent_identity = lambda value: (
             value.st_dev, value.st_ino, value.st_mode, value.st_ctime_ns
         )
         require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
-                    for item in before_parents), "writer parent directory unsafe")
+                    for item in before_parents), "reviewed source parent directory unsafe")
         source_fd = os.open(
-            WRITER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
             dir_fd=parent_fd,
         )
-        require(type(source_fd) is int and source_fd >= 0, "writer source descriptor invalid")
+        require(type(source_fd) is int and source_fd >= 0, "reviewed source source descriptor invalid")
         owned.append(source_fd)
         before = os.fstat(source_fd)
         require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
                 and not (before.st_mode & 0o022)
-                and 0 <= before.st_size <= MAX_WRITER_SOURCE_BYTES,
-                "writer source type/size unsafe")
+                and 0 <= before.st_size <= MAX_REVIEWED_SOURCE_BYTES,
+                "reviewed source source type/size unsafe")
         chunks: list[bytes] = []
-        remaining = MAX_WRITER_SOURCE_BYTES + 1
+        remaining = MAX_REVIEWED_SOURCE_BYTES + 1
         while remaining:
             chunk = os.read(source_fd, remaining)
-            require(type(chunk) is bytes, "writer source read type invalid")
+            require(type(chunk) is bytes, "reviewed source source read type invalid")
             if not chunk:
                 break
             chunks.append(chunk)
             remaining -= len(chunk)
         source = b"".join(chunks)
         after = os.fstat(source_fd)
-        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        leaf = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (
             item.st_dev, item.st_ino, item.st_mode, item.st_size,
             item.st_mtime_ns, item.st_ctime_ns
         )
-        require(len(source) <= MAX_WRITER_SOURCE_BYTES
+        require(len(source) <= MAX_REVIEWED_SOURCE_BYTES
                 and len(source) == before.st_size
                 and identity(before) == identity(after) == identity(leaf),
-                "writer source changed during read")
+                "reviewed source source changed during read")
         for index, fd in enumerate(owned[:-1]):
             current = os.fstat(fd)
-            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            lexical = ROOT if index == 0 else ROOT.joinpath(*relative.parts[:index])
             visible = os.lstat(lexical)
             require(stat.S_ISDIR(visible.st_mode)
                     and parent_identity(before_parents[index])
                     == parent_identity(current) == parent_identity(visible),
-                    "writer parent changed during read")
-        require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
-        require(identity(WRITER.stat()) == identity(after),
-                "writer pathname changed during read")
+                    "reviewed source parent changed during read")
+        require_exact_repo_file(path, relative, field)
+        require(identity(path.stat()) == identity(after),
+                "reviewed source pathname changed during read")
         return source
     finally:
         primary = sys.exc_info()[0] is not None
@@ -256,7 +256,11 @@ def pinned_writer_source() -> bytes:
             except Exception:
                 failed = True
         if failed and not primary:
-            raise Fail("writer descriptor cleanup failed") from None
+            raise Fail("reviewed source descriptor cleanup failed") from None
+
+
+def pinned_writer_source() -> bytes:
+    return pinned_reviewed_source(WRITER, WRITER_REL, "generation evidence writer")
 
 
 def load_writer():
@@ -298,14 +302,23 @@ def run_post_validator(path: Path, expected_relative: Path, label: str) -> None:
     }
     require(reviewed.get(label) == (path, expected_relative),
             "unreviewed generation evidence post-validator")
-    require_exact_repo_file(path, expected_relative, label)
+    source = pinned_reviewed_source(path, expected_relative, label)
+    bootstrap = (
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+    )
     child_env = {
         key: value for key, value in os.environ.items()
         if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
     }
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, "-c", bootstrap, str(path)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
