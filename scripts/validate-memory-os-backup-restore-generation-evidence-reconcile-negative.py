@@ -56,7 +56,8 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
     require(ROOT.is_dir() and not ROOT.is_symlink(),
             "reconcile negative repository root missing or symlinked")
     require(
-        hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY")
+        all(type(getattr(os, name, None)) is int and getattr(os, name) > 0
+            for name in ("O_NOFOLLOW", "O_DIRECTORY"))
         and shutil.rmtree.avoids_symlink_attacks,
         "reconcile negative pinned fixture directory unsupported",
     )
@@ -155,6 +156,28 @@ class _EagerFixtureDirectory:
 def guarded_temporary_directory(*, prefix: str, parent: Path):
     # Dependent negative wrappers translate domain Fail at call time.
     return _EagerFixtureDirectory(_pinned_temporary_directory(prefix=prefix, parent=parent))
+
+
+def prove_inert_fixture_flags_rejected() -> None:
+    """Fixture pinning must reject defined-but-inert nofollow/directory flags."""
+    for flag in ("O_NOFOLLOW", "O_DIRECTORY"):
+        original = getattr(os, flag)
+        for invalid in (0, False, "inert"):
+            setattr(os, flag, invalid)
+            try:
+                try:
+                    guarded_temporary_directory(
+                        prefix=".tmp-generation-inert-flag-must-not-create-",
+                        parent=TMP_PARENT,
+                    )
+                except Fail as exc:
+                    require(str(exc) == "reconcile negative pinned fixture directory unsupported",
+                            "generation fixture inert " + flag + " wrong rejection")
+                else:
+                    raise Fail("generation fixture accepted inert " + flag)
+            finally:
+                setattr(os, flag, original)
+    print("PASS: generation reconcile fixture directory inert safety flags rejected")
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
@@ -1131,6 +1154,7 @@ def main() -> int:
         require(sorted(p.name for p in sandbox.iterdir()) == before,
                 "reconcile negative symlinked parent created a child")
     print("PASS: reconcile negative temp parent symlink rejected before creation")
+    prove_inert_fixture_flags_rejected()
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_pinned_reconciler_import()
