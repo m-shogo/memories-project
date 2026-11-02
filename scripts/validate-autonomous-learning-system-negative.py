@@ -6840,8 +6840,10 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             "Direct matching alone is not permission or transitive closure proof.",
         ]
         if (type(result) is not subprocess.CompletedProcess or
+                type(result.returncode) is not int or
+                type(result.stdout) is not str or type(result.stderr) is not str or
                 result.returncode != 0 or result.stderr or
-                result.stdout.splitlines() != expected_lines):
+                result.stdout != "\n".join(expected_lines) + "\n"):
             raise RuntimeError("prewrite fanout CLI undercount/misclassification: "
                                + label)
 
@@ -6869,6 +6871,24 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             pass
         else:
             raise RuntimeError("prewrite synthetic transcript mutation accepted: " + label)
+
+    # splitlines() accepts missing final LF and CRLF as equivalent output.
+    # The reviewed CLI contract is a byte-exact LF-terminated transcript.
+    reviewed_stdout = "\n".join(reviewed_transcript) + "\n"
+    for label, forged in (
+        ("missing terminal LF", subprocess.CompletedProcess([], 0, reviewed_stdout[:-1], "")),
+        ("CRLF transcript", subprocess.CompletedProcess([], 0, reviewed_stdout.replace("\n", "\r\n"), "")),
+        ("extra blank line", subprocess.CompletedProcess([], 0, reviewed_stdout + "\n", "")),
+        ("bool success status", subprocess.CompletedProcess([], False, reviewed_stdout, "")),
+        ("nonstring stdout", subprocess.CompletedProcess([], 0, reviewed_stdout.encode("utf-8"), "")),
+        ("nonstring stderr", subprocess.CompletedProcess([], 0, reviewed_stdout, b"")),
+    ):
+        try:
+            require_exact_count(forged, 1, label)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("prewrite transcript byte/type mutation accepted: " + label)
 
     # A substring assertion could accept count 10 as proof of count 1.
     try:
