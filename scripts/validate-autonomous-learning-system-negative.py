@@ -10731,6 +10731,18 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
             return False
         parents = {id(child): parent for parent in ast.walk(mains[0])
                    for child in ast.iter_child_nodes(parent)}
+        # Lexical fanout_result checks alone miss frame/namespace reflection.
+        # Reject dynamic local lookups that can recover the child stderr.
+        for node in ast.walk(mains[0]):
+            if not isinstance(node, ast.Call):
+                continue
+            if (isinstance(node.func, ast.Name)
+                    and node.func.id in {"locals", "vars", "eval", "exec",
+                                         "__import__", "getattr"}):
+                return False
+            if (isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"_getframe", "currentframe"}):
+                return False
         uses = []
         for node in ast.walk(mains[0]):
             if not isinstance(node, ast.Name) or node.id != "fanout_result":
@@ -10763,9 +10775,14 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("child alias", '                child_alias = fanout_result'),
         ("dunder dictionary", '                print(fanout_result.__dict__["stderr"])'),
         ("operator attrgetter", '                print(__import__("operator").attrgetter("stderr")(fanout_result))'),
+        ("locals frame", '                print(locals()["fanout_result"].stderr)'),
+        ("vars frame", '                print(vars()["fanout_result"].stderr)'),
+        ("eval frame", '                print(eval("fanout_result.stderr"))'),
+        ("sys frame", '                print(__import__("sys")._getframe().f_locals["fanout_result"].stderr)'),
     ):
         if label in {"reflective getattr", "reflective vars", "child alias",
-                     "dunder dictionary", "operator attrgetter"}:
+                     "dunder dictionary", "operator attrgetter", "locals frame",
+                     "vars frame", "eval frame", "sys frame"}:
             stdout_line = "                print(fanout_result.stdout.strip())" + chr(10)
             if source.count(stdout_line) != 1:
                 raise RuntimeError("entry-docs fanout stdout fixture anchor drift")
@@ -10782,7 +10799,7 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
             raise RuntimeError("entry-docs fanout stderr fixture syntax invalid: " + label) from None
         if safe(mutant):
             raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
-    return 11
+    return 15
 
 
 def prove_prewrite_private_error_redaction(source_root: Path) -> int:
