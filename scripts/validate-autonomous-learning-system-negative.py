@@ -9707,6 +9707,91 @@ git push origin HEAD:so
 
 
 
+def prove_saturation_source_sha_provenance(source_root: Path) -> None:
+    """Bind the publisher's recovery guard to the original workflow SHA.
+
+    This checks a reviewed shell step without executing its writer or Git.
+    A valid guard body is ineffective if source_sha is rebound after rebase.
+    """
+    import re
+
+    source = (
+        source_root / ".github/workflows/controlled-saturation-repeatability.yml"
+    ).read_text(encoding="utf-8")
+    opening = "      - name: Publish append-only repeatability run\n"
+    closing = "      - name: Record privacy-safe ramp diagnostic\n"
+    if source.count(opening) != 1 or source.count(closing) != 1:
+        raise RuntimeError("saturation source SHA publisher step drift")
+    body = source.split(opening, 1)[1].split(closing, 1)[0]
+    binding = '          source_sha="${GITHUB_SHA}"\n'
+    rebase = "          git pull --rebase origin so\n"
+
+    def require_original_source_lease(value: str) -> None:
+        lines = value.splitlines()
+        # Only the one original run-SHA assignment is reviewed. Rebinding
+        # either variable or dynamic shell assignment invalidates provenance.
+        assignments = [
+            (index, line.strip())
+            for index, line in enumerate(lines)
+            if re.match(
+                r"^\s*(?:(?:export|readonly|local|declare)\s+)?"
+                r"(?:source_sha|GITHUB_SHA)\s*(?:\+?=|\s|$)", line,
+            )
+        ]
+        if (value.count(binding) != 1
+                or assignments != [(lines.index(binding.rstrip("\n")),
+                                    'source_sha="${GITHUB_SHA}"')]):
+            raise RuntimeError("saturation source SHA provenance drift")
+        if any(re.match(r"^\s*(?:unset|read|eval)\s", line) for line in lines):
+            raise RuntimeError("saturation source SHA provenance drift")
+        if (value.count(rebase) != 1
+                or value.count("          verify_critical_source\n") != 2
+                or not (
+                    value.index("          set -euo pipefail\n")
+                    < value.index(binding)
+                    < value.index("          critical=(\n")
+                    < value.index("          verify_critical_source() {\n")
+                    < value.index(rebase)
+                )):
+            raise RuntimeError("saturation source SHA provenance drift")
+        if (rebase + "          verify_critical_source\n") not in value:
+            raise RuntimeError("saturation source SHA provenance drift")
+
+    require_original_source_lease(body)
+    mutations = (
+        ("HEAD instead of run SHA", body.replace(
+            binding, '          source_sha="$(git rev-parse HEAD)"\n', 1)),
+        ("remote tip instead of run SHA", body.replace(
+            binding, '          source_sha="$(git rev-parse origin/so)"\n', 1)),
+        ("empty run SHA", body.replace(
+            binding, '          source_sha=""\n', 1)),
+        ("rebind after rebase", body.replace(
+            rebase, rebase + '            source_sha="$(git rev-parse HEAD)"\n', 1)),
+        ("rewrite GitHub run SHA", body.replace(
+            rebase, rebase + '            GITHUB_SHA="$(git rev-parse HEAD)"\n', 1)),
+        ("append after rebase", body.replace(
+            rebase, rebase + "            source_sha+=changed\n", 1)),
+        ("unset after rebase", body.replace(
+            rebase, rebase + "            unset source_sha\n", 1)),
+        ("read after rebase", body.replace(
+            rebase, rebase + "            read source_sha\n", 1)),
+        ("eval after rebase", body.replace(
+            rebase, rebase + '            eval "source_sha=changed"\n', 1)),
+        ("remove postrebase guard", body.replace(
+            rebase + "          verify_critical_source\n", rebase, 1)),
+    )
+    for label, mutated in mutations:
+        if mutated == body:
+            raise RuntimeError("saturation source SHA mutation fixture drift: " + label)
+        try:
+            require_original_source_lease(mutated)
+        except RuntimeError as exc:
+            if str(exc) != "saturation source SHA provenance drift":
+                raise
+        else:
+            raise RuntimeError("saturation source SHA mutation accepted: " + label)
+
+
 def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
     """Pin the exact reviewed source-critical Bash array and its expansion.
 
@@ -10524,6 +10609,7 @@ def main() -> int:
     prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
     prove_saturation_postrebase_shell_semantics(source_root)
+    prove_saturation_source_sha_provenance(source_root)
     prove_saturation_critical_path_array_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
