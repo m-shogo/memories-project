@@ -9379,6 +9379,82 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
             # only proves that a late critical change is visible to the guard.
 
 
+def prove_sustained_soak_divergent_history_fixture(source_root: Path) -> None:
+    """A clean critical diff is not proof of source ancestry.
+
+    Local synthetic Git only: never push an evidence/result commit or run
+    a write-capable workflow. The three source checks are diagnostic scope,
+    not authority to modify any of those publishers.
+    """
+    for filename in (
+        "sustained-local-soak.yml",
+        "sustained-local-soak-parallel-request.yml",
+        "sustained-local-soak-parallel-v2.yml",
+    ):
+        source = (source_root / ".github/workflows" / filename).read_text(
+            encoding="utf-8"
+        )
+        if (source.count('git diff --quiet "$SOURCE_SHA" origin/so --') != 1
+                or "git pull --rebase origin so" not in source):
+            raise RuntimeError("synthetic soak divergent source scope drift")
+
+    def git(cwd: Path | None, *args: str,
+            allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null",
+             "-c", "protocol.file.allow=always", *args],
+            cwd=cwd, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if type(result.returncode) is not int or (
+                not allow_failure and result.returncode != 0):
+            raise RuntimeError("synthetic soak divergent Git fixture failed")
+        return result
+
+    with tempfile.TemporaryDirectory(prefix="learning-soak-divergent-") as tmp:
+        root = Path(tmp)
+        remote = root / "remote.git"
+        writer = root / "writer"
+        other = root / "other"
+        git(None, "init", "--bare", "-q", str(remote))
+        git(None, "clone", "-q", str(remote), str(writer))
+        git(writer, "checkout", "-q", "-b", "so")
+        (writer / "critical.txt").write_bytes(b"same\n")
+        (writer / "noncritical.txt").write_bytes(b"old\n")
+        git(writer, "add", "critical.txt", "noncritical.txt")
+        git(writer, "-c", "user.name=Fixture",
+            "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "baseline")
+        git(writer, "push", "-q", "-u", "origin", "so")
+        source_sha = git(writer, "rev-parse", "HEAD").stdout.strip()
+        git(None, "clone", "-q", "-b", "so", str(remote), str(other))
+        git(writer, "fetch", "-q", "origin", "so")
+        if git(writer, "merge-base", "--is-ancestor", source_sha,
+               "origin/so", allow_failure=True).returncode != 0:
+            raise RuntimeError("synthetic soak positive ancestry rejected")
+
+        # Recreate the branch with the same critical bytes but unrelated
+        # history. The lexical critical-path diff remains clean.
+        git(other, "checkout", "-q", "--orphan", "replacement")
+        git(other, "rm", "-qrf", "--", ".")
+        (other / "critical.txt").write_bytes(b"same\n")
+        (other / "noncritical.txt").write_bytes(b"new\n")
+        git(other, "add", "critical.txt", "noncritical.txt")
+        git(other, "-c", "user.name=Fixture",
+            "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "unrelated")
+        git(other, "push", "-q", "--force", "origin", "HEAD:so")
+        git(writer, "fetch", "-q", "origin", "so")
+        diff_status = git(writer, "diff", "--quiet", source_sha, "origin/so",
+                          "--", "critical.txt", allow_failure=True).returncode
+        ancestry_status = git(writer, "merge-base", "--is-ancestor",
+                              source_sha, "origin/so",
+                              allow_failure=True).returncode
+        if (diff_status != 0 or ancestry_status != 1
+                or (writer / "critical.txt").read_bytes() != b"same\n"):
+            raise RuntimeError("synthetic soak divergent ancestry guard drift")
+        # Never push the writer's source-bound evidence or publish authority.
+
+
 def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     """Review lexical post-rebase guard placement without authorizing writes.
 
@@ -10159,6 +10235,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     prove_source_derived_writer_inventory(source_root)
     prove_sustained_soak_rebase_race_fixture(source_root)
+    prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
