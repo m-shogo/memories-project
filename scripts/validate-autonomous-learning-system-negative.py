@@ -10355,9 +10355,14 @@ def prove_saturation_aggregate_shell_error_classes(source_root: Path) -> None:
         "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
     )
     run_marker = "        run: |\n"
-    if (source.count(opening) != 1 or source.count(closing) != 1):
+    if source.count(opening) != 1:
         raise RuntimeError("saturation aggregate shell source step drift")
-    step = source.split(opening, 1)[1].split(closing, 1)[0]
+    after_aggregate = source.split(opening, 1)[1]
+    # Another job has the same setup-python step; only the marker after
+    # this aggregate start is the reviewed closing boundary.
+    if after_aggregate.count(closing) != 1:
+        raise RuntimeError("saturation aggregate shell source step drift")
+    step = after_aggregate.split(closing, 1)[0]
     if step.count(run_marker) != 1:
         raise RuntimeError("saturation aggregate shell run boundary drift")
     body = textwrap.dedent(step.split(run_marker, 1)[1])
