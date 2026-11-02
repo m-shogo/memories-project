@@ -9563,6 +9563,120 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
             )
 
 
+
+def prove_saturation_postrebase_shell_semantics(source_root: Path) -> None:
+    """Execute the reviewed saturation postrebase guard against mocked Git.
+
+    This is an independent read-only shell control-flow fixture. The Git
+    command is a local Bash function, never a real remote operation. An exact
+    source-body pin prevents unreviewed workflow shell from being executed.
+    """
+    import textwrap
+
+    source = (
+        source_root / ".github/workflows/controlled-saturation-repeatability.yml"
+    ).read_text(encoding="utf-8")
+    opening = "          verify_critical_source() {\n"
+    closing = "          }\n          verify_critical_source\n"
+    if source.count(opening) != 1 or source.count(closing) != 1:
+        raise RuntimeError("saturation shell guard source boundary drift")
+    start = source.index(opening)
+    end = source.index(closing, start) + len("          }\n")
+    actual = textwrap.dedent(source[start:end])
+    reviewed = """verify_critical_source() {
+  git fetch origin so
+  if ! git merge-base --is-ancestor "$source_sha" origin/so; then
+    echo "original repeatability run source is not an ancestor; refusing divergent history"
+    exit 75
+  fi
+  if ! git diff --quiet "$source_sha" origin/so -- "${critical[@]}"; then
+    echo "critical saturation source changed during run; refusing stale evidence"
+    exit 75
+  fi
+}
+"""
+    if actual != reviewed:
+        raise RuntimeError("saturation shell guard reviewed body drift")
+
+    prefix = """set -euo pipefail
+source_sha=source-sha
+critical=(critical.txt)
+git() {
+  case "$1" in
+    fetch) test "$*" = 'fetch origin so' && test "$FETCH_OK" = 1 ;;
+    merge-base) test "$*" = 'merge-base --is-ancestor source-sha origin/so' && test "$ANCESTOR_OK" = 1 ;;
+    diff) test "$*" = 'diff --quiet source-sha origin/so -- critical.txt' && test "$CRITICAL_OK" = 1 ;;
+    pull) test "$*" = 'pull --rebase origin so' ;;
+    push) test "$*" = 'push origin HEAD:so' || return 70; printf 'PUSH\\n' >> "$PUSH_LOG" ;;
+    *) return 70 ;;
+  esac
+}
+"""
+    suffix = """git pull --rebase origin so
+verify_critical_source
+git push origin HEAD:so
+"""
+
+    def execute(body: str, fetch: str, ancestry: str, critical: str
+                ) -> tuple[int, bool]:
+        with tempfile.TemporaryDirectory(prefix="learning-saturation-shell-") as tmp:
+            root = Path(tmp)
+            push_log = root / "push.log"
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-c", prefix + body + suffix],
+                cwd=root,
+                env={
+                    "PATH": os.defpath, "HOME": str(root), "LANG": "C",
+                    "FETCH_OK": fetch, "ANCESTOR_OK": ancestry,
+                    "CRITICAL_OK": critical, "PUSH_LOG": str(push_log),
+                },
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if type(result.returncode) is not int:
+                raise RuntimeError("saturation shell fixture invalid exit status")
+            if push_log.exists() and push_log.read_bytes() != b"PUSH\n":
+                raise RuntimeError("saturation shell fixture unexpected push transcript")
+            return result.returncode, push_log.exists()
+
+    for label, flags, expected in (
+        ("safe descendant", ("1", "1", "1"), (0, True)),
+        ("divergent ancestry", ("1", "0", "1"), (75, False)),
+        ("critical drift", ("1", "1", "0"), (75, False)),
+        ("failed fetch", ("0", "1", "1"), (1, False)),
+    ):
+        if execute(actual, *flags) != expected:
+            raise RuntimeError("saturation postrebase shell behavior drift: " + label)
+
+    # Prove the fixture detects each material guard bypass, rather than merely
+    # checking that the positive source contains the right words.
+    mutants = (
+        (
+            "ancestry bypass",
+            actual.replace(
+                'if ! git merge-base --is-ancestor "$source_sha" origin/so; then',
+                "if false; then",
+            ),
+            ("1", "0", "1"), (0, True),
+        ),
+        (
+            "critical bypass",
+            actual.replace(
+                'if ! git diff --quiet "$source_sha" origin/so -- "${critical[@]}"; then',
+                "if false; then",
+            ),
+            ("1", "1", "0"), (0, True),
+        ),
+        (
+            "false success on divergent ancestry",
+            actual.replace("exit 75", "exit 0", 1),
+            ("1", "0", "1"), (0, False),
+        ),
+    )
+    for label, mutant, flags, expected in mutants:
+        if mutant == actual or execute(mutant, *flags) != expected:
+            raise RuntimeError("saturation shell negative mutation not detected: " + label)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -10257,6 +10371,7 @@ def main() -> int:
     prove_sustained_soak_rebase_race_fixture(source_root)
     prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
+    prove_saturation_postrebase_shell_semantics(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
