@@ -289,6 +289,17 @@ def classify_objective_publisher_coupling(source: str) -> bool:
         return False
     if "  validate-and-publish:\n" not in source or "      contents: write\n" not in source:
         return False
+    # The write-capable push/dispatch job must remain bound to the so ref.
+    lines = source.splitlines()
+    job_marker = "  validate-and-publish:"
+    branch_guard = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
+    if lines.count(job_marker) != 1:
+        raise SystemExit("recovery objective publisher stale-source guard missing")
+    job_lines = lines[lines.index(job_marker) + 1:]
+    if (job_lines.count(branch_guard) != 1
+            or job_lines.count("    permissions:") != 1
+            or job_lines.count("      contents: write") != 1):
+        raise SystemExit("recovery objective publisher stale-source guard missing")
     required = (
         "git fetch origin so",
         'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then',
@@ -321,6 +332,24 @@ def prove_objective_publisher_coupling_guard() -> None:
             raise
     else:
         raise SystemExit("recovery objective publisher missing source lease accepted")
+    branch_guard = "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/so'"
+    if source.splitlines().count(branch_guard) != 1:
+        raise SystemExit("recovery objective publisher branch guard mutation anchor missing")
+    for label, replacement in (
+        ("missing", ""),
+        ("dispatch-only", "    if: github.event_name == 'workflow_dispatch'"),
+        ("unscoped", "    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'"),
+    ):
+        weakened = source.replace(branch_guard, replacement, 1)
+        if weakened == source:
+            raise SystemExit(f"recovery objective publisher {label} negative was inert")
+        try:
+            classify_objective_publisher_coupling(weakened)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective publisher stale-source guard missing":
+                raise
+        else:
+            raise SystemExit(f"recovery objective publisher {label} branch bypass accepted")
     marker = "  push:\n    branches:\n      - so\n    paths:\n"
     prefix, suffix = source.split(marker, 1)
     target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"\n'
@@ -329,7 +358,7 @@ def prove_objective_publisher_coupling_guard() -> None:
     removed = prefix + marker + suffix.replace(target, "", 1)
     if classify_objective_publisher_coupling(removed):
         raise SystemExit("recovery objective removed publisher trigger still coupled")
-    print("PASS: recovery objective publisher trigger coupling and source lease (2 negatives)")
+    print("PASS: recovery objective publisher source lease and branch guard (5 negatives)")
 
 
 
