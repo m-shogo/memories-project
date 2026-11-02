@@ -6828,11 +6828,47 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         raise RuntimeError("prewrite fanout CLI fixture identity drift")
     def require_exact_count(result: subprocess.CompletedProcess[str],
                             count: int, label: str) -> None:
-        expected = "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: " + str(count)
-        if (result.returncode != 0 or result.stderr or
-                expected not in result.stdout.splitlines()):
+        # Synthetic fixtures have exactly one workflow file and a fixed
+        # audited path. Verify the entire CLI transcript, not only a count
+        # line that could belong to a different path or duplicated inventory.
+        if count not in (0, 1):
+            raise RuntimeError("prewrite synthetic workflow count outside reviewed domain")
+        expected_lines = [
+            "prewrite direct path audit: scripts/a.py",
+            "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: " + str(count),
+            *(["- .github/workflows/fixture.yml"] if count else []),
+            "Direct matching alone is not permission or transitive closure proof.",
+        ]
+        if (type(result) is not subprocess.CompletedProcess or
+                result.returncode != 0 or result.stderr or
+                result.stdout.splitlines() != expected_lines):
             raise RuntimeError("prewrite fanout CLI undercount/misclassification: "
-                               + label + ": " + result.stderr)
+                               + label)
+
+    # Mutation-test the transcript guard itself, not only real CLI positives.
+    reviewed_transcript = [
+        "prewrite direct path audit: scripts/a.py",
+        "risk: BOUNDED_DIRECT_MATCH_ONLY; matched workflow count: 1",
+        "- .github/workflows/fixture.yml",
+        "Direct matching alone is not permission or transitive closure proof.",
+    ]
+    transcript_mutations = (
+        ("wrong audited path", ["prewrite direct path audit: scripts/b.py", *reviewed_transcript[1:]]),
+        ("duplicate workflow identity", [*reviewed_transcript[:3], reviewed_transcript[2], reviewed_transcript[3]]),
+        ("missing advisory", reviewed_transcript[:-1]),
+        ("extra stdout", [*reviewed_transcript, "unreviewed output"]),
+        ("wrong risk", [reviewed_transcript[0], "risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: 1", *reviewed_transcript[2:]]),
+    )
+    for label, altered in transcript_mutations:
+        try:
+            require_exact_count(
+                subprocess.CompletedProcess([], 0, "\n".join(altered) + "\n", ""),
+                1, label,
+            )
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("prewrite synthetic transcript mutation accepted: " + label)
 
     # A substring assertion could accept count 10 as proof of count 1.
     try:
