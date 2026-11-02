@@ -10421,6 +10421,10 @@ git() {
         ("ancestry Git error", "128", "0", (75, b"")),
         ("critical drift", "0", "1", (75, b"")),
         ("critical Git error", "0", "128", (75, b"")),
+        ("ancestry Git usage error", "2", "0", (75, b"")),
+        ("ancestry Git fatal error", "255", "0", (75, b"")),
+        ("critical Git usage error", "0", "2", (75, b"")),
+        ("critical Git fatal error", "0", "255", (75, b"")),
     ):
         if execute(body, ancestry, critical) != expected:
             raise RuntimeError("saturation aggregate shell behavior drift: " + label)
