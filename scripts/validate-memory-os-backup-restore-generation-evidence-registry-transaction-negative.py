@@ -73,10 +73,12 @@ def pinned_writer_source() -> bytes:
                 "generation evidence transaction writer source metadata unsafe")
         chunks: list[bytes] = []
         remaining = MAX_WRITER_SOURCE_BYTES + 1
-        while remaining:
+        while remaining > 0:
             chunk = os.read(source_fd, remaining)
             require(type(chunk) is bytes,
                     "generation evidence transaction writer read type invalid")
+            require(len(chunk) <= remaining,
+                    "generation evidence transaction writer source changed during read")
             if not chunk:
                 break
             chunks.append(chunk)
@@ -104,7 +106,7 @@ def pinned_writer_source() -> bytes:
         require(identity(WRITER.stat()) == identity(after),
                 "generation evidence transaction writer pathname changed during read")
         return source
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("generation evidence transaction writer pinned source unreadable") from None
     finally:
         primary = sys.exc_info()[0] is not None
@@ -208,12 +210,22 @@ def prove_pinned_writer_import() -> None:
             def private_read_failure(*_args: Any) -> bytes:
                 raise OSError("PRIVATE_GENERATION_TRANSACTION_READ_CANARY")
 
+            def private_read_value_failure(*_args: Any) -> bytes:
+                raise ValueError("PRIVATE_GENERATION_TRANSACTION_READ_CANARY")
+
+            def private_read_type_failure(*_args: Any) -> bytes:
+                raise TypeError("PRIVATE_GENERATION_TRANSACTION_READ_CANARY")
+
             for label, injected, expected in (
                 ("premature EOF", lambda *_args: b"",
                  "generation evidence transaction writer source changed during read"),
                 ("nonbytes read", lambda *_args: "PRIVATE_GENERATION_TRANSACTION_READ_CANARY",
                  "generation evidence transaction writer read type invalid"),
                 ("private read OSError", private_read_failure,
+                 "generation evidence transaction writer pinned source unreadable"),
+                ("private read ValueError", private_read_value_failure,
+                 "generation evidence transaction writer pinned source unreadable"),
+                ("private read TypeError", private_read_type_failure,
                  "generation evidence transaction writer pinned source unreadable"),
             ):
                 os.read = injected
@@ -225,13 +237,30 @@ def prove_pinned_writer_import() -> None:
                                 "generation transaction " + label + " wrong rejection")
                         require("PRIVATE_GENERATION_TRANSACTION_READ_CANARY" not in str(exc),
                                 "generation transaction private read diagnostic leaked")
-                        if label == "private read OSError":
+                        if label.startswith("private read "):
                             require(exc.__suppress_context__,
                                     "generation transaction private read context exposed")
                     else:
                         raise Fail("generation transaction accepted " + label)
                 finally:
                     os.read = original_read
+            # A mocked syscall must not return more bytes than its requested budget.
+            # Reject before decrementing; negative remaining is truthy in Python.
+            def oversized_read(_fd: int, count: int) -> bytes:
+                return b"X" * (count + 1)
+
+            os.read = oversized_read
+            try:
+                try:
+                    load_writer()
+                except Fail as exc:
+                    require(str(exc) == "generation evidence transaction writer source changed during read",
+                            "generation transaction oversized source read wrong rejection")
+                else:
+                    raise Fail("generation transaction accepted oversized source read")
+            finally:
+                os.read = original_read
+
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 setattr(os, flag, 0)
@@ -337,7 +366,7 @@ def prove_pinned_writer_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation transaction pinned writer import rejects EOF, nonbytes, private read errors, hardlinks, chmod and swaps; fragmented reads work")
+    print("PASS: generation transaction pinned writer import rejects EOF, nonbytes, oversized reads, private read errors, hardlinks, chmod and swaps; fragmented reads work")
 
 
 
