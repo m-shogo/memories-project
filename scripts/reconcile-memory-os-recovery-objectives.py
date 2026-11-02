@@ -172,9 +172,27 @@ def write_text(path: Path, text: str) -> None:
     temp_name: str | None = None
     try:
         mode = stat.S_IMODE(target_before.st_mode)
-        descriptor, temp_name = tempfile.mkstemp(
+        raw_fd, raw_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
         )
+        # Do not treat malformed mocked/acquired FDs as owned: bool is an int
+        # subclass and could otherwise close stdin/stdout on failure cleanup.
+        if (type(raw_name) is str and Path(raw_name).parent == path.parent
+                and Path(raw_name).name.startswith(f".{path.name}.")
+                and Path(raw_name).name.endswith(".tmp")):
+            temp_name = raw_name
+        if type(raw_fd) is int and raw_fd >= 0 and temp_name is not None:
+            try:
+                fd_meta = os.fstat(raw_fd)
+                name_meta = os.lstat(temp_name)
+                if (stat.S_ISREG(fd_meta.st_mode) and fd_meta.st_nlink == 1
+                        and (fd_meta.st_dev, fd_meta.st_ino)
+                        == (name_meta.st_dev, name_meta.st_ino)):
+                    descriptor = raw_fd
+            except (OSError, ValueError, TypeError):
+                pass
+        require(descriptor is not None and temp_name is not None,
+                "recovery objective reconcile temporary descriptor unsafe")
         os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as handle:
             descriptor = None
