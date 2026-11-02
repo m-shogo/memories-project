@@ -244,7 +244,8 @@ def require_reconciler_identity() -> None:
 def pinned_reconciler_source() -> bytes:
     """Bind reviewed reconciler bytes to owned directory/file descriptors, not a mutable path."""
     require_reconciler_identity()
-    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    require(all(type(getattr(os, name, None)) is int and getattr(os, name) > 0
+                for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
             "generation evidence reconciler pinned import platform unsafe")
     owned: list[int] = []
     try:
@@ -351,6 +352,20 @@ def prove_pinned_reconciler_import() -> None:
         try:
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler pinned import positive control failed")
+            for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
+                original_flag = getattr(os, flag)
+                for invalid in (0, False, "inert"):
+                    setattr(os, flag, invalid)
+                    try:
+                        try:
+                            load_reconciler()
+                        except Fail as exc:
+                            require(str(exc) == "generation evidence reconciler pinned import platform unsafe",
+                                    "generation reconciler inert " + flag + " wrong rejection")
+                        else:
+                            raise Fail("generation reconciler accepted inert " + flag)
+                    finally:
+                        setattr(os, flag, original_flag)
             source.chmod(0o666)
             expect_domain_fail("writable generation reconciler source",
                                load_reconciler, Fail)
