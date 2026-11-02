@@ -424,6 +424,42 @@ def prove_pinned_reconciler_import() -> None:
                     raise Fail("private generation reconciler read error accepted")
             finally:
                 os.read = original_read
+            # Exercise the bounded reader's transport contract, not merely its
+            # metadata preflight. A short read is valid; early EOF, nonbytes,
+            # and an over-budget response must fail without importing source.
+            def fragmented_read(descriptor: int, size: int) -> bytes:
+                return original_read(descriptor, min(size, 3))
+
+            os.read = fragmented_read
+            try:
+                require(load_reconciler().SOURCE_MARKER == "reviewed",
+                        "fragmented generation reconciler source read rejected")
+            finally:
+                os.read = original_read
+            for label, bad_read, expected in (
+                ("premature EOF", lambda _fd, _size: b"",
+                 "reconciler source changed during read"),
+                ("nonbytes", lambda _fd, _size: "PRIVATE_RECONCILER_NONBYTES_CANARY",
+                 "reconciler source read type invalid"),
+                ("oversized response",
+                 lambda _fd, _size: b"x" * (MAX_RECONCILER_SOURCE_BYTES + 2),
+                 "reconciler source changed during read"),
+            ):
+                os.read = bad_read
+                try:
+                    try:
+                        load_reconciler()
+                    except Fail as exc:
+                        require(str(exc) == expected,
+                                "generation reconciler " + label + " wrong rejection")
+                        require("PRIVATE_RECONCILER_NONBYTES_CANARY" not in str(exc),
+                                "generation reconciler " + label + " leaked private data")
+                    else:
+                        raise Fail("generation reconciler accepted " + label)
+                finally:
+                    os.read = original_read
+            require(load_reconciler().SOURCE_MARKER == "reviewed",
+                    "generation reconciler source not restored after transport negatives")
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 for invalid in (0, False, "inert"):
