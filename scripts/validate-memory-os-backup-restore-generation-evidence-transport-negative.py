@@ -69,8 +69,21 @@ def prove_private_bounded_child_execution(module: Any) -> None:
     try:
         for case in cases:
             def fake_run(argv: list[str], **kwargs: Any) -> Any:
-                require(argv == [module.sys.executable, str(module.INDEPENDENT_REVIEW_VALIDATOR)],
-                        "generation evidence child source identity drift")
+                expected_bootstrap = (
+                    "import os, sys\n"
+                    "path = sys.argv[1]\n"
+                    "sys.path.insert(0, os.path.dirname(path))\n"
+                    "sys.argv[:] = [path]\n"
+                    "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+                    "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+                )
+                require(argv == [
+                    module.sys.executable, "-c", expected_bootstrap,
+                    str(module.INDEPENDENT_REVIEW_VALIDATOR),
+                ], "generation evidence child source identity drift")
+                require(type(kwargs.get("input")) is bytes
+                        and kwargs["input"] == module.INDEPENDENT_REVIEW_VALIDATOR.read_bytes(),
+                        "generation evidence child pinned source bytes drift")
                 require(kwargs.get("cwd") == module.ROOT, "generation evidence child cwd drift")
                 require(kwargs.get("stdout") == module.subprocess.DEVNULL and
                         kwargs.get("stderr") == module.subprocess.DEVNULL,
