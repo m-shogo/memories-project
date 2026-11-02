@@ -416,6 +416,56 @@ def expect_direct_authority_rejected(
         setattr(reconciler, attribute, original)
 
 
+def prove_strict_generation_json_authority(reconciler: object) -> None:
+    """Ambiguous JSON and unsafe inode aliases must never enter reconciliation."""
+    canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
+    with guarded_temporary_directory(
+        prefix=".tmp-generation-evidence-json-strict-", parent=TMP_PARENT,
+    ) as tmpdir:
+        authority = Path(tmpdir) / "reviewed.json"
+        invalid = (
+            ("duplicate JSON key", b'{"x":1,"x":2}'),
+            ("nested duplicate JSON key", b'{"x":{"a":1,"a":2}}'),
+            ("NaN", b'{"x":NaN}'),
+            ("Infinity", b'{"x":Infinity}'),
+            ("float overflow", b'{"x":1e999}'),
+            ("oversized integer", b'{"x":' + b"9" * 129 + b"}"),
+            ("oversized JSON authority", b'{"padding":"' + b"x" * reconciler.MAX_REVIEWED_SOURCE_BYTES + b'"}'),
+            ("invalid UTF-8", b'{"x":"\\xff"}'.replace(b"\\xff", bytes([255]))),
+            ("nonobject JSON", b'[1,2]'),
+        )
+        for label, payload in invalid:
+            authority.write_bytes(payload)
+            expect_domain_fail(
+                f"generation evidence {label}", lambda: reconciler.load(authority),
+                reconciler.Fail,
+            )
+        authority.write_bytes(b'{"reviewed":true,"count":12}')
+        require(reconciler.load(authority) == {"reviewed": True, "count": 12},
+                "generation evidence strict JSON positive control rejected")
+
+        hardlink = Path(tmpdir) / "unreviewed-hardlink.json"
+        os.link(authority, hardlink)
+        try:
+            expect_domain_fail("hardlinked JSON authority",
+                               lambda: reconciler.load(authority), reconciler.Fail)
+        finally:
+            hardlink.unlink()
+        original_mode = mode(authority)
+        authority.chmod(0o666)
+        try:
+            expect_domain_fail("writable JSON authority",
+                               lambda: reconciler.load(authority), reconciler.Fail)
+        finally:
+            authority.chmod(original_mode)
+        require(reconciler.load(authority) == {"reviewed": True, "count": 12},
+                "generation evidence JSON positive control drifted after negatives")
+    for path, (expected, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected and mode(path) == expected_mode,
+                "strict JSON negatives changed protected generation authority")
+    print("PASS: generation evidence pinned JSON, strict parser, bounds and inode guards (11 negatives)")
+
+
 def prove_direct_authority_identity(reconciler: object) -> None:
     before = {path: path.read_bytes() for path in CANONICAL.values()}
     cases = (
@@ -895,6 +945,7 @@ def main() -> int:
     prove_post_validator_transport(reconciler)
     prove_pinned_generation_writer_import(reconciler)
 
+    prove_strict_generation_json_authority(reconciler)
     prove_direct_authority_identity(reconciler)
     prove_atomic_target_metadata_rejection(reconciler)
     prove_atomic_write_failure(reconciler)
