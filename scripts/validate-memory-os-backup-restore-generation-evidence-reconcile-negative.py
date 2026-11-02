@@ -10,6 +10,7 @@ import subprocess
 import secrets
 import shutil
 import stat
+import sys
 import tempfile
 import weakref
 from contextlib import contextmanager
@@ -18,7 +19,9 @@ from typing import Callable
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-RECONCILER = ROOT / "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"
+RECONCILER_REL = Path("scripts/reconcile-memory-os-backup-restore-generation-evidence.py")
+RECONCILER = ROOT / RECONCILER_REL
+MAX_RECONCILER_SOURCE_BYTES = 1024 * 1024
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CANONICAL = {
     "CONTRACT": ROOT / "contracts/operations/backup-restore-generation-evidence-contract.v1.json",
@@ -231,12 +234,151 @@ def mode(path: Path) -> int:
     return path.stat().st_mode & 0o7777
 
 
+def require_reconciler_identity() -> None:
+    require(RECONCILER == ROOT / RECONCILER_REL and RECONCILER.is_file()
+            and not RECONCILER.is_symlink()
+            and RECONCILER.resolve(strict=True) == RECONCILER,
+            "generation evidence reconciler source authority drift")
+
+
+def pinned_reconciler_source() -> bytes:
+    """Bind reviewed reconciler bytes to owned directory/file descriptors, not a mutable path."""
+    require_reconciler_identity()
+    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+            "generation evidence reconciler pinned import platform unsafe")
+    owned: list[int] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0, "reconciler directory descriptor invalid")
+        owned.append(parent_fd)
+        for part in RECONCILER_REL.parts[:-1]:
+            parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0, "reconciler directory descriptor invalid")
+            owned.append(parent_fd)
+        before_parents = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda value: (
+            value.st_dev, value.st_ino, value.st_mode, value.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in before_parents), "reconciler parent directory unsafe")
+        source_fd = os.open(
+            RECONCILER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=parent_fd,
+        )
+        require(type(source_fd) is int and source_fd >= 0, "reconciler source descriptor invalid")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 <= before.st_size <= MAX_RECONCILER_SOURCE_BYTES,
+                "reconciler source type/size unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_RECONCILER_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes, "reconciler source read type invalid")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(RECONCILER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) <= MAX_RECONCILER_SOURCE_BYTES
+                and len(source) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "reconciler source changed during read")
+        for index, fd in enumerate(owned[:-1]):
+            current = os.fstat(fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*RECONCILER_REL.parts[:index])
+            visible = os.lstat(lexical)
+            require(stat.S_ISDIR(visible.st_mode)
+                    and parent_identity(before_parents[index])
+                    == parent_identity(current) == parent_identity(visible),
+                    "reconciler parent changed during read")
+        require_reconciler_identity()
+        require(identity(RECONCILER.stat()) == identity(after),
+                "reconciler pathname changed during read")
+        return source
+    finally:
+        primary = sys.exc_info()[0] is not None
+        failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                failed = True
+        if failed and not primary:
+            raise Fail("reconciler descriptor cleanup failed") from None
+
+
 def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_reconcile_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load generation evidence reconciler")
+    source = pinned_reconciler_source()
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_evidence_reconcile_negative", RECONCILER,
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load generation evidence reconciler")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Execute only the pinned snapshot, never a loader pathname re-open.
+    exec(compile(source, str(RECONCILER), "exec"), module.__dict__)
     return module
+
+
+def prove_pinned_reconciler_import() -> None:
+    """A post-capture parent swap cannot redirect the negative harness importer."""
+    global ROOT, RECONCILER
+    original_root, original_reconciler = ROOT, RECONCILER
+    original_spec = importlib.util.spec_from_file_location
+    with guarded_temporary_directory(prefix=".tmp-generation-reconciler-pin-", parent=TMP_PARENT) as tmpdir:
+        fixture = Path(tmpdir)
+        parent = fixture / "scripts"
+        parent.mkdir()
+        source = parent / RECONCILER_REL.name
+        source.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+        redirected = fixture / "redirected"
+        redirected.mkdir()
+        canary = redirected / source.name
+        canary.write_text("raise RuntimeError('PRIVATE_RECONCILER_IMPORT_SWAP_CANARY')\n",
+                          encoding="utf-8")
+        parked = fixture / "parked-scripts"
+        ROOT, RECONCILER = fixture, source
+        try:
+            require(load_reconciler().SOURCE_MARKER == "reviewed",
+                    "generation reconciler pinned import positive control failed")
+            source.chmod(0o666)
+            expect_domain_fail("writable generation reconciler source",
+                               load_reconciler, Fail)
+            source.chmod(0o644)
+            swapped = False
+
+            def swap_after_capture(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_capture
+            loaded = load_reconciler()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "generation reconciler imported redirected source")
+            require(canary.read_text(encoding="utf-8").startswith("raise RuntimeError"),
+                    "generation reconciler redirected canary mutated")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            ROOT, RECONCILER = original_root, original_reconciler
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: generation evidence negative reconciler importer pinned after parent swap")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException]) -> None:
@@ -655,6 +797,7 @@ def main() -> int:
     print("PASS: reconcile negative temp parent symlink rejected before creation")
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
+    prove_pinned_reconciler_import()
     reconciler = load_reconciler()
     prove_post_validator_transport(reconciler)
     prove_pinned_generation_writer_import(reconciler)
