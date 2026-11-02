@@ -355,6 +355,63 @@ def prove_private_atomic_write_path_guards(reconciler: object) -> None:
     print("PASS: recovery objective reconcile atomic write path and size guards (5 negatives)")
 
 
+def prove_atomic_target_identity_guards(reconciler: object) -> None:
+    """Reject hardlinks, writable authority targets and in-stage target drift."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        before, before_mode = path.read_bytes(), file_mode(path)
+        hardlink = path.parent / ".objective-reconcile-hardlink-canary"
+        os.link(path, hardlink)
+        try:
+            expect_domain_fail(
+                "hardlinked recovery objective write target",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write target metadata unsafe",
+            )
+        finally:
+            hardlink.unlink()
+
+        os.chmod(path, 0o666)
+        try:
+            expect_domain_fail(
+                "group/world-writable recovery objective write target",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write target metadata unsafe",
+            )
+        finally:
+            os.chmod(path, before_mode)
+
+        original_fsync = reconciler.os.fsync
+        altered_mode = 0o600 if before_mode != 0o600 else 0o640
+        changed = []
+
+        def change_target_during_stage(fd):
+            original_fsync(fd)
+            os.chmod(path, altered_mode)
+            changed.append(True)
+
+        reconciler.os.fsync = change_target_during_stage
+        try:
+            expect_domain_fail(
+                "recovery objective target metadata changed before replace",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write authority changed during stage",
+            )
+        finally:
+            reconciler.os.fsync = original_fsync
+            os.chmod(path, before_mode)
+
+        require(changed == [True], "atomic target drift fixture did not reach staging")
+        require(path.read_bytes() == before and file_mode(path) == before_mode,
+                "atomic target identity negatives mutated authority fixture")
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                "atomic target identity negatives left temporary files")
+    print("PASS: recovery objective atomic hardlink/mode/precommit drift negatives")
+
+
 def prove_atomic_write_mode_preservation(reconciler: object) -> None:
     with isolated_authorities(reconciler):
         path = reconciler.CONTRACT
@@ -1323,6 +1380,7 @@ def main() -> int:
     prove_private_post_reconcile_transport(reconciler)
     prove_pinned_post_validator_execution(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
+    prove_atomic_target_identity_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)
