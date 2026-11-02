@@ -163,8 +163,10 @@ def write_text(path: Path, text: str) -> None:
         item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
         item.st_size, item.st_mtime_ns, item.st_ctime_ns,
     )
+    # Staging a temporary file necessarily changes parent st_ctime_ns.
+    # Compare stable directory identity/mode instead of rejecting our own stage.
     parent_identity = lambda item: (
-        item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns,
+        item.st_dev, item.st_ino, item.st_mode,
     )
     descriptor: int | None = None
     temp_name: str | None = None
