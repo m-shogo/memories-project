@@ -9314,6 +9314,25 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
            for source in texts.values()):
         raise RuntimeError("unreviewed indirect workflow event authority")
 
+
+    # Source-derived dispatch authority is distinct from event-trigger
+    # authority. This is conservative lexical inventory, not YAML execution
+    # or a proof that dynamic API-based dispatch cannot exist.
+    dispatchers = tuple(sorted(name for name, source in texts.items()
+                               if re.search(r"\bgh\s+workflow\s+run\b", source)))
+    actions_writers = tuple(sorted(name for name, source in texts.items()
+                                   if re.search(r"(?m)^\s*actions:\s*write\s*(?:#.*)?$", source)))
+    reviewed_dispatcher = ("converge-sustained-local-soak-authority.yml",)
+    if dispatchers != reviewed_dispatcher or actions_writers != reviewed_dispatcher:
+        raise RuntimeError("indirect actions dispatch lexical inventory drift")
+    if (not re.search(r"\bgh\s+workflow\s+run\b", "run: gh workflow run example.yml\n")
+            or re.search(r"\bgh\s+workflow\s+run\b", "run: echo safe\n")
+            or not re.search(r"(?m)^\s*actions:\s*write\s*(?:#.*)?$",
+                             "permissions:\n  actions: write\n")
+            or re.search(r"(?m)^\s*actions:\s*write\s*(?:#.*)?$",
+                         "permissions:\n  actions: read\n")):
+        raise RuntimeError("indirect actions dispatch lexical control drift")
+
     converge = texts["converge-sustained-local-soak-authority.yml"]
     upstream = texts["sustained-local-soak.yml"]
     downstream = texts["reconcile-sustained-local-soak-authority.yml"]
