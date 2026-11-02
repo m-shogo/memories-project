@@ -9327,8 +9327,11 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
             git(None, "init", "--bare", "-q", str(remote))
             git(None, "clone", "-q", str(remote), str(writer))
             git(writer, "checkout", "-q", "-b", "so")
-            (writer / "critical.txt").write_text("v1\\n", encoding="utf-8")
-            (writer / "noncritical.txt").write_text("v1\\n", encoding="utf-8")
+            (writer / "critical.txt").write_text("v1\n", encoding="utf-8")
+            (writer / "noncritical.txt").write_text("v1\n", encoding="utf-8")
+            if ((writer / "critical.txt").read_bytes() != b"v1\n"
+                    or (writer / "noncritical.txt").read_bytes() != b"v1\n"):
+                raise RuntimeError("synthetic sustained-soak newline fixture drift")
             git(writer, "add", "critical.txt", "noncritical.txt")
             git(writer, "-c", "user.name=Fixture",
                 "-c", "user.email=fixture@example.invalid",
@@ -9343,7 +9346,7 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
 
             git(None, "clone", "-q", "-b", "so", str(remote), str(other))
             target = "critical.txt" if critical_change else "noncritical.txt"
-            (other / target).write_text("v2\\n", encoding="utf-8")
+            (other / target).write_text("v2\n", encoding="utf-8")
             git(other, "add", target)
             git(other, "-c", "user.name=Fixture",
                 "-c", "user.email=fixture@example.invalid",
@@ -9351,8 +9354,10 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
             git(other, "push", "-q", "origin", "so")
 
             (writer / "result.txt").write_text(
-                "source=" + source_sha + "\\n", encoding="utf-8"
+                "source=" + source_sha + "\n", encoding="utf-8"
             )
+            if not (writer / "result.txt").read_bytes().endswith(b"\n"):
+                raise RuntimeError("synthetic sustained-soak result newline drift")
             git(writer, "add", "result.txt")
             git(writer, "-c", "user.name=Fixture",
                 "-c", "user.email=fixture@example.invalid",
@@ -9368,7 +9373,7 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
             if postcheck != (1 if critical_change else 0):
                 raise RuntimeError("synthetic sustained-soak postrebase guard drift")
             if git(writer, "show", "HEAD:result.txt").stdout != (
-                    "source=" + source_sha + "\\n"):
+                    "source=" + source_sha + "\n"):
                 raise RuntimeError("synthetic sustained-soak result binding drift")
             # Never push the writer's rebased result to any remote: the fixture
             # only proves that a late critical change is visible to the guard.
