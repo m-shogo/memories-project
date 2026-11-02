@@ -563,6 +563,55 @@ def prove_atomic_parent_swap_cleanup_on_replace_error(reconciler: object) -> Non
     print("PASS: recovery objective atomic parent-FD cleanup after replace-boundary swap")
 
 
+
+def prove_atomic_parent_swap_inside_replace(reconciler: object) -> None:
+    """A swap in the replace boundary cannot redirect bytes to the canary."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        parent = path.parent
+        moved = parent.with_name(parent.name + "-commit-held")
+        canary_parent = reconciler.ROOT / "objective-commit-swap-canary"
+        canary_parent.mkdir()
+        canary = canary_parent / path.name
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_COMMIT_SWAP_CANARY")
+        original_replace = reconciler.os.replace
+        reached = []
+
+        def swap_inside_replace(source, destination, **kwargs):
+            parent.rename(moved)
+            parent.symlink_to(canary_parent, target_is_directory=True)
+            reached.append(True)
+            return original_replace(source, destination, **kwargs)
+
+        reconciler.os.replace = swap_inside_replace
+        try:
+            expect_domain_fail(
+                "recovery objective parent swapped inside atomic replace",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write parent changed at commit",
+            )
+        finally:
+            reconciler.os.replace = original_replace
+            residue_during_swap = list(moved.glob(f".{path.name}.*.tmp"))
+            if parent.is_symlink():
+                parent.unlink()
+            if moved.exists():
+                moved.rename(parent)
+            # The synthetic swap occurred *inside* the replacement syscall.
+            # Restore the isolated original inode; never touch real authorities.
+            path.write_bytes(original)
+
+        require(reached == [True] and not residue_during_swap,
+                "commit-boundary parent swap missed or left staged residue")
+        require(canary.read_bytes() == b"PRIVATE_OBJECTIVE_COMMIT_SWAP_CANARY"
+                and path.read_bytes() == original
+                and not list(parent.glob(f".{path.name}.*.tmp")),
+                "commit-boundary swap changed canary or failed fixture restoration")
+    print("PASS: recovery objective FD replacement refuses detached parent success")
+
+
 def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
     """Malformed mkstemp descriptors must not be used or closed as owned FDs."""
     with isolated_authorities(reconciler):
@@ -1577,6 +1626,7 @@ def main() -> int:
     prove_atomic_parent_swap_before_commit(reconciler)
     prove_atomic_parent_swap_during_stage(reconciler)
     prove_atomic_parent_swap_cleanup_on_replace_error(reconciler)
+    prove_atomic_parent_swap_inside_replace(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)

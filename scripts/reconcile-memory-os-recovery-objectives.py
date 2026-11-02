@@ -241,6 +241,23 @@ def write_text(path: Path, text: str) -> None:
             src_dir_fd=parent_fd, dst_dir_fd=parent_fd,
         )
         temp_name = None
+        # FD-relative replacement cannot redirect to a swapped parent.
+        # Refuse to report success if the committed inode is no longer
+        # visible at the reviewed authority pathname after replacement.
+        visible_parent = path.parent.lstat()
+        visible_leaf = path.lstat()
+        pinned_leaf = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        require(
+            parent_identity(visible_parent) == parent_identity(parent_before)
+            and (visible_leaf.st_dev, visible_leaf.st_ino)
+            == (pinned_leaf.st_dev, pinned_leaf.st_ino)
+            == (name_meta.st_dev, name_meta.st_ino)
+            and stat.S_ISREG(visible_leaf.st_mode)
+            and visible_leaf.st_nlink == 1
+            and stat.S_IMODE(visible_leaf.st_mode) == mode
+            and visible_leaf.st_size == len(payload),
+            "recovery objective reconcile write parent changed at commit",
+        )
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority atomic write failed") from None
     finally:
