@@ -9745,8 +9745,8 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         if any(re.match(r"^\s*(?:unset|read|eval)\s", line) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
         if (value.count(rebase) != 1
-                or value.count("          verify_critical_source\n") != 1
-                or value.count("            verify_critical_source\n") != 1
+                or lines.count("          verify_critical_source") != 1
+                or lines.count("            verify_critical_source") != 1
                 or not (
                     value.index("          set -euo pipefail\n")
                     < value.index(binding)
