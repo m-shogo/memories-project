@@ -305,6 +305,9 @@ def pinned_reconciler_source() -> bytes:
             require(type(chunk) is bytes, "reconciler source read type invalid")
             if not chunk:
                 break
+            # A mocked or faulty reader returning more than requested must
+            # fail before remaining turns negative (which would loop forever).
+            require(len(chunk) <= remaining, "reconciler source changed during read")
             chunks.append(chunk)
             remaining -= len(chunk)
         source = b"".join(chunks)
