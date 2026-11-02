@@ -9792,16 +9792,16 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
                 or assignments != [(lines.index(binding.rstrip("\n")),
                                     'source_sha="${GITHUB_SHA}"')]):
             raise RuntimeError("saturation source SHA provenance drift")
-        if any(re.match(r"^\s*(?:unset|read|eval)\s", line) for line in lines):
+        if any(re.match(r"^\s*(?:if\s+)?(?:!\s*)?(?:unset|read|eval)\s", line) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
         # Indirect shell writes can replace the original workflow SHA without
         # a lexical source_sha= assignment. Keep this review intentionally
         # conservative: no dynamic assignment or sourced code in this step.
         if any(re.match(
-                r"^\s*(?:(?:builtin|command)\s+)?printf\s+-v\s+|"
-                r"^\s*(?:mapfile|readarray)(?:\s|$)|"
-                r"^\s*(?:declare|typeset|local)\s+-[A-Za-z]*n(?:\s|$)|"
-                r"^\s*(?:source|\.)\s+",
+                r"^\s*(?:if\s+)?(?:!\s*)?(?:(?:builtin|command)\s+)?printf\s+-v\s+|"
+                r"^\s*(?:if\s+)?(?:!\s*)?(?:mapfile|readarray)(?:\s|$)|"
+                r"^\s*(?:if\s+)?(?:!\s*)?(?:declare|typeset|local)\s+-[A-Za-z]*n(?:\s|$)|"
+                r"^\s*(?:if\s+)?(?:!\s*)?(?:source|\.)\s+",
                 line,
         ) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
@@ -9888,6 +9888,16 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         ("wrong guarded push branch", body.replace(
             "            if git push origin HEAD:so; then exit 0; fi\n",
             "            if git push origin HEAD:main; then exit 0; fi\n", 1)),
+        ("if-wrapped printf rebind", body.replace(
+            binding, binding + "          if printf -v source_sha '%s' changed; then :; fi\n", 1)),
+        ("if-negated printf rebind", body.replace(
+            binding, binding + "          if ! printf -v source_sha '%s' changed; then :; fi\n", 1)),
+        ("if-wrapped eval rebind", body.replace(
+            binding, binding + '          if eval "source_sha=changed"; then :; fi\n', 1)),
+        ("if-wrapped source", body.replace(
+            binding, binding + "          if source ./unreviewed.sh; then :; fi\n", 1)),
+        ("if-wrapped mapfile rebind", body.replace(
+            binding, binding + "          if mapfile -t source_sha </dev/null; then :; fi\n", 1)),
         ("remove postrebase guard", body.replace(
             rebase + "            verify_critical_source\n", rebase, 1)),
     )
