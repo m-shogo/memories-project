@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
 TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
+PUBLISHER_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "563c543233e125f37b1661f865ae275ccab7de90"
 TRIGGER_PATHS = (
     ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml",
@@ -345,12 +346,75 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: generation evidence reconcile PR/push branch guard runtime (6 cases)")
 
 
+
+def classify_generation_publisher_coupling(source: str) -> bool:
+    """Recognize write-capable publisher triggers; require bounded source guards."""
+    marker = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    end = "  workflow_dispatch:\\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("generation evidence publisher trigger topology unknown")
+    push = source.split(marker, 1)[1].split(end, 1)[0]
+    target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"'
+    if target not in push.splitlines():
+        return False
+    if "  validate:\\n" not in source or "      contents: write\\n" not in source:
+        return False
+    required = (
+        "for reconcile_attempt in 1 2; do",
+        "revalidate_latest_authority",
+        "git fetch origin so",
+        'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then',
+        "exit 75",
+        "git push origin HEAD:so",
+    )
+    if any(token not in source for token in required):
+        raise SystemExit("generation evidence publisher bounded source guard missing")
+    return True
+
+
+def prove_generation_publisher_coupling_guard() -> None:
+    """Prevent confusing a read-only CI trigger with a safe publisher-free edit."""
+    source = PUBLISHER_WORKFLOW.read_text(encoding="utf-8")
+    if not classify_generation_publisher_coupling(source):
+        raise SystemExit("generation evidence publisher coupling unexpectedly absent")
+    marker = "for reconcile_attempt in 1 2; do"
+    mutated = source.replace(marker, "for reconcile_attempt in 1; do", 1)
+    try:
+        classify_generation_publisher_coupling(mutated)
+    except SystemExit as exc:
+        if str(exc) != "generation evidence publisher bounded source guard missing":
+            raise
+    else:
+        raise SystemExit("generation evidence publisher missing bounded reconcile accepted")
+    mutated_guard = source.replace("git push origin HEAD:so", "echo no-push", 2)
+    try:
+        classify_generation_publisher_coupling(mutated_guard)
+    except SystemExit as exc:
+        if str(exc) != "generation evidence publisher bounded source guard missing":
+            raise
+    else:
+        raise SystemExit("generation evidence publisher missing guarded publication accepted")
+    # Removing the publisher trigger is a safe topology improvement, not a
+    # reason to demand an unsafe write-capable CI path.
+    target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\\n'
+    push_marker = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    prefix, suffix = source.split(push_marker, 1)
+    if target not in suffix:
+        raise SystemExit("generation evidence publisher trigger mutation anchor missing")
+    removed = prefix + push_marker + suffix.replace(target, "", 1)
+    if classify_generation_publisher_coupling(removed):
+        raise SystemExit("generation evidence removed publisher trigger still classified coupled")
+    print("PASS: generation evidence publisher trigger coupling and bounded source guard (2 negatives)")
+
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
+    prove_generation_publisher_coupling_guard()
     prove_private_child_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
