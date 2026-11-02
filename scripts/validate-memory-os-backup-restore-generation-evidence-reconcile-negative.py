@@ -301,6 +301,55 @@ def prove_direct_authority_identity(reconciler: object) -> None:
     print(f"PASS boundary: direct generation-evidence data/writer/validator substitutions rejected: {len(cases)}")
 
 
+def prove_pinned_generation_writer_import(reconciler: object) -> None:
+    """A writer path swap after byte capture must not execute redirected code."""
+    original_root, original_writer = reconciler.ROOT, reconciler.WRITER
+    original_spec = reconciler.importlib.util.spec_from_file_location
+    with guarded_temporary_directory(prefix=".tmp-generation-writer-pin-", parent=TMP_PARENT) as tmpdir:
+        root = Path(tmpdir)
+        parent = root / "scripts"
+        parent.mkdir()
+        writer = parent / reconciler.WRITER_REL.name
+        writer.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+        redirected = root / "redirected"
+        redirected.mkdir()
+        canary = redirected / writer.name
+        canary.write_text("raise RuntimeError('PRIVATE_GENERATION_WRITER_SWAP_CANARY')\n",
+                          encoding="utf-8")
+        parked = root / "parked-scripts"
+        reconciler.ROOT, reconciler.WRITER = root, writer
+        try:
+            require(reconciler.load_writer().SOURCE_MARKER == "reviewed",
+                    "generation writer pinned import positive control failed")
+            writer.chmod(0o666)
+            expect_domain_fail("writable generation writer", reconciler.load_writer, reconciler.Fail)
+            writer.chmod(0o644)
+            swapped = False
+
+            def swap_after_capture(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == writer:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            reconciler.importlib.util.spec_from_file_location = swap_after_capture
+            loaded = reconciler.load_writer()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "generation writer executed redirected pathname")
+            require(canary.read_text(encoding="utf-8").startswith("raise RuntimeError"),
+                    "generation writer redirected canary mutated")
+        finally:
+            reconciler.importlib.util.spec_from_file_location = original_spec
+            reconciler.ROOT, reconciler.WRITER = original_root, original_writer
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: generation evidence writer pinned bytes resist after-capture parent swap")
+
+
 def prove_atomic_write_failure(reconciler: object) -> None:
     canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
     original_replace = reconciler.os.replace
@@ -608,6 +657,7 @@ def main() -> int:
     prove_child_substitution_before_cleanup_rejected()
     reconciler = load_reconciler()
     prove_post_validator_transport(reconciler)
+    prove_pinned_generation_writer_import(reconciler)
 
     prove_direct_authority_identity(reconciler)
     prove_atomic_write_failure(reconciler)

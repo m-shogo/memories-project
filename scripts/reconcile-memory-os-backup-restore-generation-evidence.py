@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -52,6 +53,7 @@ REFS = (
     "scripts/reconcile-memory-os-backup-restore-generation-evidence.py",
     ".github/workflows/backup-restore-generation-evidence.yml",
 )
+MAX_WRITER_SOURCE_BYTES = 1024 * 1024
 EVIDENCE_PREFIX = "generation-bound backup/restore evidence admission is append-only and fail-closed:"
 
 
@@ -181,15 +183,96 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def load_writer():
-    relative = require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
-    spec = importlib.util.spec_from_file_location("memory_os_backup_restore_generation_reconcile_writer", WRITER)
-    require(spec is not None and spec.loader is not None, f"cannot load {relative}")
+def pinned_writer_source() -> bytes:
+    """Bind reviewed writer bytes to owned directory/file descriptors, not a mutable path."""
+    require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+            "generation evidence writer pinned import platform unsafe")
+    owned: list[int] = []
     try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
+        owned.append(parent_fd)
+        for part in WRITER_REL.parts[:-1]:
+            parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
+            owned.append(parent_fd)
+        before_parents = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda value: (
+            value.st_dev, value.st_ino, value.st_mode, value.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in before_parents), "writer parent directory unsafe")
+        source_fd = os.open(
+            WRITER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=parent_fd,
+        )
+        require(type(source_fd) is int and source_fd >= 0, "writer source descriptor invalid")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 <= before.st_size <= MAX_WRITER_SOURCE_BYTES,
+                "writer source type/size unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_WRITER_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes, "writer source read type invalid")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) <= MAX_WRITER_SOURCE_BYTES
+                and len(source) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "writer source changed during read")
+        for index, fd in enumerate(owned[:-1]):
+            current = os.fstat(fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            visible = os.lstat(lexical)
+            require(stat.S_ISDIR(visible.st_mode)
+                    and parent_identity(before_parents[index])
+                    == parent_identity(current) == parent_identity(visible),
+                    "writer parent changed during read")
+        require_exact_repo_file(WRITER, WRITER_REL, "generation evidence writer")
+        require(identity(WRITER.stat()) == identity(after),
+                "writer pathname changed during read")
+        return source
+    finally:
+        primary = sys.exc_info()[0] is not None
+        failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                failed = True
+        if failed and not primary:
+            raise Fail("writer descriptor cleanup failed") from None
+
+
+def load_writer():
+    """Execute the canonical generation writer from verified pinned source bytes."""
+    try:
+        source = pinned_writer_source()
+        spec = importlib.util.spec_from_file_location(
+            "memory_os_backup_restore_generation_reconcile_writer", WRITER,
+        )
+        require(spec is not None and spec.loader is not None,
+                "generation evidence canonical writer import failed")
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except (FileNotFoundError, OSError) as exc:
-        raise Fail(f"cannot load {relative}: {exc}") from exc
+        # Never reopen the mutable pathname through SourceFileLoader.
+        exec(compile(source, str(WRITER), "exec"), module.__dict__)
+    except Exception:
+        raise Fail("generation evidence canonical writer import failed") from None
     return module
 
 
