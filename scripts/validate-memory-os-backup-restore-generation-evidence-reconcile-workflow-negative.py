@@ -362,6 +362,7 @@ def classify_generation_publisher_coupling(source: str) -> bool:
         if line and not line[0].isspace() and ":" in line
     ]
     if (top_keys.count("on") != 1 or top_keys.count("jobs") != 1
+            or top_keys.count("permissions") != 1
             or lines.count("on:") != 1 or lines.count("permissions:") != 1):
         raise SystemExit("generation evidence publisher trigger topology unknown")
     event_lines = lines[lines.index("on:") + 1:lines.index("permissions:")]
@@ -400,7 +401,13 @@ def classify_generation_publisher_coupling(source: str) -> bool:
             for line in job_lines
         )
 
-    if job_key_count("if") != 1 or job_key_count("permissions") != 1:
+    contents_count = sum(
+        line.startswith("      ") and not line.startswith("       ")
+        and line[6:].split(":", 1)[0].strip().strip("'\\\"") == "contents"
+        for line in job_lines
+    )
+    if (job_key_count("if") != 1 or job_key_count("permissions") != 1
+            or contents_count != 1):
         raise SystemExit("generation evidence publisher bounded source guard missing")
     required = (
         "for reconcile_attempt in 1 2; do",
@@ -479,6 +486,8 @@ def prove_generation_publisher_coupling_guard() -> None:
     for label, mutated in (
         ("duplicate-on", source + nl + "'on':" + nl + "  push: {}" + nl),
         ("duplicate-jobs", source + nl + "jobs:" + nl + "  shadow: {}" + nl),
+        ("duplicate-top-permissions", source + nl + "'permissions':" + nl
+         + "  contents: write" + nl),
         ("duplicate-push", source.replace(
             "  workflow_dispatch:" + nl,
             "  workflow_dispatch:" + nl + "  'push':" + nl + "    branches: [main]" + nl, 1,
@@ -498,6 +507,22 @@ def prove_generation_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"generation evidence publisher {label} event shadow accepted")
+    # Duplicate job-level contents can shadow the reviewed permission.
+    contents_line = "      contents: write" + nl
+    if source.count(contents_line) != 1:
+        raise SystemExit("generation evidence publisher contents authority anchor missing")
+    shadowed_contents = source.replace(
+        contents_line, contents_line + "      'contents': read" + nl, 1,
+    )
+    if shadowed_contents == source:
+        raise SystemExit("generation evidence publisher contents negative mutation was inert")
+    try:
+        classify_generation_publisher_coupling(shadowed_contents)
+    except SystemExit as exc:
+        if str(exc) != "generation evidence publisher bounded source guard missing":
+            raise
+    else:
+        raise SystemExit("generation evidence publisher duplicate contents accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
@@ -508,7 +533,7 @@ def prove_generation_publisher_coupling_guard() -> None:
     removed = prefix + push_marker + suffix.replace(target, "", 1)
     if classify_generation_publisher_coupling(removed):
         raise SystemExit("generation evidence removed publisher trigger still classified coupled")
-    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (12 negatives)")
+    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (14 negatives)")
 
 
 
