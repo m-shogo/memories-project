@@ -134,6 +134,12 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
                 # Cleanup remains pinned to the owned directory, even after a
                 # visible parent swap. Never mask the original test failure.
                 shutil.rmtree(name, dir_fd=fd)
+            except Fail:
+                # A verified, fixed-domain identity rejection is the intended
+                # outcome of a substituted-child negative, not an opaque
+                # secondary cleanup error. Preserve it when no body failed.
+                if not primary_failure:
+                    raise
             except Exception:
                 if not primary_failure:
                     raise Fail("reconcile negative temp child cleanup failed") from None
