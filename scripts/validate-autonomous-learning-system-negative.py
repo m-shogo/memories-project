@@ -9476,6 +9476,7 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         raise RuntimeError("publisher script dispatch source inventory drift")
     patterns = (
         r"(?i)\bgh(?:[ \t]+(?:-R|--repo)(?:[ \t]+\S+|=\S+))?[ \t]+(?:workflow[ \t]+run|api)\b",
+        r"(?i)\bgh(?:[ \t]+(?:-R|--repo)(?:[ \t]+\S+|=\S+))?(?:[ \t]|\\\r?\n)+(?:workflow(?:[ \t]|\\\r?\n)+run|api)\b",
         r"""(?i)['"]gh['"]\s*,\s*['"](?:workflow|api)['"]""",
         r"""(?i)['"]gh['"]\s*,\s*['"](?:-R|--repo)['"]\s*,\s*['"][^'"]+['"]\s*,\s*['"](?:workflow|api)['"]""",
         r"""(?i)['"]gh['"]\s*,\s*['"](?:-R|--repo)=[^'"]+['"]\s*,\s*['"](?:workflow|api)['"]""",
@@ -9517,6 +9518,11 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         ("equals repo shell workflow", "subprocess.run('gh --repo=o/r workflow run writer.yml', shell=True)"),
         ("equals repo argv API", "subprocess.run(['gh', '-R=o/r', 'api', 'repos/o/r/dispatches'])"),
         ("equals repo argv workflow", "subprocess.run(['gh', '--repo=o/r', 'workflow', 'run', 'writer.yml'])"),
+        ("continued shell workflow", "subprocess.run('gh \\\n workflow run writer.yml', shell=True)"),
+        ("continued shell API", "subprocess.run('gh \\\n api repos/o/r/dispatches', shell=True)"),
+        ("continued repo shell API", "subprocess.run('gh -R o/r \\\n api repos/o/r/dispatches', shell=True)"),
+        ("continued equals repo workflow", "subprocess.run('gh --repo=o/r \\\n workflow run writer.yml', shell=True)"),
+        ("continued workflow subcommand", "subprocess.run('gh workflow \\\n run writer.yml', shell=True)"),
         ("REST URL", "url = 'https://api.github.com/repos/o/r/dispatches'"),
         ("relative API", "url = '/actions/workflows/w.yml/dispatches'"),
         ("Octokit", "octokit.request('POST /repos/o/r/dispatches')"),
@@ -9534,6 +9540,8 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         ("read-only repo gh", "subprocess.run('gh -R o/r run view 1', shell=True)"),
         ("read-only equals repo gh", "subprocess.run('gh --repo=o/r run view 1', shell=True)"),
         ("read-only equals repo argv", "subprocess.run(['gh', '-R=o/r', 'run', 'view', '1'])"),
+        ("continued read-only gh", "subprocess.run('gh \\\n run view 1', shell=True)"),
+        ("continued read-only repo gh", "subprocess.run('gh --repo=o/r \\\n run view 1', shell=True)"),
         ("local curl", "curl --fail http://127.0.0.1:9000/minio/health/live"),
         ("repository URL", "url = 'https://github.com/o/r'"),
     ):
