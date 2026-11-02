@@ -10013,6 +10013,107 @@ def prove_soak_critical_path_precheck_inventory(source_root: Path) -> None:
                 )
 
 
+def prove_soak_precheck_shell_error_classes(source_root: Path) -> None:
+    """Execute only exact-reviewed soak prechecks under an inert Git mock.
+
+    This proves pre-rebase Git diff failures abort before reset/push; it does
+    not close or authorize the separately blocked post-rebase publisher gap.
+    """
+    import textwrap
+
+    reviewed = (
+        ("sustained-local-soak.yml", "610afce0dfdce6315ffe2ed03519e4eb83c4a278",
+         "Long-soak-critical source changed during the run; refusing stale evidence publication."),
+        ("sustained-local-soak-parallel-request.yml", "88a14aaab3b8eea9e181235f63c562822d765027",
+         "Long-soak-critical source changed during run; refusing stale evidence."),
+        ("sustained-local-soak-parallel-v2.yml", "2ba5967d4fad86f5a80c019fd78ab25c9ee67cf3",
+         "Long-soak-critical source changed during run; refusing stale evidence."),
+    )
+    opening = '          if ! git diff --quiet "$SOURCE_SHA" origin/so -- ' + chr(92) + chr(10)
+    closing = "          fi\n"
+    prefix = """set -euo pipefail
+SOURCE_SHA=original
+git() {
+  case "$1" in
+    diff)
+      test "$#" -eq 26 && test "$2" = --quiet && test "$3" = original &&
+        test "$4" = origin/so && test "$5" = -- || return 70
+      return "$DIFF_STATUS"
+      ;;
+    reset)
+      test "$*" = 'reset --hard origin/so' || return 70
+      printf 'RESET\n' >> "$ACTION_LOG"
+      ;;
+    push)
+      test "$*" = 'push origin HEAD:so' || return 70
+      printf 'PUSH\n' >> "$ACTION_LOG"
+      ;;
+    *) return 70 ;;
+  esac
+}
+"""
+    suffix = "git reset --hard origin/so\ngit push origin HEAD:so\n"
+
+    def execute(body: str, diff_status: str) -> tuple[int, bytes]:
+        with tempfile.TemporaryDirectory(prefix="learning-soak-precheck-shell-") as tmp:
+            log = Path(tmp) / "actions.log"
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-c", prefix + body + suffix],
+                cwd=tmp,
+                env={"PATH": os.defpath, "HOME": tmp, "LANG": "C",
+                     "DIFF_STATUS": diff_status, "ACTION_LOG": str(log)},
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if type(result.returncode) is not int:
+                raise RuntimeError("soak precheck shell invalid exit status")
+            return result.returncode, log.read_bytes() if log.exists() else b""
+
+    for filename, blob, diagnostic in reviewed:
+        raw = (source_root / ".github/workflows" / filename).read_bytes()
+        actual_blob = hashlib.sha1(
+            b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+        ).hexdigest()
+        if actual_blob != blob:
+            raise RuntimeError("soak precheck shell reviewed source drift: " + filename)
+        source = raw.decode("utf-8")
+        if source.count(opening) != 1:
+            raise RuntimeError("soak precheck shell source boundary drift: " + filename)
+        remainder = source.split(opening, 1)[1]
+        if closing not in remainder:
+            raise RuntimeError("soak precheck shell source boundary drift: " + filename)
+        block = opening + remainder.split(closing, 1)[0] + closing
+        expected_end = (
+            "            echo " + '"' + diagnostic + '"' + "\n"
+            "            exit 75\n"
+            "          fi\n"
+        )
+        if not block.endswith(expected_end):
+            raise RuntimeError("soak precheck shell reviewed guard drift: " + filename)
+        body = textwrap.dedent(block)
+        for label, code, expected in (
+            ("unchanged source", "0", (0, b"RESET\nPUSH\n")),
+            ("critical drift", "1", (75, b"")),
+            ("Git operational error", "128", (75, b"")),
+        ):
+            if execute(body, code) != expected:
+                raise RuntimeError("soak precheck shell behavior drift: " + filename + ": " + label)
+        mutants = (
+            ("inverted diff guard", body.replace(
+                "if ! git diff --quiet", "if git diff --quiet", 1),
+             "1", (0, b"RESET\nPUSH\n")),
+            ("suppressed failure", body.replace("exit 75", "exit 0", 1),
+             "1", (0, b"")),
+            ("continued after failure", body.replace("exit 75", ":", 1),
+             "128", (0, b"RESET\nPUSH\n")),
+        )
+        for label, mutant, code, unsafe in mutants:
+            if mutant == body or execute(mutant, code) != unsafe:
+                raise RuntimeError(
+                    "soak precheck shell negative mutation drift: "
+                    + filename + ": " + label
+                )
+
+
 def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
     """Pin the exact reviewed source-critical Bash array and its expansion.
 
@@ -10833,6 +10934,7 @@ def main() -> int:
     prove_saturation_source_sha_provenance(source_root)
     prove_learning_ci_readonly_source_binding(source_root)
     prove_soak_critical_path_precheck_inventory(source_root)
+    prove_soak_precheck_shell_error_classes(source_root)
     prove_saturation_critical_path_array_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
