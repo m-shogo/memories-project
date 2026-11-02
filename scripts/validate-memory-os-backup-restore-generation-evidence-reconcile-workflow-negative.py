@@ -355,19 +355,19 @@ def classify_generation_publisher_coupling(source: str) -> bool:
         raise SystemExit("generation evidence publisher trigger topology unknown")
     # Duplicate top-level on/jobs or event keys can shadow a reviewed
     # trigger even while the original safe-looking text remains present.
+    lines = source.splitlines()
     top_keys = [
         line.split(":", 1)[0].strip().strip("'\\\"")
-        for line in source.splitlines()
+        for line in lines
         if line and not line[0].isspace() and ":" in line
     ]
     if (top_keys.count("on") != 1 or top_keys.count("jobs") != 1
-            or source.count("\\non:\\n") != 1
-            or source.count("\\npermissions:\\n") != 1):
+            or lines.count("on:") != 1 or lines.count("permissions:") != 1):
         raise SystemExit("generation evidence publisher trigger topology unknown")
-    event_block = source.split("\\non:\\n", 1)[1].split("\\npermissions:\\n", 1)[0]
+    event_lines = lines[lines.index("on:") + 1:lines.index("permissions:")]
     event_keys = [
         line[2:].split(":", 1)[0].strip().strip("'\\\"")
-        for line in event_block.splitlines()
+        for line in event_lines
         if line.startswith("  ") and not line.startswith("   ") and ":" in line
     ]
     if sorted(event_keys) != ["pull_request", "push", "workflow_dispatch"]:
@@ -473,17 +473,20 @@ def prove_generation_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"generation evidence publisher {label} YAML shadow accepted")
-    # Event/top-level YAML shadows are checked separately from job shadows.
+    # Use a literal newline value, not multiply escaped source strings,
+    # so the negative mutations are guaranteed to change actual YAML lines.
+    nl = chr(10)
     for label, mutated in (
-        ("duplicate-on", source + "\\n'on':\\n  push: {}\\n"),
-        ("duplicate-jobs", source + "\\njobs:\\n  shadow: {}\\n"),
+        ("duplicate-on", source + nl + "'on':" + nl + "  push: {}" + nl),
+        ("duplicate-jobs", source + nl + "jobs:" + nl + "  shadow: {}" + nl),
         ("duplicate-push", source.replace(
-            "  workflow_dispatch:\\n",
-            "  workflow_dispatch:\\n  'push':\\n    branches: [main]\\n", 1,
+            "  workflow_dispatch:" + nl,
+            "  workflow_dispatch:" + nl + "  'push':" + nl + "    branches: [main]" + nl, 1,
         )),
         ("unreviewed-event", source.replace(
-            "  workflow_dispatch:\\n",
-            "  workflow_dispatch:\\n  schedule:\\n    - cron: '0 0 * * *'\\n", 1,
+            "  workflow_dispatch:" + nl,
+            "  workflow_dispatch:" + nl + "  schedule:" + nl
+            + "    - cron: '0 0 * * *'" + nl, 1,
         )),
     ):
         try:
