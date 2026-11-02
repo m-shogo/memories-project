@@ -9724,7 +9724,7 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         raise RuntimeError("saturation source SHA publisher step drift")
     body = source.split(opening, 1)[1].split(closing, 1)[0]
     binding = '          source_sha="${GITHUB_SHA}"\n'
-    rebase = "          git pull --rebase origin so\n"
+    rebase = "            git pull --rebase origin so\n"
 
     def require_original_source_lease(value: str) -> None:
         lines = value.splitlines()
@@ -9745,7 +9745,8 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         if any(re.match(r"^\s*(?:unset|read|eval)\s", line) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
         if (value.count(rebase) != 1
-                or value.count("          verify_critical_source\n") != 2
+                or value.count("          verify_critical_source\n") != 1
+                or value.count("            verify_critical_source\n") != 1
                 or not (
                     value.index("          set -euo pipefail\n")
                     < value.index(binding)
@@ -9754,7 +9755,7 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
                     < value.index(rebase)
                 )):
             raise RuntimeError("saturation source SHA provenance drift")
-        if (rebase + "          verify_critical_source\n") not in value:
+        if (rebase + "            verify_critical_source\n") not in value:
             raise RuntimeError("saturation source SHA provenance drift")
 
     require_original_source_lease(body)
@@ -9778,7 +9779,7 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         ("eval after rebase", body.replace(
             rebase, rebase + '            eval "source_sha=changed"\n', 1)),
         ("remove postrebase guard", body.replace(
-            rebase + "          verify_critical_source\n", rebase, 1)),
+            rebase + "            verify_critical_source\n", rebase, 1)),
     )
     for label, mutated in mutations:
         if mutated == body:
