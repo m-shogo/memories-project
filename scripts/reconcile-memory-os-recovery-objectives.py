@@ -357,12 +357,12 @@ def run_validator(path: Path, label: str) -> None:
     # Bind executed child bytes to the reviewed source, not a second path open.
     source = pinned_reviewed_source(path, relative, label)
     bootstrap = (
-        "import os, sys\\n"
-        "path = sys.argv[1]\\n"
-        "sys.path.insert(0, os.path.dirname(path))\\n"
-        "sys.argv[:] = [path]\\n"
-        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\\n"
-        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\\n"
+        "import os, sys\n"
+        "path = sys.argv[1]\n"
+        "sys.path.insert(0, os.path.dirname(path))\n"
+        "sys.argv[:] = [path]\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
     )
     # Child validators must not inherit interpreter, loader or Git overrides.
     # Preserve ordinary environment variables for expected CI/runtime behavior.
