@@ -9818,6 +9818,20 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             raise RuntimeError("saturation source SHA provenance drift")
         if (rebase + "            verify_critical_source\n") not in value:
             raise RuntimeError("saturation source SHA provenance drift")
+        # A correct source lease is not a publication boundary if an
+        # additional push executes before it or bypasses the guarded loop.
+        # Reject any second push token, including Git option forms.
+        push_line = "            if git push origin HEAD:so; then exit 0; fi"
+        if lines.count(push_line) != 1:
+            raise RuntimeError("saturation source SHA provenance drift")
+        push_positions = [
+            index for index, line in enumerate(lines)
+            if re.search(r"\bpush\b", line)
+        ]
+        if (push_positions != [lines.index(push_line)]
+                or lines.index(push_line)
+                <= lines.index("            verify_critical_source")):
+            raise RuntimeError("saturation source SHA provenance drift")
 
     require_original_source_lease(body)
     mutations = (
@@ -9859,6 +9873,21 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             binding, binding + "          source ./unreviewed.sh\n", 1)),
         ("dot source dynamic shell", body.replace(
             binding, binding + "          . ./unreviewed.sh\n", 1)),
+        ("early unleased push", body.replace(
+            binding, binding + "          git push origin HEAD:so\n", 1)),
+        ("early Git option push", body.replace(
+            binding, binding + "          git -c core.hooksPath=/dev/null push origin HEAD:so\n", 1)),
+        ("postrebase premature push", body.replace(
+            rebase, rebase + "            git push origin HEAD:so\n", 1)),
+        ("removed guarded push", body.replace(
+            "            if git push origin HEAD:so; then exit 0; fi\n",
+            "            :\n", 1)),
+        ("commented guarded push", body.replace(
+            "            if git push origin HEAD:so; then exit 0; fi\n",
+            "            # if git push origin HEAD:so; then exit 0; fi\n", 1)),
+        ("wrong guarded push branch", body.replace(
+            "            if git push origin HEAD:so; then exit 0; fi\n",
+            "            if git push origin HEAD:main; then exit 0; fi\n", 1)),
         ("remove postrebase guard", body.replace(
             rebase + "            verify_critical_source\n", rebase, 1)),
     )
