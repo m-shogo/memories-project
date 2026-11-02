@@ -9629,9 +9629,9 @@ source_sha=source-sha
 critical=(critical.txt)
 git() {
   case "$1" in
-    fetch) test "$*" = 'fetch origin so' && test "$FETCH_OK" = 1 ;;
-    merge-base) test "$*" = 'merge-base --is-ancestor source-sha origin/so' && test "$ANCESTOR_OK" = 1 ;;
-    diff) test "$*" = 'diff --quiet source-sha origin/so -- critical.txt' && test "$CRITICAL_OK" = 1 ;;
+    fetch) test "$*" = 'fetch origin so' || return 70; if test "$FETCH_OK" = 128; then return 128; fi; test "$FETCH_OK" = 1 ;;
+    merge-base) test "$*" = 'merge-base --is-ancestor source-sha origin/so' || return 70; if test "$ANCESTOR_OK" = 128; then return 128; fi; test "$ANCESTOR_OK" = 1 ;;
+    diff) test "$*" = 'diff --quiet source-sha origin/so -- critical.txt' || return 70; if test "$CRITICAL_OK" = 128; then return 128; fi; test "$CRITICAL_OK" = 1 ;;
     pull) test "$*" = 'pull --rebase origin so' ;;
     push) test "$*" = 'push origin HEAD:so' || return 70; printf 'PUSH\\n' >> "$PUSH_LOG" ;;
     *) return 70 ;;
@@ -9669,6 +9669,9 @@ git push origin HEAD:so
         ("divergent ancestry", ("1", "0", "1"), (75, False)),
         ("critical drift", ("1", "1", "0"), (75, False)),
         ("failed fetch", ("0", "1", "1"), (1, False)),
+        ("fetch transport error", ("128", "1", "1"), (128, False)),
+        ("ancestry Git error", ("1", "128", "1"), (75, False)),
+        ("critical diff Git error", ("1", "1", "128"), (75, False)),
     ):
         if execute(actual, *flags) != expected:
             raise RuntimeError("saturation postrebase shell behavior drift: " + label)
