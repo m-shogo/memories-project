@@ -9677,6 +9677,122 @@ git push origin HEAD:so
             raise RuntimeError("saturation shell negative mutation not detected: " + label)
 
 
+
+def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
+    """Pin the exact reviewed source-critical Bash array and its expansion.
+
+    The array is source authority for the postrebase diff. A syntactically
+    present guard with a missing, duplicated, commented or injected path is
+    not equivalent protection. Never execute unreviewed shell expressions.
+    """
+    import re
+
+    source = (
+        source_root / ".github/workflows/controlled-saturation-repeatability.yml"
+    ).read_text(encoding="utf-8")
+    opening = "          critical=(\n"
+    closing = "          )\n          verify_critical_source() {\n"
+    if source.count(opening) != 1 or source.count(closing) != 1:
+        raise RuntimeError("saturation critical array source boundary drift")
+    start = source.index(opening) + len(opening)
+    end = source.index(closing, start)
+    raw = source[start:end]
+    expected = (
+        "services/import-api/internal/httpserver/controlled_saturation_ramp_test.go",
+        "services/import-api/internal/httpserver/live_object_load_test.go",
+        "services/import-api/internal/httpserver/server_live_test.go",
+        "services/import-api/internal/pgrepo",
+        "services/import-api/internal/upload",
+        "services/import-api/internal/objectstore",
+        "services/import-api/go.mod",
+        "services/import-api/go.sum",
+        "infra/postgresql/security",
+        "contracts/operations/controlled-saturation-ramp-contract.v1.json",
+        "contracts/operations/controlled-saturation-repeatability-contract.v1.json",
+        ".github/workflows/controlled-saturation-repeatability.yml",
+        "scripts/analyze-memory-os-controlled-saturation-repeatability.py",
+        "scripts/validate-memory-os-controlled-saturation-repeatability.py",
+        "scripts/validate-memory-os-controlled-saturation-ramp.py",
+        "scripts/reconcile-memory-os-controlled-saturation-repeatability.py",
+    )
+
+    def parse(value: str) -> tuple[str, ...]:
+        if not value.endswith("\n") or not value.splitlines():
+            raise RuntimeError("saturation critical array malformed")
+        paths: list[str] = []
+        for line in value.splitlines():
+            # Allow only literal path tokens; reject comments, shell expansion,
+            # quotes, separators and redirections before any Bash execution.
+            if not re.fullmatch(
+                r" {12}[A-Za-z0-9._/-]+(?: [A-Za-z0-9._/-]+)*", line
+            ):
+                raise RuntimeError("saturation critical array malformed")
+            paths.extend(line.strip().split(" "))
+        if tuple(paths) != expected or len(paths) != len(set(paths)):
+            raise RuntimeError("saturation critical array reviewed inventory drift")
+        return tuple(paths)
+
+    if parse(raw) != expected:
+        raise RuntimeError("saturation critical array positive drift")
+
+    # Mutations must fail for their own inventory or lexical grammar error.
+    for label, mutated in (
+        ("removed", raw.replace(
+            "            services/import-api/internal/upload\n", ""
+        )),
+        ("duplicated", raw.replace(
+            "            services/import-api/internal/upload\n",
+            "            services/import-api/internal/upload\n"
+            "            services/import-api/internal/upload\n",
+        )),
+        ("commented", raw.replace(
+            "            services/import-api/internal/upload\n",
+            "            # services/import-api/internal/upload\n",
+        )),
+        ("expanded", raw.replace(
+            "            services/import-api/internal/upload\n",
+            "            services/import-api/internal/upload $HOME\n",
+        )),
+        ("command injection", raw.replace(
+            "            services/import-api/internal/upload\n",
+            "            services/import-api/internal/upload; git push origin HEAD:so\n",
+        )),
+        ("reordered", raw.replace(
+            "            services/import-api/internal/upload\n"
+            "            services/import-api/internal/objectstore\n",
+            "            services/import-api/internal/objectstore\n"
+            "            services/import-api/internal/upload\n",
+        )),
+    ):
+        if mutated == raw:
+            raise RuntimeError("saturation critical array mutation source drift: " + label)
+        try:
+            parse(mutated)
+        except RuntimeError as exc:
+            if str(exc) not in (
+                "saturation critical array malformed",
+                "saturation critical array reviewed inventory drift",
+            ):
+                raise
+        else:
+            raise RuntimeError("saturation critical array negative accepted: " + label)
+
+    # A Bash expansion check is safe only after the complete literal-only
+    # grammar and exact reviewed inventory have been established.
+    script = (
+        "set -euo pipefail\ncritical=(\n" + raw
+        + ")\nprintf '%s\\n' \"${critical[@]}\"\n"
+    )
+    result = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c", script],
+        env={"PATH": os.defpath, "LANG": "C"},
+        capture_output=True, text=True, check=False, timeout=5,
+    )
+    if (type(result.returncode) is not int or result.returncode != 0
+            or result.stderr or result.stdout != "\n".join(expected) + "\n"):
+        raise RuntimeError("saturation critical array Bash expansion drift")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -10372,6 +10488,7 @@ def main() -> int:
     prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
     prove_saturation_postrebase_shell_semantics(source_root)
+    prove_saturation_critical_path_array_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
