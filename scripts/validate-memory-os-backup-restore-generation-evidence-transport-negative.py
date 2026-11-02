@@ -34,7 +34,7 @@ def require_validator_identity() -> None:
         valid = (VALIDATOR == ROOT / VALIDATOR_REL
                  and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
                  and VALIDATOR.resolve(strict=True) == VALIDATOR)
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, RuntimeError):
         raise Fail("generation evidence transport validator source authority unreadable") from None
     require(valid, "canonical generation-evidence validator source authority drift")
 
@@ -163,7 +163,9 @@ def prove_pinned_validator_import() -> None:
             # Before acquiring any owned FD, a path probe can raise a private
             # filesystem exception. It must produce only a fixed-domain Fail.
             original_resolve = Path.resolve
-            for failure_type in (OSError, ValueError, TypeError):
+            # Path.resolve can raise RuntimeError for a resolution loop.
+            # It is not a trusted diagnostic merely because it is non-OS.
+            for failure_type in (OSError, ValueError, TypeError, RuntimeError):
                 marker = "PRIVATE_GENERATION_SOURCE_IDENTITY_CANARY"
 
                 def private_identity_probe(self, *args, **kwargs):
