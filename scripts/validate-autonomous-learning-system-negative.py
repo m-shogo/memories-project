@@ -10736,6 +10736,10 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         for node in ast.walk(mains[0]):
             if not isinstance(node, ast.Call):
                 continue
+            # A computed callable (mapping lookup, lambda or factory) can
+            # recover frame locals without a direct forbidden function name.
+            if not isinstance(node.func, (ast.Name, ast.Attribute)):
+                return False
             if (isinstance(node.func, ast.Name)
                     and node.func.id in {"locals", "vars", "eval", "exec",
                                          "__import__", "getattr"}):
@@ -10785,13 +10789,16 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("sys current frames", '                print(sys._current_frames()[threading.get_ident()].f_locals["fanout_result"].stderr)'),
         ("qualified builtins vars", '                import builtins' + chr(10) + '                print(builtins.vars()["fanout_result"].stderr)'),
         ("qualified builtins eval", '                import builtins' + chr(10) + '                print(builtins.eval("fanout_result.stderr"))'),
+        ("computed builtins vars", '                import builtins' + chr(10) + '                print(builtins.__dict__["vars"]()["fanout_result"].stderr)'),
+        ("computed builtins eval", '                import builtins' + chr(10) + '                print(builtins.__dict__["eval"]("fanout_result.stderr"))'),
     ):
         if label in {"reflective getattr", "reflective vars", "child alias",
                      "dunder dictionary", "operator attrgetter", "locals frame",
                      "vars frame", "eval frame", "sys frame",
                      "reflective sys frame", "inspect stack frame",
                      "sys current frames", "qualified builtins vars",
-                     "qualified builtins eval"}:
+                     "qualified builtins eval", "computed builtins vars",
+                     "computed builtins eval"}:
             stdout_line = "                print(fanout_result.stdout.strip())" + chr(10)
             if source.count(stdout_line) != 1:
                 raise RuntimeError("entry-docs fanout stdout fixture anchor drift")
@@ -10808,7 +10815,7 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
             raise RuntimeError("entry-docs fanout stderr fixture syntax invalid: " + label) from None
         if safe(mutant):
             raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
-    return 20
+    return 22
 
 
 def prove_prewrite_private_error_redaction(source_root: Path) -> int:
