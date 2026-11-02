@@ -171,14 +171,14 @@ def write_text(path: Path, text: str) -> None:
         if descriptor is not None:
             try:
                 os.close(descriptor)
-            except OSError:
+            except (OSError, ValueError, TypeError):
                 cleanup_failed = True
         if temp_name is not None:
             try:
                 os.unlink(temp_name)
             except FileNotFoundError:
                 pass
-            except OSError:
+            except (OSError, ValueError, TypeError):
                 cleanup_failed = True
         if cleanup_failed and not primary_failed:
             raise Fail("recovery objective reconcile authority temporary cleanup failed") from None
