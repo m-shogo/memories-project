@@ -9793,6 +9793,119 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             raise RuntimeError("saturation source SHA mutation accepted: " + label)
 
 
+def prove_learning_ci_readonly_source_binding(source_root: Path) -> None:
+    """Pin the exact read-only learning CI workflow and negative reachability.
+
+    This is a deterministic source check, never a workflow dispatch. The
+    reviewed Git blob binds the complete YAML, while scoped mutations prove
+    the semantic checks reject a write-capable or untested replacement.
+    """
+    import re
+
+    path = source_root / ".github/workflows/autonomous-learning-guard.yml"
+    raw = path.read_bytes()
+    expected_blob = "732d664fb157cbe2d25309d2030906d6386cc97c"
+    observed_blob = hashlib.sha1(
+        b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+    ).hexdigest()
+    if observed_blob != expected_blob:
+        raise RuntimeError("learning read-only CI reviewed source drift")
+    try:
+        source = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise RuntimeError("learning read-only CI UTF-8 drift") from None
+
+    required = (
+        "          persist-credentials: false\n",
+        "          ref: ${{ github.sha }}\n",
+        "          fetch-depth: 0\n",
+        "  cancel-in-progress: false\n",
+        "      - name: Confirm exact clean source\n",
+        "      - name: Enforce append-only learning authority against parent\n",
+        "      - name: Validate learning contract and executable negatives\n",
+        "      - name: Independently enforce helper ancestor runtime workflow reachability\n",
+        "      - name: Confirm read-only execution\n",
+        "          git diff --exit-code\n",
+        "          test \"$(git rev-parse HEAD)\" = \"${{ github.sha }}\"\n",
+        "          python -B scripts/validate-autonomous-learning-system.py\n",
+        "          python -B scripts/validate-autonomous-learning-system-negative.py\n",
+        "          python -B scripts/validate-memory-os-entry-docs.py\n",
+        "          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
+    )
+    expected_uses = [
+        "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+        "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+    ]
+
+    def require_readonly_workflow(value: str) -> None:
+        lines = value.splitlines()
+        if any(lines.count(line) != 1 for line in (
+                "permissions:", "  contents: read", "  push:",
+                "  pull_request:", "  workflow_dispatch:")):
+            raise RuntimeError("learning CI read-only boundary drift")
+        if sum(line.strip() == "permissions:" for line in lines) != 1:
+            raise RuntimeError("learning CI read-only boundary drift")
+        if (value.count("branches: [so]") != 2
+                or value.count('"scripts/validate-autonomous-learning-system-negative.py"') != 2
+                or value.count('"contracts/operations/autonomous-learning-system.json"') != 2
+                or any(value.count(token) != 1 for token in required)
+                or value.count('          test -z "$(git status --porcelain)"\n') != 2):
+            raise RuntimeError("learning CI read-only boundary drift")
+        if any(token in value for token in (
+                "secrets.", "git push", "contents: write", "id-token: write")):
+            raise RuntimeError("learning CI read-only boundary drift")
+        uses = re.findall(r"(?m)^\s*- uses:\s*(.+)$", value)
+        if uses != expected_uses:
+            raise RuntimeError("learning CI read-only boundary drift")
+        jobs = value.split("jobs:\n")
+        if (len(jobs) != 2
+                or re.findall(r"(?m)^  ([a-z][a-z0-9_-]*):\s*$",
+                              jobs[1]) != ["validate"]):
+            raise RuntimeError("learning CI read-only boundary drift")
+
+    require_readonly_workflow(source)
+    mutants = (
+        ("write permission", source.replace(
+            "  contents: read\n", "  contents: write\n", 1)),
+        ("job-level write", source.replace(
+            "  validate:\n", "  validate:\n    permissions:\n      contents: write\n", 1)),
+        ("persist credentials", source.replace(
+            "persist-credentials: false", "persist-credentials: true", 1)),
+        ("unbound checkout", source.replace(
+            "ref: ${{ github.sha }}", "ref: ${{ github.ref }}", 1)),
+        ("unpinned checkout", source.replace(
+            "checkout@11d5960a326750d5838078e36cf38b85af677262",
+            "checkout@v4", 1)),
+        ("removed append-only check", source.replace(
+            "      - name: Enforce append-only learning authority against parent\n",
+            "", 1)),
+        ("removed negative suite", source.replace(
+            "          python -B scripts/validate-autonomous-learning-system-negative.py\n",
+            "", 1)),
+        ("wrong branch", source.replace("branches: [so]", "branches: [main]", 1)),
+        ("secret injection", source + "\n      - name: secret\n        run: echo ${{ secrets.TOKEN }}\n"),
+        ("push command", source + "\n          git push origin HEAD:so\n"),
+        ("extra job", source + "\n  publish:\n    runs-on: ubuntu-latest\n"),
+        ("negative path omitted", source.replace(
+            '      - "scripts/validate-autonomous-learning-system-negative.py"\n',
+            "", 1)),
+        ("commented read-only step", source.replace(
+            "      - name: Confirm read-only execution\n",
+            "      # - name: Confirm read-only execution\n", 1)),
+        ("shallow checkout", source.replace("fetch-depth: 0", "fetch-depth: 1", 1)),
+    )
+    for label, mutant in mutants:
+        if mutant == source:
+            raise RuntimeError("learning CI read-only mutation fixture drift: " + label)
+        try:
+            require_readonly_workflow(mutant)
+        except RuntimeError as exc:
+            if str(exc) != "learning CI read-only boundary drift":
+                raise
+        else:
+            raise RuntimeError("learning CI read-only mutation accepted: " + label)
+
+
 def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
     """Pin the exact reviewed source-critical Bash array and its expansion.
 
@@ -10611,6 +10724,7 @@ def main() -> int:
     prove_workflow_rebase_guard_inventory(source_root)
     prove_saturation_postrebase_shell_semantics(source_root)
     prove_saturation_source_sha_provenance(source_root)
+    prove_learning_ci_readonly_source_binding(source_root)
     prove_saturation_critical_path_array_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
