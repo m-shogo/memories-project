@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/recovery-objectives-reconcile-negative.yml"
+PUBLISHER_WORKFLOW = ROOT / ".github/workflows/recovery-objectives-admission.yml"
 REVIEWED_WORKFLOW_BLOB_SHA = "961682b5235ac5a88ae29fb95a0ed3f5abd3d862"
 TRIGGER_PATHS = (
     ".github/workflows/recovery-objectives-reconcile-negative.yml",
@@ -275,12 +276,70 @@ def prove_branch_guards_runtime() -> None:
     print("PASS: recovery objective reconcile PR/push branch guard runtime (6 cases)")
 
 
+
+def classify_objective_publisher_coupling(source: str) -> bool:
+    """Expose write-capable trigger coupling and require stale-source refusal."""
+    marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n"
+    if source.count(marker) != 1 or source.count(end) != 1:
+        raise SystemExit("recovery objective publisher trigger topology unknown")
+    push = source.split(marker, 1)[1].split(end, 1)[0]
+    target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"'
+    if target not in push.splitlines():
+        return False
+    if "  validate:\n" not in source or "      contents: write\n" not in source:
+        return False
+    required = (
+        "git fetch origin so",
+        'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then',
+        "exit 75",
+        "git push origin HEAD:so",
+    )
+    if any(token not in source for token in required):
+        raise SystemExit("recovery objective publisher stale-source guard missing")
+    return True
+
+
+def prove_objective_publisher_coupling_guard() -> None:
+    source = PUBLISHER_WORKFLOW.read_text(encoding="utf-8")
+    if not classify_objective_publisher_coupling(source):
+        raise SystemExit("recovery objective publisher coupling unexpectedly absent")
+    mutated_push = source.replace("git push origin HEAD:so", "echo no-push")
+    try:
+        classify_objective_publisher_coupling(mutated_push)
+    except SystemExit as exc:
+        if str(exc) != "recovery objective publisher stale-source guard missing":
+            raise
+    else:
+        raise SystemExit("recovery objective publisher unguarded publication accepted")
+    stale_guard = 'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then'
+    mutated_stale = source.replace(stale_guard, "if false; then")
+    try:
+        classify_objective_publisher_coupling(mutated_stale)
+    except SystemExit as exc:
+        if str(exc) != "recovery objective publisher stale-source guard missing":
+            raise
+    else:
+        raise SystemExit("recovery objective publisher missing source lease accepted")
+    marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    prefix, suffix = source.split(marker, 1)
+    target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"\n'
+    if target not in suffix:
+        raise SystemExit("recovery objective publisher trigger mutation anchor missing")
+    removed = prefix + marker + suffix.replace(target, "", 1)
+    if classify_objective_publisher_coupling(removed):
+        raise SystemExit("recovery objective removed publisher trigger still coupled")
+    print("PASS: recovery objective publisher trigger coupling and source lease (2 negatives)")
+
+
+
 def main() -> int:
     source = WORKFLOW.read_text(encoding="utf-8")
     validate(source)
     prove_trigger_reachability_negatives(source)
     prove_yaml_authority_negatives(source)
     prove_branch_guards_runtime()
+    prove_objective_publisher_coupling_guard()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
