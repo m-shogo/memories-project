@@ -220,7 +220,12 @@ def write_text(path: Path, text: str) -> None:
         require(target_identity(path.lstat()) == target_identity(target_before)
                 and parent_identity(path.parent.lstat()) == parent_identity(parent_before),
                 "recovery objective reconcile write authority changed during stage")
-        os.replace(temp_name, path)
+        # Resolve both sides inside the owned reviewed directory. A final
+        # parent-path swap must not redirect replacement into an attacker path.
+        os.replace(
+            Path(temp_name).name, path.name,
+            src_dir_fd=parent_fd, dst_dir_fd=parent_fd,
+        )
         temp_name = None
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority atomic write failed") from None

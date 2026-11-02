@@ -485,7 +485,7 @@ def prove_atomic_parent_swap_cleanup_on_replace_error(reconciler: object) -> Non
         reached = []
         residue_during_swap = None
 
-        def swap_then_fail(_source, _destination):
+        def swap_then_fail(_source, _destination, **_kwargs):
             parent.rename(moved)
             parent.symlink_to(canary_parent, target_is_directory=True)
             reached.append(True)
@@ -582,7 +582,7 @@ def prove_atomic_write_failure(reconciler: object) -> None:
     contract_bytes = reconciler.CONTRACT.read_bytes()
     original_replace = reconciler.os.replace
 
-    def reject_replace(source: str | Path, destination: str | Path) -> None:
+    def reject_replace(source: str | Path, destination: str | Path, **_kwargs) -> None:
         raise OSError("synthetic atomic replace rejection")
 
     reconciler.os.replace = reject_replace
@@ -673,7 +673,7 @@ def prove_atomic_primary_cleanup_precedence(reconciler: object) -> None:
         original_unlink = reconciler.os.unlink
         marker = "PRIVATE_OBJECTIVE_ATOMIC_DOUBLE_FAULT_CANARY"
 
-        def reject_replace(_source, _destination):
+        def reject_replace(_source, _destination, **_kwargs):
             raise OSError(marker)
 
         def reject_temp_unlink(candidate, *args, **kwargs):
@@ -718,7 +718,7 @@ def prove_atomic_non_oserror_cleanup_precedence(reconciler: object) -> None:
         original_close = reconciler.os.close
         original_fchmod = reconciler.os.fchmod
 
-        def reject_replace(_source, _destination):
+        def reject_replace(_source, _destination, **_kwargs):
             raise OSError(marker)
 
         def reject_unlink(candidate, *args, **kwargs):
@@ -839,11 +839,11 @@ def prove_second_replace_transaction_rollback(reconciler: object) -> None:
     original_replace = reconciler.os.replace
     replace_destinations: list[Path] = []
 
-    def fail_second_replace(source: str | Path, destination: str | Path) -> None:
-        replace_destinations.append(Path(destination))
+    def fail_second_replace(source: str | Path, destination: str | Path, **kwargs) -> None:
+        replace_destinations.append(reconciler.CONTRACT.parent / destination)
         if len(replace_destinations) == 2:
             raise OSError("synthetic second authority replace rejection")
-        original_replace(source, destination)
+        original_replace(source, destination, **kwargs)
 
     reconciler.os.replace = fail_second_replace
     try:
