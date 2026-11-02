@@ -10109,6 +10109,21 @@ git() {
         ):
             if execute(body, code) != expected:
                 raise RuntimeError("soak precheck shell behavior drift: " + filename + ": " + label)
+        # A positive transcript alone cannot prove this sequence check is live.
+        for label, mutant in (
+            ("missing precheck invocation", ":" + chr(10)),
+            ("extra reset invocation", body + "git reset --hard origin/so" + chr(10)),
+        ):
+            if mutant == body:
+                raise RuntimeError("soak precheck Git sequence fixture drift: " + label)
+            try:
+                execute(mutant, "0")
+            except RuntimeError as exc:
+                if str(exc) != "soak precheck shell Git call sequence drift":
+                    raise
+            else:
+                raise RuntimeError("soak precheck Git sequence mutation accepted: " + label)
+
         mutants = (
             ("inverted diff guard", body.replace(
                 "if ! git diff --quiet", "if git diff --quiet", 1),
