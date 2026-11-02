@@ -209,7 +209,7 @@ def prove_pinned_validator_import() -> None:
                 ("premature EOF", lambda *_args: b"",
                  "generation evidence transport validator source changed during read"),
                 ("nonbytes read", lambda *_args: "PRIVATE_GENERATION_READ_CANARY",
-                 "generation evidence transport validator source read type invalid"),
+                 "generation evidence transport validator read type invalid"),
             ):
                 os.read = injected
                 try:
