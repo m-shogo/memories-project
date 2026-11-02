@@ -1992,8 +1992,11 @@ def main() -> int:
     except ValidationFailure as exc:
         print(f"AUTONOMOUS LEARNING VALIDATION FAILED: {exc}", file=sys.stderr)
         return 1
-    except Exception as exc:
-        print(f"AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: {exc}", file=sys.stderr)
+    except Exception:
+        # Unexpected filesystem/runtime exceptions can contain private paths,
+        # tokens or other unreviewed diagnostic content. Fail closed.
+        print("AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: private source inspection failed",
+              file=sys.stderr)
         return 2
     print("Autonomous improvement/learning contract validation PASS")
     return 0

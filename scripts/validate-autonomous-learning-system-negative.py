@@ -10751,6 +10751,57 @@ def prove_prewrite_private_error_redaction(source_root: Path) -> int:
     return len(cases)
 
 
+
+def prove_learning_validator_private_error_redaction(source_root: Path) -> int:
+    """Private unexpected validator errors must not escape the CLI."""
+    import contextlib
+    import io
+    import runpy
+    from unittest import mock
+
+    guard = source_root / "scripts/validate-autonomous-learning-system.py"
+    entrypoint = runpy.run_path(str(guard))["main"]
+    globals_ = entrypoint.__globals__
+    original = globals_["validate"]
+    domain = globals_["ValidationFailure"]
+    canary = "PRIVATE_LEARNING_VALIDATOR_PATH_AND_TOKEN_CANARY"
+    cases = (
+        ("filesystem", OSError(canary), 2,
+         "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: private source inspection failed\n"),
+        ("runtime", RuntimeError(canary), 2,
+         "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: private source inspection failed\n"),
+        ("value", ValueError(canary), 2,
+         "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: private source inspection failed\n"),
+        ("type", TypeError(canary), 2,
+         "AUTONOMOUS LEARNING VALIDATION FAILED WITH UNEXPECTED ERROR: private source inspection failed\n"),
+        ("reviewed domain", domain("prewrite input missing or symlinked"), 1,
+         "AUTONOMOUS LEARNING VALIDATION FAILED: prewrite input missing or symlinked\n"),
+    )
+    for label, failure, expected_exit, expected_stderr in cases:
+        invoked = [False]
+
+        def fail(*args, **kwargs):
+            invoked[0] = True
+            raise failure
+
+        out, err = io.StringIO(), io.StringIO()
+        globals_["validate"] = fail
+        try:
+            with mock.patch.object(sys, "argv", [
+                str(guard), "--repo-root", str(source_root),
+            ]):
+                with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                    result = entrypoint()
+        finally:
+            globals_["validate"] = original
+        if (not invoked[0] or type(result) is not int
+                or result != expected_exit or out.getvalue()
+                or err.getvalue() != expected_stderr
+                or canary in err.getvalue()):
+            raise RuntimeError("learning validator private CLI boundary failed: " + label)
+    return len(cases)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -11430,6 +11481,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     private_prewrite_cases = prove_prewrite_private_error_redaction(source_root)
+    private_learning_cases = prove_learning_validator_private_error_redaction(source_root)
     minio_transitive_cases = prove_import_api_minio_first_classification(source_root)
     head_ref_cases = prove_prewrite_git_head_ref_stability(source_root)
     git_snapshot_cases = prove_prewrite_git_metadata_stable_through_audit(source_root)
@@ -11456,7 +11508,7 @@ def main() -> int:
     prove_saturation_aggregate_shell_error_classes(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases + private_learning_cases} fail-closed cases)")
     return 0
 
 
