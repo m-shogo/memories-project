@@ -10729,10 +10729,25 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         if ast.dump(hits[0].body[0], include_attributes=False) != ast.dump(
                 expected, include_attributes=False):
             return False
-        return not any(isinstance(node, ast.Attribute)
-                       and isinstance(node.value, ast.Name)
-                       and node.value.id == "fanout_result" and node.attr == "stderr"
-                       for node in ast.walk(mains[0]))
+        parents = {id(child): parent for parent in ast.walk(mains[0])
+                   for child in ast.iter_child_nodes(parent)}
+        uses = []
+        for node in ast.walk(mains[0]):
+            if not isinstance(node, ast.Name) or node.id != "fanout_result":
+                continue
+            parent = parents.get(id(node))
+            if (isinstance(node.ctx, ast.Store)
+                    and isinstance(parent, ast.Assign)
+                    and parent.targets == [node]):
+                uses.append("assign")
+            elif (isinstance(node.ctx, ast.Load)
+                    and isinstance(parent, ast.Attribute)
+                    and parent.value is node
+                    and parent.attr in {"returncode", "stdout"}):
+                uses.append(parent.attr)
+            else:
+                return False
+        return sorted(uses) == ["assign", "returncode", "stdout"]
 
     if not safe(source):
         raise RuntimeError("entry-docs fanout child stderr redaction missing")
@@ -10743,10 +10758,22 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("removed failure", '                pass'),
         ("changed diagnostic", '                failures.append("prewrite workflow trigger fanout guard failed changed")'),
         ("extra stderr output", '                failures.append("prewrite workflow trigger fanout guard failed")' + chr(10) + '                print(fanout_result.stderr)'),
+        ("reflective getattr", '                print(getattr(fanout_result, "stderr"))'),
+        ("reflective vars", '                print(vars(fanout_result)["stderr"])'),
+        ("child alias", '                child_alias = fanout_result'),
+        ("dunder dictionary", '                print(fanout_result.__dict__["stderr"])'),
+        ("operator attrgetter", '                print(operator.attrgetter("stderr")(fanout_result))'),
     ):
-        prefix = "" if label == "wrong exit condition" else (
-            "            if fanout_result.returncode != 0:" + chr(10))
-        mutant = source.replace(needle, prefix + replacement + chr(10), 1)
+        if label in {"reflective getattr", "reflective vars", "child alias",
+                     "dunder dictionary", "operator attrgetter"}:
+            stdout_line = "                print(fanout_result.stdout.strip())" + chr(10)
+            if source.count(stdout_line) != 1:
+                raise RuntimeError("entry-docs fanout stdout fixture anchor drift")
+            mutant = source.replace(stdout_line, stdout_line + replacement + chr(10), 1)
+        else:
+            prefix = "" if label == "wrong exit condition" else (
+                "            if fanout_result.returncode != 0:" + chr(10))
+            mutant = source.replace(needle, prefix + replacement + chr(10), 1)
         if mutant == source:
             raise RuntimeError("entry-docs fanout stderr mutation was a no-op: " + label)
         try:
@@ -10755,7 +10782,7 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
             raise RuntimeError("entry-docs fanout stderr fixture syntax invalid: " + label) from None
         if safe(mutant):
             raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
-    return 6
+    return 11
 
 
 def prove_prewrite_private_error_redaction(source_root: Path) -> int:
