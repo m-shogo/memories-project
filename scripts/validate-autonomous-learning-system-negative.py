@@ -7179,8 +7179,17 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         exact_count = (len(reports) == 1 and bool(reports[0])
                        and reports[0].isascii() and reports[0].isdigit()
                        and int(reports[0]) == len(actual_workflows))
+        expected_writer_transcript = [
+            f"prewrite direct path audit: {transport_path}",
+            f"risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: {len(actual_workflows)}",
+            *("- " + workflow for workflow in actual_workflows),
+            "Do not write until independent scoped review changes the precondition.",
+        ]
+        # A blocked writer verdict for a different path, or an incomplete
+        # transcript with a matching count, is not a prewrite path proof.
         if (actual.returncode != 2 or actual.stderr or not exact_count
-                or len(actual_workflows) != len(set(actual_workflows))
+                or actual_lines != expected_writer_transcript
+                or actual_workflows != sorted(set(actual_workflows))
                 or ".github/workflows/backup-restore-admission-chain.yml"
                 not in actual_workflows or len(actual_workflows) > 12):
             raise RuntimeError("prewrite Admission Chain writer path classification drift")
