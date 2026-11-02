@@ -353,6 +353,25 @@ def classify_generation_publisher_coupling(source: str) -> bool:
     end = "  workflow_dispatch:\n"
     if source.count(marker) != 1 or source.count(end) != 1:
         raise SystemExit("generation evidence publisher trigger topology unknown")
+    # Duplicate top-level on/jobs or event keys can shadow a reviewed
+    # trigger even while the original safe-looking text remains present.
+    top_keys = [
+        line.split(":", 1)[0].strip().strip("'\\\"")
+        for line in source.splitlines()
+        if line and not line[0].isspace() and ":" in line
+    ]
+    if (top_keys.count("on") != 1 or top_keys.count("jobs") != 1
+            or source.count("\\non:\\n") != 1
+            or source.count("\\npermissions:\\n") != 1):
+        raise SystemExit("generation evidence publisher trigger topology unknown")
+    event_block = source.split("\\non:\\n", 1)[1].split("\\npermissions:\\n", 1)[0]
+    event_keys = [
+        line[2:].split(":", 1)[0].strip().strip("'\\\"")
+        for line in event_block.splitlines()
+        if line.startswith("  ") and not line.startswith("   ") and ":" in line
+    ]
+    if sorted(event_keys) != ["pull_request", "push", "workflow_dispatch"]:
+        raise SystemExit("generation evidence publisher trigger topology unknown")
     push = source.split(marker, 1)[1].split(end, 1)[0]
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"'
     if target not in push.splitlines():
@@ -454,6 +473,26 @@ def prove_generation_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"generation evidence publisher {label} YAML shadow accepted")
+    # Event/top-level YAML shadows are checked separately from job shadows.
+    for label, mutated in (
+        ("duplicate-on", source + "\\n'on':\\n  push: {}\\n"),
+        ("duplicate-jobs", source + "\\njobs:\\n  shadow: {}\\n"),
+        ("duplicate-push", source.replace(
+            "  workflow_dispatch:\\n",
+            "  workflow_dispatch:\\n  'push':\\n    branches: [main]\\n", 1,
+        )),
+        ("unreviewed-event", source.replace(
+            "  workflow_dispatch:\\n",
+            "  workflow_dispatch:\\n  schedule:\\n    - cron: '0 0 * * *'\\n", 1,
+        )),
+    ):
+        try:
+            classify_generation_publisher_coupling(mutated)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence publisher trigger topology unknown":
+                raise
+        else:
+            raise SystemExit(f"generation evidence publisher {label} event shadow accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
@@ -464,7 +503,7 @@ def prove_generation_publisher_coupling_guard() -> None:
     removed = prefix + push_marker + suffix.replace(target, "", 1)
     if classify_generation_publisher_coupling(removed):
         raise SystemExit("generation evidence removed publisher trigger still classified coupled")
-    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (8 negatives)")
+    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (12 negatives)")
 
 
 
