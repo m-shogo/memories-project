@@ -504,6 +504,74 @@ def prove_atomic_primary_cleanup_precedence(reconciler: object) -> None:
     print("PASS: recovery objective atomic primary failure survives secondary cleanup fault")
 
 
+def prove_atomic_non_oserror_cleanup_precedence(reconciler: object) -> None:
+    """Malformed close/unlink exceptions must not mask the primary write error."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        before, before_mode = path.read_bytes(), file_mode(path)
+        marker = "PRIVATE_OBJECTIVE_ATOMIC_NON_OSERROR_CLEANUP_CANARY"
+        original_replace = reconciler.os.replace
+        original_unlink = reconciler.os.unlink
+        original_close = reconciler.os.close
+        original_fchmod = reconciler.os.fchmod
+
+        def reject_replace(_source, _destination):
+            raise OSError(marker)
+
+        def reject_unlink(candidate, *args, **kwargs):
+            if str(candidate).endswith(".tmp"):
+                raise TypeError(marker)
+            return original_unlink(candidate, *args, **kwargs)
+
+        reconciler.os.replace = reject_replace
+        reconciler.os.unlink = reject_unlink
+        try:
+            try:
+                reconciler.write_text(path, '{"synthetic":true}')
+            except reconciler.Fail as exc:
+                require(str(exc) == "recovery objective reconcile authority atomic write failed"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "atomic unlink TypeError masked primary write failure")
+            else:
+                raise Fail("atomic unlink TypeError was accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(len(leftovers) == 1, "atomic unlink TypeError fixture residue drift")
+        for leftover in leftovers:
+            leftover.unlink()
+
+        def reject_fchmod(_fd, _mode):
+            raise OSError(marker)
+
+        def close_then_reject(fd):
+            original_close(fd)
+            raise ValueError(marker)
+
+        reconciler.os.fchmod = reject_fchmod
+        reconciler.os.close = close_then_reject
+        try:
+            try:
+                reconciler.write_text(path, '{"synthetic":true}')
+            except reconciler.Fail as exc:
+                require(str(exc) == "recovery objective reconcile authority atomic write failed"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "atomic close ValueError masked primary write failure")
+            else:
+                raise Fail("atomic close ValueError was accepted")
+        finally:
+            reconciler.os.fchmod = original_fchmod
+            reconciler.os.close = original_close
+
+        require(path.read_bytes() == before and file_mode(path) == before_mode,
+                "non-OSError cleanup negatives mutated objective fixture authority")
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                "non-OSError cleanup negatives left temporary files")
+    print("PASS: recovery objective atomic TypeError/ValueError cleanup preserves primary error")
+
+
 def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     originals = {
         CONTRACT: "contract\n",
@@ -1258,6 +1326,7 @@ def main() -> int:
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)
+    prove_atomic_non_oserror_cleanup_precedence(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
