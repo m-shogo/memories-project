@@ -169,8 +169,21 @@ def write_text(path: Path, text: str) -> None:
         item.st_dev, item.st_ino, item.st_mode,
     )
     descriptor: int | None = None
+    parent_fd: int | None = None
     temp_name: str | None = None
     try:
+        # Own the reviewed directory before staging. Cleanup must never
+        # traverse a parent pathname that may be swapped during fsync.
+        raw_parent_fd = os.open(
+            path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        require(type(raw_parent_fd) is int and raw_parent_fd >= 0,
+                "recovery objective reconcile parent descriptor unsafe")
+        parent_fd = raw_parent_fd
+        pinned_parent = os.fstat(parent_fd)
+        require(parent_identity(pinned_parent) == parent_identity(parent_before)
+                and stat.S_ISDIR(pinned_parent.st_mode),
+                "recovery objective reconcile write parent metadata unsafe")
         mode = stat.S_IMODE(target_before.st_mode)
         raw_fd, raw_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
@@ -184,7 +197,12 @@ def write_text(path: Path, text: str) -> None:
         if type(raw_fd) is int and raw_fd >= 0 and temp_name is not None:
             try:
                 fd_meta = os.fstat(raw_fd)
-                name_meta = os.lstat(temp_name)
+                # The staged name must exist in the pinned reviewed parent,
+                # not only in a potentially replaced visible pathname.
+                name_meta = os.stat(
+                    Path(temp_name).name, dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
                 if (stat.S_ISREG(fd_meta.st_mode) and fd_meta.st_nlink == 1
                         and (fd_meta.st_dev, fd_meta.st_ino)
                         == (name_meta.st_dev, name_meta.st_ino)):
@@ -216,11 +234,16 @@ def write_text(path: Path, text: str) -> None:
                 os.close(descriptor)
             except (OSError, ValueError, TypeError):
                 cleanup_failed = True
-        if temp_name is not None:
+        if temp_name is not None and parent_fd is not None:
             try:
-                os.unlink(temp_name)
+                os.unlink(Path(temp_name).name, dir_fd=parent_fd)
             except FileNotFoundError:
                 pass
+            except (OSError, ValueError, TypeError):
+                cleanup_failed = True
+        if parent_fd is not None:
+            try:
+                os.close(parent_fd)
             except (OSError, ValueError, TypeError):
                 cleanup_failed = True
         if cleanup_failed and not primary_failed:
