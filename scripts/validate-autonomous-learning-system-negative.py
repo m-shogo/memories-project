@@ -7211,15 +7211,20 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 "- .github/workflows/backup-restore-admission-chain.yml"
                 not in writer.stdout.splitlines()):
             raise RuntimeError("prewrite Admission Chain writer fixture accepted")
-    # Exercise the real reviewed workflow tree for both transport targets.
-    for transport_path in (
+    # This is a pre-write BLOCK, not permission: enumerate every previously
+    # misclassified backup-named negative target as an executable regression.
+    # A read-only negative script still matches the write-capable Admission Chain.
+    for candidate_path in (
         "scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py",
         "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py",
+        "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py",
+        "scripts/validate-memory-os-backup-restore-generation-evidence-reconcile-negative.py",
+        "scripts/validate-memory-os-backup-restore-drill-preflight-reconcile-negative.py",
     ):
         try:
             actual = subprocess.run(
                 [sys.executable, str(guard), "--repo-root", str(source_root),
-                 "--path", transport_path],
+                 "--path", candidate_path],
                 capture_output=True, text=True, check=False, timeout=30,
             )
         except subprocess.TimeoutExpired as exc:
@@ -7236,7 +7241,7 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                        and reports[0].isascii() and reports[0].isdigit()
                        and int(reports[0]) == len(actual_workflows))
         expected_writer_transcript = [
-            f"prewrite direct path audit: {transport_path}",
+            f"prewrite direct path audit: {candidate_path}",
             f"risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: {len(actual_workflows)}",
             *("- " + workflow for workflow in actual_workflows),
             "Do not write until independent scoped review changes the precondition.",
