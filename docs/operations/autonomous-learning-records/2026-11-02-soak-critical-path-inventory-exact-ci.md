@@ -1,0 +1,15 @@
+# Supplemental OPS learning — three soak publisher critical precheck inventories (2026-11-02)
+
+Append-only subordinate to canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This source audit and CI are never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, generation, objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection coverage, independent review, final candidate or human promotion authority.
+
+## Material success
+
+- **outcome:** [`83b0182c`](https://github.com/m-shogo/memories-project/commit/83b0182c994a60b46b26b6b75e9765fb3cac19c6) added an executable read-only negative that requires the full **21 reviewed literal critical paths** in each of three sustained-soak publisher prechecks. Exact-source [Autonomous Learning Guard #41452730171](https://github.com/m-shogo/memories-project/actions/runs/41452730171) completed **SUCCESS** with matching code HEAD.
+- **observed evidence:** Source blobs `610afce0` (`sustained-local-soak.yml`), `88a14aaa` (`sustained-local-soak-parallel-request.yml`), and `2ba5967d` (`sustained-local-soak-parallel-v2.yml`) each contain the same 21 reviewed paths, including the relevant workflow, contract, five validators/reconcilers, import API source directories, Go manifests and PostgreSQL security. The parser accepts the reviewed one-line/two-path Go manifest layout and rejects eight mutation types per publisher: removed, duplicated, commented, expanded, injected, reordered, broken continuation and substituted path.
+- **why safe:** The only code change was to `scripts/validate-autonomous-learning-system-negative.py`, already covered by read-only Push CI. No publisher workflow, real remote, evidence, production status, credential, traffic, readiness, or human promotion was changed.
+- **reusable mechanism:** Compare exact path token order and cardinality under a literal-only Bash grammar, then apply negative mutation controls. Do not assume `git diff --quiet` presence proves that its argument inventory is complete.
+- **protected authority check:** After the code commit, ten protected blob SHA prefixes remained unchanged: production status `d677a1c9` (`NO_GO`), OPS-P0-007 `dbaa36b0` (`PREREQUISITES_BLOCKED`), generations `bfd1b045`, objectives `f4d74f33`, drill requests `acebcd02`, generation evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, promotion review `99cb895f`, canonical learning `b809c69d`, contract `87712ea9`.
+
+## Scope and next safe target
+
+**This validates only the pre-rebase source-critical inventory.** The three publishers still have five unguarded rebase-to-push paths; a precheck is not a post-rebase source lease. The later inert-Bash shell error-class code HEAD `06f8c393` requires separate exact-source CI confirmation. Do not edit writer workflows until independent read-only trigger coverage and authorized workflow-write permission exist. Maintain `productionDecision=NO_GO` and separate human promotion review.
