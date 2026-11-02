@@ -9432,6 +9432,26 @@ def prove_sustained_soak_divergent_history_fixture(source_root: Path) -> None:
                "origin/so", allow_failure=True).returncode != 0:
             raise RuntimeError("synthetic soak positive ancestry rejected")
 
+        # An ordinary descendant that changes only noncritical files must
+        # remain eligible; the ancestry guard is not strict SHA equality.
+        (other / "noncritical.txt").write_bytes(b"descendant\n")
+        git(other, "add", "noncritical.txt")
+        git(other, "-c", "user.name=Fixture",
+            "-c", "user.email=fixture@example.invalid",
+            "commit", "-qm", "noncritical descendant")
+        git(other, "push", "-q", "origin", "so")
+        git(writer, "fetch", "-q", "origin", "so")
+        descendant_ancestry = git(
+            writer, "merge-base", "--is-ancestor", source_sha, "origin/so",
+            allow_failure=True,
+        ).returncode
+        descendant_diff = git(
+            writer, "diff", "--quiet", source_sha, "origin/so",
+            "--", "critical.txt", allow_failure=True,
+        ).returncode
+        if descendant_ancestry != 0 or descendant_diff != 0:
+            raise RuntimeError("synthetic soak descendant ancestry rejected")
+
         # Recreate the branch with the same critical bytes but unrelated
         # history. The lexical critical-path diff remains clean.
         git(other, "checkout", "-q", "--orphan", "replacement")
