@@ -9278,6 +9278,102 @@ def prove_source_derived_writer_inventory(source_root: Path) -> None:
             raise RuntimeError("prewrite lexical writer inventory negative accepted: " + label)
 
 
+def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
+    """Prove a post-precheck critical-source advance needs a second guard.
+
+    Synthetic local Git only; never dispatch the write-capable soak workflow.
+    This proves a proposed recurrence guard, not a production race occurrence.
+    """
+    source = (source_root / ".github/workflows/sustained-local-soak.yml").read_text(
+        encoding="utf-8"
+    )
+    start = "      - name: Publish append-only exact-source run result"
+    end = "      - name: Aggregate and reconcile run authority"
+    if source.count(start) != 1 or source.count(end) != 1:
+        raise RuntimeError("sustained-soak publisher source boundary changed")
+    step = source.split(start, 1)[1].split(end, 1)[0]
+    required = (
+        'git diff --quiet "$SOURCE_SHA" origin/so --',
+        "git reset --hard origin/so",
+        "git pull --rebase origin so",
+        "git push origin HEAD:so",
+    )
+    if (any(step.count(marker) != 1 for marker in required)
+            or [step.index(marker) for marker in required] !=
+               sorted(step.index(marker) for marker in required)):
+        raise RuntimeError("sustained-soak rebase fixture no longer matches reviewed source")
+
+    def git(cwd: Path | None, *args: str, allow_failure: bool = False
+            ) -> subprocess.CompletedProcess[str]:
+        result = subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null",
+             "-c", "protocol.file.allow=always", *args],
+            cwd=cwd, capture_output=True, text=True, check=False, timeout=10,
+        )
+        if type(result.returncode) is not int or (
+                not allow_failure and result.returncode != 0):
+            raise RuntimeError("synthetic sustained-soak Git fixture failed")
+        return result
+
+    # The writer first checks source-critical paths, but the remote can
+    # advance before its later pull --rebase. A post-rebase check must compare
+    # SOURCE_SHA with the final result commit's parent, not the old fetch.
+    for critical_change in (True, False):
+        with tempfile.TemporaryDirectory(prefix="learning-soak-rebase-race-") as tmp:
+            root = Path(tmp)
+            remote = root / "remote.git"
+            writer = root / "writer"
+            other = root / "other"
+            git(None, "init", "--bare", "-q", str(remote))
+            git(None, "clone", "-q", str(remote), str(writer))
+            git(writer, "checkout", "-q", "-b", "so")
+            (writer / "critical.txt").write_text("v1\\n", encoding="utf-8")
+            (writer / "noncritical.txt").write_text("v1\\n", encoding="utf-8")
+            git(writer, "add", "critical.txt", "noncritical.txt")
+            git(writer, "-c", "user.name=Fixture",
+                "-c", "user.email=fixture@example.invalid",
+                "commit", "-qm", "baseline")
+            git(writer, "push", "-q", "-u", "origin", "so")
+            source_sha = git(writer, "rev-parse", "HEAD").stdout.strip()
+            git(writer, "fetch", "-q", "origin", "so")
+            precheck = git(writer, "diff", "--quiet", source_sha, "origin/so",
+                           "--", "critical.txt", allow_failure=True).returncode
+            if precheck != 0:
+                raise RuntimeError("synthetic sustained-soak baseline precheck failed")
+
+            git(None, "clone", "-q", "-b", "so", str(remote), str(other))
+            target = "critical.txt" if critical_change else "noncritical.txt"
+            (other / target).write_text("v2\\n", encoding="utf-8")
+            git(other, "add", target)
+            git(other, "-c", "user.name=Fixture",
+                "-c", "user.email=fixture@example.invalid",
+                "commit", "-qm", "concurrent change")
+            git(other, "push", "-q", "origin", "so")
+
+            (writer / "result.txt").write_text(
+                "source=" + source_sha + "\\n", encoding="utf-8"
+            )
+            git(writer, "add", "result.txt")
+            git(writer, "-c", "user.name=Fixture",
+                "-c", "user.email=fixture@example.invalid",
+                "commit", "-qm", "source-bound result")
+            git(writer, "-c", "user.name=Fixture",
+                "-c", "user.email=fixture@example.invalid",
+                "pull", "--rebase", "origin", "so")
+            parent = git(writer, "rev-parse", "HEAD^").stdout.strip()
+            if parent == source_sha:
+                raise RuntimeError("synthetic sustained-soak remote advance missing")
+            postcheck = git(writer, "diff", "--quiet", source_sha, parent,
+                            "--", "critical.txt", allow_failure=True).returncode
+            if postcheck != (1 if critical_change else 0):
+                raise RuntimeError("synthetic sustained-soak postrebase guard drift")
+            if git(writer, "show", "HEAD:result.txt").stdout != (
+                    "source=" + source_sha + "\\n"):
+                raise RuntimeError("synthetic sustained-soak result binding drift")
+            # Never push the writer's rebased result to any remote: the fixture
+            # only proves that a late critical change is visible to the guard.
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -9969,6 +10065,7 @@ def main() -> int:
     prove_prewrite_workflow_root_swap(source_root)
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     prove_source_derived_writer_inventory(source_root)
+    prove_sustained_soak_rebase_race_fixture(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
