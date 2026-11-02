@@ -10762,7 +10762,7 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("reflective vars", '                print(vars(fanout_result)["stderr"])'),
         ("child alias", '                child_alias = fanout_result'),
         ("dunder dictionary", '                print(fanout_result.__dict__["stderr"])'),
-        ("operator attrgetter", '                print(operator.attrgetter("stderr")(fanout_result))'),
+        ("operator attrgetter", '                print(__import__("operator").attrgetter("stderr")(fanout_result))'),
     ):
         if label in {"reflective getattr", "reflective vars", "child alias",
                      "dunder dictionary", "operator attrgetter"}:
