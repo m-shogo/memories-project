@@ -582,6 +582,42 @@ def prove_pinned_reconciler_import() -> None:
                             "generation reconciler malformed FD acquisition ordinal drift")
                     require(closed == list(reversed(acquired)),
                             "generation reconciler malformed FD ownership cleanup drift")
+            # Source importer cleanup must retain an original read failure
+            # even when a later owned descriptor close reports a private fault.
+            for with_primary in (False, True):
+                original_close, original_read = os.close, os.read
+                close_count = 0
+                private_marker = "PRIVATE_RECONCILER_SOURCE_CLOSE_CANARY"
+
+                def injected_close(descriptor: int) -> None:
+                    nonlocal close_count
+                    close_count += 1
+                    original_close(descriptor)
+                    if close_count == 1:
+                        raise ValueError(private_marker)
+
+                os.close = injected_close
+                if with_primary:
+                    os.read = lambda *_args: b""
+                try:
+                    try:
+                        load_reconciler()
+                    except Fail as exc:
+                        expected = ("reconciler source changed during read"
+                                    if with_primary else
+                                    "reconciler descriptor cleanup failed")
+                        require(str(exc) == expected and private_marker not in str(exc),
+                                "generation reconciler source close-fault precedence drift")
+                        if not with_primary:
+                            require(exc.__suppress_context__,
+                                    "generation reconciler source close diagnostic context exposed")
+                    else:
+                        raise Fail("generation reconciler source close fault accepted")
+                finally:
+                    os.close, os.read = original_close, original_read
+                require(close_count == len(RECONCILER_REL.parts) + 1,
+                        "generation reconciler source close ownership drift")
+
             source.write_bytes(b"")
             try:
                 try:
