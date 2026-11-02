@@ -359,6 +359,17 @@ def classify_generation_publisher_coupling(source: str) -> bool:
         return False
     if "  validate:\n" not in source or "      contents: write\n" not in source:
         return False
+    # A write-capable workflow_dispatch must never execute outside the
+    # reviewed so ref; source-lease tokens elsewhere cannot substitute.
+    guarded_job = (
+        "  validate:\n"
+        "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+        " && github.ref == 'refs/heads/so'\n"
+        "    permissions:\n"
+        "      contents: write\n"
+    )
+    if source.count("  validate:\n") != 1 or source.count(guarded_job) != 1:
+        raise SystemExit("generation evidence publisher bounded source guard missing")
     required = (
         "for reconcile_attempt in 1 2; do",
         "revalidate_latest_authority",
@@ -394,6 +405,27 @@ def prove_generation_publisher_coupling_guard() -> None:
             raise
     else:
         raise SystemExit("generation evidence publisher missing guarded publication accepted")
+    # Missing or weakened job-level branch guards must fail even if the
+    # downstream source lease still appears elsewhere in the YAML.
+    branch_guard = (
+        "    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+        " && github.ref == 'refs/heads/so'\n"
+    )
+    if source.count(branch_guard) != 1:
+        raise SystemExit("generation evidence publisher branch guard anchor missing")
+    for label, replacement in (
+        ("missing", ""),
+        ("dispatch-only", "    if: github.event_name == 'workflow_dispatch'\n"),
+        ("unscoped", "    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'\n"),
+    ):
+        weakened = source.replace(branch_guard, replacement, 1)
+        try:
+            classify_generation_publisher_coupling(weakened)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence publisher bounded source guard missing":
+                raise
+        else:
+            raise SystemExit(f"generation evidence publisher {label} branch guard bypass accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
@@ -404,7 +436,7 @@ def prove_generation_publisher_coupling_guard() -> None:
     removed = prefix + push_marker + suffix.replace(target, "", 1)
     if classify_generation_publisher_coupling(removed):
         raise SystemExit("generation evidence removed publisher trigger still classified coupled")
-    print("PASS: generation evidence publisher trigger coupling and bounded source guard (2 negatives)")
+    print("PASS: generation evidence publisher trigger, source lease and job branch guard (5 negatives)")
 
 
 
