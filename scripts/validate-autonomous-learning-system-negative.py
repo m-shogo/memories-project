@@ -10034,6 +10034,7 @@ def prove_soak_precheck_shell_error_classes(source_root: Path) -> None:
     prefix = """set -euo pipefail
 SOURCE_SHA=original
 git() {
+  printf '%s\\n' "$1" >> "$GIT_LOG"
   case "$1" in
     diff)
       test "$#" -eq 26 && test "$2" = --quiet && test "$3" = original &&
@@ -10054,18 +10055,27 @@ git() {
 """
     suffix = "git reset --hard origin/so\ngit push origin HEAD:so\n"
 
-    def execute(body: str, diff_status: str) -> tuple[int, bytes]:
+    def execute(body: str, diff_status: str, *, check_calls: bool = True) -> tuple[int, bytes]:
         with tempfile.TemporaryDirectory(prefix="learning-soak-precheck-shell-") as tmp:
             log = Path(tmp) / "actions.log"
+            git_log = Path(tmp) / "git.log"
             result = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-c", prefix + body + suffix],
                 cwd=tmp,
                 env={"PATH": os.defpath, "HOME": tmp, "LANG": "C",
-                     "DIFF_STATUS": diff_status, "ACTION_LOG": str(log)},
+                     "DIFF_STATUS": diff_status, "ACTION_LOG": str(log),
+                     "GIT_LOG": str(git_log)},
                 capture_output=True, text=True, check=False, timeout=5,
             )
             if type(result.returncode) is not int:
                 raise RuntimeError("soak precheck shell invalid exit status")
+            if check_calls:
+                expected_calls = (
+                    b"diff\nreset\npush\n" if diff_status == "0"
+                    else b"diff\n"
+                )
+                if not git_log.exists() or git_log.read_bytes() != expected_calls:
+                    raise RuntimeError("soak precheck shell Git call sequence drift")
             return result.returncode, log.read_bytes() if log.exists() else b""
 
     for filename, blob, diagnostic in reviewed:
@@ -10109,7 +10119,7 @@ git() {
              "128", (0, b"RESET\nPUSH\n")),
         )
         for label, mutant, code, unsafe in mutants:
-            if mutant == body or execute(mutant, code) != unsafe:
+            if mutant == body or execute(mutant, code, check_calls=False) != unsafe:
                 raise RuntimeError(
                     "soak precheck shell negative mutation drift: "
                     + filename + ": " + label
