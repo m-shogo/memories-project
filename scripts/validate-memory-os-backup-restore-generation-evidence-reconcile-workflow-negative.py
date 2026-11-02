@@ -12,6 +12,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence-reconcile-negative.yml"
 TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py"
+TRANSACTION_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py"
+BINDING_TRANSPORT_NEGATIVE = ROOT / "scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py"
 PUBLISHER_WORKFLOW = ROOT / ".github/workflows/backup-restore-generation-evidence.yml"
 REVIEWED_WORKFLOW_GIT_BLOB_SHA = "563c543233e125f37b1661f865ae275ccab7de90"
 TRIGGER_PATHS = (
@@ -328,6 +330,67 @@ def prove_private_child_negative_removal_rejected() -> None:
 
 
 
+def require_pinned_import_negative_reachable(source: str, *, label: str) -> None:
+    """Require a real pinned-source swap negative in the harness main path."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        raise SystemExit("generation evidence " + label + " pinned negative invalid syntax") from None
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    if "prove_pinned_validator_import" in functions:
+        name = "prove_pinned_validator_import"
+    elif "prove_pinned_writer_import" in functions:
+        name = "prove_pinned_writer_import"
+    else:
+        raise SystemExit("generation evidence " + label + " pinned negative definition missing")
+    if "main" not in functions:
+        raise SystemExit("generation evidence " + label + " pinned negative main missing")
+    calls = [
+        node for node in ast.walk(functions["main"])
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        and node.func.id == name
+    ]
+    if len(calls) != 1:
+        raise SystemExit("generation evidence " + label + " pinned negative execution drift")
+
+
+def prove_pinned_import_negative_removal_rejected() -> None:
+    cases = (
+        ("transaction writer", TRANSACTION_NEGATIVE, "prove_pinned_writer_import"),
+        ("evidence transport", TRANSPORT_NEGATIVE, "prove_pinned_validator_import"),
+        ("binding transport", BINDING_TRANSPORT_NEGATIVE, "prove_pinned_validator_import"),
+    )
+    for label, path, name in cases:
+        source = path.read_text(encoding="utf-8")
+        require_pinned_import_negative_reachable(source, label=label)
+        anchor = "    " + name + "()" + chr(10)
+        if source.count(anchor) != 1:
+            raise SystemExit("generation evidence " + label + " pinned removal anchor drift")
+        mutated = source.replace(anchor, "    pass" + chr(10), 1)
+        if mutated == source:
+            raise SystemExit("generation evidence " + label + " pinned negative mutation inert")
+        try:
+            require_pinned_import_negative_reachable(mutated, label=label)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence " + label + " pinned negative execution drift":
+                raise
+        else:
+            raise SystemExit("generation evidence " + label + " pinned negative deletion accepted")
+        # A dead call to an undefined fixture must not pass reachability.
+        definition = "def " + name + "() -> None:"
+        if source.count(definition) != 1:
+            raise SystemExit("generation evidence " + label + " pinned definition anchor drift")
+        renamed = source.replace(definition, "def disabled_" + name + "() -> None:", 1)
+        try:
+            require_pinned_import_negative_reachable(renamed, label=label)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence " + label + " pinned negative definition missing":
+                raise
+        else:
+            raise SystemExit("generation evidence " + label + " missing pinned fixture accepted")
+    print("PASS: generation evidence three pinned import negative invocations and definitions non-removable")
+
+
 def prove_branch_guards_runtime() -> None:
     """Execute the reviewed shell predicates against disposable synthetic refs."""
     cases = (
@@ -577,6 +640,7 @@ def main() -> int:
     prove_branch_guards_runtime()
     prove_generation_publisher_coupling_guard()
     prove_private_child_negative_removal_rejected()
+    prove_pinned_import_negative_removal_rejected()
     cases = (
         ("checkout SHA", REQUIRED[0][1], "      - uses: actions/checkout@v4\n"),
         ("setup-python SHA", REQUIRED[1][1], "      - uses: actions/setup-python@v5\n"),
