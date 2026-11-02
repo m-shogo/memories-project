@@ -272,7 +272,7 @@ def pinned_reconciler_source() -> bytes:
         before = os.fstat(source_fd)
         require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
                 and not (before.st_mode & 0o022)
-                and 0 <= before.st_size <= MAX_RECONCILER_SOURCE_BYTES,
+                and 0 < before.st_size <= MAX_RECONCILER_SOURCE_BYTES,
                 "reconciler source type/size unsafe")
         chunks: list[bytes] = []
         remaining = MAX_RECONCILER_SOURCE_BYTES + 1
@@ -352,6 +352,19 @@ def prove_pinned_reconciler_import() -> None:
         try:
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler pinned import positive control failed")
+            source.write_bytes(b"")
+            try:
+                try:
+                    load_reconciler()
+                except Fail as exc:
+                    require(str(exc) == "reconciler source type/size unsafe",
+                            "empty generation reconciler source wrong rejection")
+                else:
+                    raise Fail("empty generation reconciler source accepted")
+            finally:
+                source.write_text("SOURCE_MARKER = 'reviewed'\\n", encoding="utf-8")
+            require(load_reconciler().SOURCE_MARKER == "reviewed",
+                    "generation reconciler source not restored after empty-file negative")
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 for invalid in (0, False, "inert"):
