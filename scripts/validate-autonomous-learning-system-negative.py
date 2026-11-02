@@ -9628,6 +9628,7 @@ def prove_saturation_postrebase_shell_semantics(source_root: Path) -> None:
 source_sha=source-sha
 critical=(critical.txt)
 git() {
+  printf '%s\\n' "$1" >> "$GIT_LOG"
   case "$1" in
     fetch) test "$*" = 'fetch origin so' || return 70; if test "$FETCH_OK" = 128; then return 128; fi; test "$FETCH_OK" = 1 ;;
     merge-base) test "$*" = 'merge-base --is-ancestor source-sha origin/so' || return 70; if test "$ANCESTOR_OK" = 128; then return 128; fi; test "$ANCESTOR_OK" = 1 ;;
@@ -9643,11 +9644,12 @@ verify_critical_source
 git push origin HEAD:so
 """
 
-    def execute(body: str, fetch: str, ancestry: str, critical: str
-                ) -> tuple[int, bool]:
+    def execute(body: str, fetch: str, ancestry: str, critical: str,
+                *, check_calls: bool = True) -> tuple[int, bool]:
         with tempfile.TemporaryDirectory(prefix="learning-saturation-shell-") as tmp:
             root = Path(tmp)
             push_log = root / "push.log"
+            git_log = root / "git.log"
             result = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-c", prefix + body + suffix],
                 cwd=root,
@@ -9655,6 +9657,7 @@ git push origin HEAD:so
                     "PATH": os.defpath, "HOME": str(root), "LANG": "C",
                     "FETCH_OK": fetch, "ANCESTOR_OK": ancestry,
                     "CRITICAL_OK": critical, "PUSH_LOG": str(push_log),
+                    "GIT_LOG": str(git_log),
                 },
                 capture_output=True, text=True, check=False, timeout=5,
             )
@@ -9662,6 +9665,16 @@ git push origin HEAD:so
                 raise RuntimeError("saturation shell fixture invalid exit status")
             if push_log.exists() and push_log.read_bytes() != b"PUSH\n":
                 raise RuntimeError("saturation shell fixture unexpected push transcript")
+            if check_calls:
+                expected_calls = b"pull\nfetch\n"
+                if fetch == "1":
+                    expected_calls += b"merge-base\n"
+                    if ancestry == "1":
+                        expected_calls += b"diff\n"
+                        if critical == "1":
+                            expected_calls += b"push\n"
+                if not git_log.exists() or git_log.read_bytes() != expected_calls:
+                    raise RuntimeError("saturation postrebase Git call sequence drift")
             return result.returncode, push_log.exists()
 
     for label, flags, expected in (
@@ -9675,6 +9688,24 @@ git push origin HEAD:so
     ):
         if execute(actual, *flags) != expected:
             raise RuntimeError("saturation postrebase shell behavior drift: " + label)
+
+    # Verify the invocation-order classifier rejects missing and extra fetches.
+    for label, mutant in (
+        ("missing postrebase fetch", actual.replace(
+            "  git fetch origin so\n", "  :\n", 1)),
+        ("duplicate postrebase fetch", actual.replace(
+            "  git fetch origin so\n",
+            "  git fetch origin so\n  git fetch origin so\n", 1)),
+    ):
+        if mutant == actual:
+            raise RuntimeError("saturation postrebase Git sequence fixture drift: " + label)
+        try:
+            execute(mutant, "1", "1", "1")
+        except RuntimeError as exc:
+            if str(exc) != "saturation postrebase Git call sequence drift":
+                raise
+        else:
+            raise RuntimeError("saturation postrebase Git sequence mutation accepted: " + label)
 
     # Prove the fixture detects each material guard bypass, rather than merely
     # checking that the positive source contains the right words.
@@ -9702,7 +9733,7 @@ git push origin HEAD:so
         ),
     )
     for label, mutant, flags, expected in mutants:
-        if mutant == actual or execute(mutant, *flags) != expected:
+        if mutant == actual or execute(mutant, *flags, check_calls=False) != expected:
             raise RuntimeError("saturation shell negative mutation not detected: " + label)
 
 
