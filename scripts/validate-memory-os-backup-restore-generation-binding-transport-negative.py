@@ -27,10 +27,15 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_validator_identity() -> None:
-    require(VALIDATOR == ROOT / VALIDATOR_REL
-            and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
-            and VALIDATOR.resolve(strict=True) == VALIDATOR,
-            "generation-binding transport validator source authority drift")
+    # The first identity probe runs before the pinned-FD reader's try block.
+    # Keep private filesystem diagnostics out of this read-only CI harness.
+    try:
+        valid = (VALIDATOR == ROOT / VALIDATOR_REL
+                 and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
+                 and VALIDATOR.resolve(strict=True) == VALIDATOR)
+    except (OSError, ValueError, TypeError):
+        raise Fail("generation-binding transport validator source authority unreadable") from None
+    require(valid, "generation-binding transport validator source authority drift")
 
 
 def pinned_validator_source() -> bytes:
@@ -154,6 +159,29 @@ def prove_pinned_validator_import() -> None:
         try:
             require(load_validator().SOURCE_MARKER == "reviewed",
                     "generation-binding transport pinned import positive control failed")
+            # An identity probe occurs before owned FDs are acquired. Its
+            # filesystem exceptions must be private and fail closed.
+            original_resolve = Path.resolve
+            for failure_type in (OSError, ValueError, TypeError):
+                marker = "PRIVATE_BINDING_SOURCE_IDENTITY_CANARY"
+
+                def private_identity_probe(self, *args, **kwargs):
+                    if self == source:
+                        raise failure_type(marker)
+                    return original_resolve(self, *args, **kwargs)
+
+                Path.resolve = private_identity_probe
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == "generation-binding transport validator source authority unreadable"
+                                and exc.__suppress_context__ and marker not in str(exc),
+                                "generation-binding transport private identity probe diagnostic drift")
+                    else:
+                        raise Fail("generation-binding transport accepted private identity probe failure")
+                finally:
+                    Path.resolve = original_resolve
             # Actual acquisition order: ROOT, scripts ancestor, validator leaf.
             # Absolute path depth is not the os.open call count.
             for ordinal in (1, 2, 3):
