@@ -10744,8 +10744,16 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("changed diagnostic", '                failures.append("prewrite workflow trigger fanout guard failed changed")'),
         ("extra stderr output", '                failures.append("prewrite workflow trigger fanout guard failed")' + chr(10) + '                print(fanout_result.stderr)'),
     ):
-        mutant = source.replace(needle, replacement + chr(10), 1)
-        if mutant == source or safe(mutant):
+        prefix = "" if label == "wrong exit condition" else (
+            "            if fanout_result.returncode != 0:" + chr(10))
+        mutant = source.replace(needle, prefix + replacement + chr(10), 1)
+        if mutant == source:
+            raise RuntimeError("entry-docs fanout stderr mutation was a no-op: " + label)
+        try:
+            compile(mutant, "<entrydocs-fanout-negative>", "exec")
+        except (SyntaxError, ValueError, TypeError):
+            raise RuntimeError("entry-docs fanout stderr fixture syntax invalid: " + label) from None
+        if safe(mutant):
             raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
     return 6
 
