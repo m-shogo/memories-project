@@ -1633,7 +1633,7 @@ def main() -> int:
     except AuditFailure as exc:
         print("PREWRITE TRIGGER AUDIT FAILED: " + str(exc), file=sys.stderr)
         return 1
-    except (OSError, UnicodeError, ValueError, TypeError, RuntimeError):
+    except Exception:
         # Filesystem and decoder exceptions may embed private checkout paths.
         # Only reviewed AuditFailure domains are safe for CLI diagnostics.
         print("PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed",
