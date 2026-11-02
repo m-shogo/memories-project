@@ -9452,13 +9452,19 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     ):
         if rebase_guard_status(fixture) != reviewed:
             raise RuntimeError("prewrite rebase guard lexical negative drift: " + label)
-    try:
-        rebase_guard_status("git pull --rebase origin so\nverify_critical_source")
-    except RuntimeError as exc:
-        if str(exc) != "prewrite rebase publisher missing push boundary":
-            raise
-    else:
-        raise RuntimeError("prewrite rebase publisher missing-push negative accepted")
+    for label, fixture in (
+        ("absent push", "git pull --rebase origin so\nverify_critical_source"),
+        ("comment-only push", "git pull --rebase origin so\nverify_critical_source\n# git push origin HEAD:so"),
+    ):
+        try:
+            rebase_guard_status(fixture)
+        except RuntimeError as exc:
+            if str(exc) != "prewrite rebase publisher missing push boundary":
+                raise
+        else:
+            raise RuntimeError(
+                "prewrite rebase publisher missing-push negative accepted: " + label
+            )
 
 
 def main() -> int:
