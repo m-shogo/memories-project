@@ -10778,11 +10778,13 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
         ("locals frame", '                print(locals()["fanout_result"].stderr)'),
         ("vars frame", '                print(vars()["fanout_result"].stderr)'),
         ("eval frame", '                print(eval("fanout_result.stderr"))'),
-        ("sys frame", '                print(__import__("sys")._getframe().f_locals["fanout_result"].stderr)'),
+        ("sys frame", '                print(sys._getframe().f_locals["fanout_result"].stderr)'),
+        ("reflective sys frame", '                print(getattr(sys, "_getframe")().f_locals["fanout_result"].stderr)'),
     ):
         if label in {"reflective getattr", "reflective vars", "child alias",
                      "dunder dictionary", "operator attrgetter", "locals frame",
-                     "vars frame", "eval frame", "sys frame"}:
+                     "vars frame", "eval frame", "sys frame",
+                     "reflective sys frame"}:
             stdout_line = "                print(fanout_result.stdout.strip())" + chr(10)
             if source.count(stdout_line) != 1:
                 raise RuntimeError("entry-docs fanout stdout fixture anchor drift")
@@ -10799,7 +10801,7 @@ def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
             raise RuntimeError("entry-docs fanout stderr fixture syntax invalid: " + label) from None
         if safe(mutant):
             raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
-    return 15
+    return 16
 
 
 def prove_prewrite_private_error_redaction(source_root: Path) -> int:
