@@ -9381,8 +9381,7 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
         changed = converge.replace(old, new, 1)
         if reviewed(changed):
             raise RuntimeError("indirect workflow mutation accepted: " + label)
-    print("indirect workflow dispatch boundary PASS: 221 sources, 8 negatives; "
-          "one reviewed workflow_run -> actions:write dispatch; not readiness")
+    # This proof is silent: the negative-suite stdout contract has one PASS.
 
 
 def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
