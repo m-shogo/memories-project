@@ -9708,6 +9708,13 @@ def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
     source = (
         source_root / ".github/workflows/controlled-saturation-repeatability.yml"
     ).read_text(encoding="utf-8")
+    # This workflow also declares another critical array in a separate step.
+    # Only the append-only publisher's own shell process binds this guard.
+    step_start = "      - name: Publish append-only repeatability run\n"
+    step_end = "      - name: Record privacy-safe ramp diagnostic\n"
+    if source.count(step_start) != 1 or source.count(step_end) != 1:
+        raise RuntimeError("saturation critical publisher step boundary drift")
+    source = source.split(step_start, 1)[1].split(step_end, 1)[0]
     opening = "          critical=(\n"
     closing = "          )\n          verify_critical_source() {\n"
     if source.count(opening) != 1 or source.count(closing) != 1:
