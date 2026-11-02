@@ -9530,9 +9530,9 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         ("GitHub token", "env = {'GH_TOKEN': 'fixture'}"),
         ("dispatch name", "action = 'repository_dispatch'"),
     ):
-        changed = dict(texts)
-        changed[target] += "\n" + fixture
-        if dispatch_inventory(changed) != (target,):
+        # The complete 120-source baseline was already verified above.
+        # Only this exact target is mutated; avoid rescanning 119 unchanged files.
+        if dispatch_inventory({target: texts[target] + "\n" + fixture}) != (target,):
             raise RuntimeError("publisher script dispatch mutation accepted: " + label)
     for label, fixture in (
         ("local health", "subprocess.run(['curl', 'http://127.0.0.1:9000/healthz'])"),
@@ -9545,9 +9545,7 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         ("local curl", "curl --fail http://127.0.0.1:9000/minio/health/live"),
         ("repository URL", "url = 'https://github.com/o/r'"),
     ):
-        changed = dict(texts)
-        changed[target] += "\n" + fixture
-        if dispatch_inventory(changed):
+        if dispatch_inventory({target: texts[target] + "\n" + fixture}):
             raise RuntimeError("publisher script dispatch benign control rejected: " + label)
 
 
