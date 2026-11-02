@@ -618,7 +618,7 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
     }
     prior_env = {key: os.environ.get(key) for key in injected}
     os.environ.update(injected)
-    state: dict[str, object] = {"returncode": 0, "error": None}
+    state: dict[str, object] = {"returncode": 0, "error": None, "result": None}
     calls: list[tuple[str, ...]] = []
 
     def fake_run(args, **kwargs):
@@ -641,6 +641,8 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
         calls.append(tuple(args))
         if state["error"] is not None:
             raise state["error"]
+        if state["result"] is not None:
+            return state["result"]
         return subprocess.CompletedProcess(args, state["returncode"],
                                            stdout=marker, stderr=marker)
 
@@ -653,6 +655,8 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
              "post-reconcile recovery objective validator failed without exposing subprocess output"),
             ("boolean", {"returncode": True},
              "post-reconcile recovery objective validator failed without exposing subprocess output"),
+            ("forged completion", {"result": type("ForgedResult", (), {"returncode": 0})()},
+             "post-reconcile recovery objective validator failed without exposing subprocess output"),
             ("timeout", {"error": subprocess.TimeoutExpired(["python"], 180, stderr=marker)},
              "post-reconcile recovery objective validator unavailable"),
             ("unavailable", {"error": OSError(marker)},
@@ -663,7 +667,7 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
              "post-reconcile recovery objective validator unavailable"),
         )
         for label, change, expected in cases:
-            state.update({"returncode": 0, "error": None})
+            state.update({"returncode": 0, "error": None, "result": None})
             state.update(change)
             try:
                 reconciler.run_validator(reconciler.VALIDATOR, "recovery objective validator")
@@ -689,7 +693,7 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
                 os.environ.pop(key, None)
             else:
                 os.environ[key] = previous
-    print("PASS: recovery objective reconcile post-validation transport private, bounded and environment-isolated (7 negatives)")
+    print("PASS: recovery objective reconcile post-validation transport private, bounded and environment-isolated (8 negatives)")
 
 
 
