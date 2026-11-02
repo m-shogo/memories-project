@@ -354,6 +354,43 @@ def prove_pinned_reconciler_import() -> None:
         try:
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler pinned import positive control failed")
+            # Actual os.open acquisition order: ROOT, scripts ancestor, reconciler leaf.
+            # Do not infer acquisition ordinals from the absolute path depth.
+            for ordinal in (1, 2, 3):
+                for invalid in (None, True, -1, "7"):
+                    original_open, original_close = os.open, os.close
+                    acquired: list[int] = []
+                    closed: list[int] = []
+                    call_count = 0
+
+                    def invalid_acquisition(path, flags, *args, **kwargs):
+                        nonlocal call_count
+                        call_count += 1
+                        if call_count == ordinal:
+                            return invalid
+                        descriptor = original_open(path, flags, *args, **kwargs)
+                        acquired.append(descriptor)
+                        return descriptor
+
+                    def observe_close(descriptor: int) -> None:
+                        closed.append(descriptor)
+                        original_close(descriptor)
+
+                    os.open, os.close = invalid_acquisition, observe_close
+                    try:
+                        try:
+                            load_reconciler()
+                        except Fail as exc:
+                            require("descriptor invalid" in str(exc),
+                                    "generation reconciler malformed FD wrong rejection")
+                        else:
+                            raise Fail("generation reconciler accepted malformed FD")
+                    finally:
+                        os.open, os.close = original_open, original_close
+                    require(call_count == ordinal,
+                            "generation reconciler malformed FD acquisition ordinal drift")
+                    require(closed == list(reversed(acquired)),
+                            "generation reconciler malformed FD ownership cleanup drift")
             source.write_bytes(b"")
             try:
                 try:
