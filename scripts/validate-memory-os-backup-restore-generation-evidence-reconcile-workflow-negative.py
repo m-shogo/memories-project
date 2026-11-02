@@ -489,6 +489,8 @@ def prove_generation_publisher_coupling_guard() -> None:
             + "    - cron: '0 0 * * *'" + nl, 1,
         )),
     ):
+        if mutated == source:
+            raise SystemExit(f"generation evidence publisher {label} event negative mutation was inert")
         try:
             classify_generation_publisher_coupling(mutated)
         except SystemExit as exc:
