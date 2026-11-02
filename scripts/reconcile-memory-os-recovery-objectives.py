@@ -99,6 +99,7 @@ MAX_AUTHORITY_BYTES = 1024 * 1024
 
 
 def read_text(path: Path) -> str:
+    """Read reviewed JSON authority from owned, stable no-follow descriptors."""
     require(isinstance(path, Path) and path.is_absolute(),
             "recovery objective reconcile authority path unsafe")
     try:
@@ -108,34 +109,22 @@ def read_text(path: Path) -> str:
         raise Fail("recovery objective reconcile authority path unsafe") from None
     require(lexical == resolved and path.is_file() and not path.is_symlink(),
             "recovery objective reconcile authority path unsafe")
-    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_NONBLOCK"),
-            "recovery objective reconcile authority platform unsafe")
-    descriptor: int | None = None
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        metadata = os.fstat(descriptor)
-        require(stat.S_ISREG(metadata.st_mode),
-                "recovery objective reconcile authority path unsafe")
-        require(metadata.st_size <= MAX_AUTHORITY_BYTES,
-                "recovery objective reconcile authority size limit exceeded")
-        with os.fdopen(descriptor, "rb") as source:
-            descriptor = None
-            raw = source.read(MAX_AUTHORITY_BYTES + 1)
+        size = path.stat().st_size
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority unreadable") from None
-    finally:
-        if descriptor is not None:
-            try:
-                os.close(descriptor)
-            except OSError:
-                raise Fail("recovery objective reconcile authority descriptor cleanup failed") from None
-    require(len(raw) <= MAX_AUTHORITY_BYTES,
+    require(size <= MAX_AUTHORITY_BYTES,
             "recovery objective reconcile authority size limit exceeded")
+    try:
+        # The same reviewed FD-pinning primitive used for executable source
+        # prevents a parent-directory swap between path review and file open.
+        raw = pinned_reviewed_source(path, lexical, "recovery objective reconcile authority")
+    except (Fail, OSError, ValueError, TypeError):
+        raise Fail("recovery objective reconcile authority unreadable") from None
     try:
         return raw.decode("utf-8")
     except UnicodeError:
         raise Fail("recovery objective reconcile authority invalid UTF-8") from None
-
 
 def write_text(path: Path, text: str) -> None:
     """Atomically replace only reviewed, bounded recovery objective authorities."""
