@@ -336,6 +336,17 @@ def classify_objective_publisher_coupling(source: str) -> bool:
     )
     if any(token not in source for token in required):
         raise SystemExit("recovery objective publisher stale-source guard missing")
+    # Text preserved in shell comments is not an executable source lease.
+    active = [
+        line.strip() for line in job_lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    stale_guard = 'if [[ "$(git rev-parse origin/so)" != "$SOURCE_SHA" ]]; then'
+    if (active.count("git fetch origin so") < 2
+            or active.count("exit 75") < 2
+            or active.count("git push origin HEAD:so") < 1
+            or active.count(stale_guard) < 2):
+        raise SystemExit("recovery objective publisher stale-source guard missing")
     return True
 
 
@@ -424,6 +435,22 @@ def prove_objective_publisher_coupling_guard() -> None:
                 raise
         else:
             raise SystemExit(f"recovery objective publisher {label} job shadow accepted")
+    for label, original in (
+        ("fetch", "git fetch origin so"),
+        ("push", "git push origin HEAD:so"),
+        ("stale-exit", "exit 75"),
+        ("stale-comparison", stale_guard),
+    ):
+        commented = source.replace(original, "# " + original)
+        if commented == source:
+            raise SystemExit(f"recovery objective publisher {label} comment negative was inert")
+        try:
+            classify_objective_publisher_coupling(commented)
+        except SystemExit as exc:
+            if str(exc) != "recovery objective publisher stale-source guard missing":
+                raise
+        else:
+            raise SystemExit(f"recovery objective publisher commented {label} accepted")
     marker = "  push:\n    branches:\n      - so\n    paths:\n"
     prefix, suffix = source.split(marker, 1)
     target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"\n'
@@ -432,7 +459,7 @@ def prove_objective_publisher_coupling_guard() -> None:
     removed = prefix + marker + suffix.replace(target, "", 1)
     if classify_objective_publisher_coupling(removed):
         raise SystemExit("recovery objective removed publisher trigger still coupled")
-    print("PASS: recovery objective publisher source lease, branch and YAML shadow guards (13 negatives)")
+    print("PASS: recovery objective publisher active source lease and YAML shadow guards (17 negatives)")
 
 
 
