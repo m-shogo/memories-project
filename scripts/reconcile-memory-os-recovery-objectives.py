@@ -273,16 +273,23 @@ def run_validator(path: Path, label: str) -> None:
         require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, "operability validator")
     else:
         raise Fail("unreviewed recovery objective post-reconcile validator")
+    # Child validators must not inherit interpreter, loader or Git overrides.
+    # Preserve ordinary environment variables for expected CI/runtime behavior.
+    child_env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+    }
     try:
         completed = subprocess.run(
             [sys.executable, str(path)],
             cwd=ROOT,
+            env=child_env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             check=False,
             timeout=180,
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail(f"post-reconcile {label} unavailable") from None
     require(type(completed.returncode) is int and completed.returncode == 0,
             f"post-reconcile {label} failed without exposing subprocess output")
