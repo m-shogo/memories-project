@@ -79,6 +79,10 @@ def pinned_validator_source() -> bytes:
                     "generation evidence transport validator read type invalid")
             if not chunk:
                 break
+            # A faulty read returning more than requested must fail before
+            # remaining becomes negative and the loop can no longer terminate.
+            require(len(chunk) <= remaining,
+                    "generation evidence transport validator source changed during read")
             chunks.append(chunk)
             remaining -= len(chunk)
         source = b"".join(chunks)
@@ -210,6 +214,9 @@ def prove_pinned_validator_import() -> None:
                  "generation evidence transport validator source changed during read"),
                 ("nonbytes read", lambda *_args: "PRIVATE_GENERATION_READ_CANARY",
                  "generation evidence transport validator read type invalid"),
+                ("oversized response",
+                 lambda *_args: b"x" * (MAX_VALIDATOR_SOURCE_BYTES + 2),
+                 "generation evidence transport validator source changed during read"),
             ):
                 os.read = injected
                 try:
@@ -218,6 +225,8 @@ def prove_pinned_validator_import() -> None:
                     except Fail as exc:
                         require(str(exc) == expected,
                                 "generation transport " + label + " wrong rejection")
+                        require("PRIVATE_GENERATION_READ_CANARY" not in str(exc),
+                                "generation transport private read canary leaked")
                     else:
                         raise Fail("generation transport accepted " + label)
                 finally:
