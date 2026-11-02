@@ -9333,6 +9333,59 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
                          "permissions:\n  actions: read\n")):
         raise RuntimeError("indirect actions dispatch lexical control drift")
 
+    # Pin literal dynamic API dispatch surfaces independently of the reviewed
+    # gh workflow run chain. This conservative lexical audit cannot prove the
+    # absence of shell-built URLs or dispatch inside third-party actions.
+    dynamic_dispatch_patterns = (
+        r"(?i)\bgh(?:[ \t]+(?:-R|--repo)[ \t]+\S+)?(?:\s|\\\s)+api\b",
+        r"(?i)\bapi\.github\.com\b",
+        r"(?i)/actions/workflows/",
+        r"(?i)/dispatches\b",
+        r"(?i)\b(?:createWorkflowDispatch|createRepositoryDispatch|createDispatchEvent)\b",
+        r"(?i)\bactions/github-script@",
+        r"(?i)\b(?:octokit|github)\.(?:request|graphql)\s*\(",
+        r"(?i)\bgithub\.rest\.(?:actions|repos)\.",
+        r"(?i)\bgraphql\b",
+    )
+
+    def dynamic_dispatch_inventory(candidates: dict[str, str]) -> tuple[str, ...]:
+        return tuple(sorted(
+            name for name, source in candidates.items()
+            if any(re.search(pattern, source)
+                   for pattern in dynamic_dispatch_patterns)
+        ))
+
+    if dynamic_dispatch_inventory(texts) != ():
+        raise RuntimeError("indirect dynamic API dispatch inventory drift")
+
+    for label, fixture in (
+        ("gh api", "run: gh api repos/o/r/actions/workflows/w.yml/dispatches\n"),
+        ("gh repo api", "run: gh -R o/r api repos/o/r/dispatches\n"),
+        ("curl API", "run: curl -X POST https://api.github.com/repos/o/r/dispatches\n"),
+        ("relative dispatch", "run: curl -X POST $BASE/dispatches\n"),
+        ("relative workflow API", "run: curl -X POST $BASE/actions/workflows/w.yml/dispatches\n"),
+        ("github script", "uses: actions/github-script@v7\n"),
+        ("REST helper", "run: github.rest.actions.createWorkflowDispatch\n"),
+        ("octokit request", "run: octokit.request('POST /repos/o/r/dispatches')\n"),
+        ("GraphQL", "run: octokit.graphql('mutation')\n"),
+        ("dispatch helper", "run: createRepositoryDispatch\n"),
+    ):
+        mutated = dict(texts)
+        mutated["autonomous-learning-guard.yml"] += "\n" + fixture
+        if dynamic_dispatch_inventory(mutated) != ("autonomous-learning-guard.yml",):
+            raise RuntimeError("indirect dynamic dispatch mutation accepted: " + label)
+    for label, fixture in (
+        ("local health", "run: curl --fail http://127.0.0.1:9000/minio/health/live\n"),
+        ("reviewed CLI", "run: gh workflow run reconcile-sustained-local-soak-authority.yml --ref so\n"),
+        ("read-only permissions", "permissions:\n  actions: read\n"),
+        ("repository link", "run: echo https://github.com/o/r\n"),
+        ("plain token", "env:\n  GH_TOKEN: token\n"),
+    ):
+        mutated = dict(texts)
+        mutated["autonomous-learning-guard.yml"] += "\n" + fixture
+        if dynamic_dispatch_inventory(mutated) != ():
+            raise RuntimeError("indirect dynamic dispatch safe control rejected: " + label)
+
     converge = texts["converge-sustained-local-soak-authority.yml"]
     upstream = texts["sustained-local-soak.yml"]
     downstream = texts["reconcile-sustained-local-soak-authority.yml"]
