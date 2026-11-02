@@ -152,6 +152,43 @@ def prove_pinned_writer_import() -> None:
         try:
             require(load_writer().SOURCE_MARKER == "reviewed",
                     "generation transaction pinned writer positive control failed")
+            # ROOT, scripts ancestor, and leaf are exactly three os.open calls.
+            # Never derive an injection ordinal from absolute path depth.
+            for ordinal in (1, 2, 3):
+                for invalid in (None, True, -1, "7"):
+                    original_open, original_close = os.open, os.close
+                    acquired: list[int] = []
+                    closed: list[int] = []
+                    call_count = 0
+
+                    def invalid_acquisition(path, flags, *args, **kwargs):
+                        nonlocal call_count
+                        call_count += 1
+                        if call_count == ordinal:
+                            return invalid
+                        descriptor = original_open(path, flags, *args, **kwargs)
+                        acquired.append(descriptor)
+                        return descriptor
+
+                    def observe_close(descriptor: int) -> None:
+                        closed.append(descriptor)
+                        original_close(descriptor)
+
+                    os.open, os.close = invalid_acquisition, observe_close
+                    try:
+                        try:
+                            load_writer()
+                        except Fail as exc:
+                            require("descriptor invalid" in str(exc),
+                                    "generation transaction invalid acquired FD wrong rejection")
+                        else:
+                            raise Fail("generation transaction accepted invalid acquired FD")
+                    finally:
+                        os.open, os.close = original_open, original_close
+                    require(call_count == ordinal,
+                            "generation transaction invalid FD fixture acquisition order drift")
+                    require(closed == list(reversed(acquired)),
+                            "generation transaction invalid FD ownership/cleanup drift")
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 setattr(os, flag, 0)
