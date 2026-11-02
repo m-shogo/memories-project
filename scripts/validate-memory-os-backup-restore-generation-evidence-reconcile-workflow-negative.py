@@ -419,6 +419,19 @@ def classify_generation_publisher_coupling(source: str) -> bool:
     )
     if any(token not in source for token in required):
         raise SystemExit("generation evidence publisher bounded source guard missing")
+    # Tokens in comments or strings do not establish an executable source lease.
+    active = [
+        line.strip() for line in job_lines
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if (active.count("git fetch origin so") < 2
+            or active.count("exit 75") < 2
+            or "if git push origin HEAD:so; then" not in active
+            or "revalidate_latest_authority() {" not in active
+            or "revalidate_latest_authority" not in active
+            or "git reset --hard origin/so" not in active
+            or 'SOURCE_SHA="$(git rev-parse HEAD)"' not in active):
+        raise SystemExit("generation evidence publisher bounded source guard missing")
     return True
 
 
@@ -523,6 +536,25 @@ def prove_generation_publisher_coupling_guard() -> None:
             raise
     else:
         raise SystemExit("generation evidence publisher duplicate contents accepted")
+    # Preserve tokens while making their shell lines inert: a substring
+    # check alone would accept each of these unexecuted authority operations.
+    for label, original, inert in (
+        ("fetch", "git fetch origin so", "# git fetch origin so"),
+        ("push", "if git push origin HEAD:so; then", "# if git push origin HEAD:so; then"),
+        ("stale-exit", "exit 75", "# exit 75"),
+        ("revalidate-definition", "revalidate_latest_authority() {",
+         "# revalidate_latest_authority() {"),
+    ):
+        commented = source.replace(original, inert)
+        if commented == source:
+            raise SystemExit(f"generation evidence publisher {label} comment negative was inert")
+        try:
+            classify_generation_publisher_coupling(commented)
+        except SystemExit as exc:
+            if str(exc) != "generation evidence publisher bounded source guard missing":
+                raise
+        else:
+            raise SystemExit(f"generation evidence publisher commented {label} accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
@@ -533,7 +565,7 @@ def prove_generation_publisher_coupling_guard() -> None:
     removed = prefix + push_marker + suffix.replace(target, "", 1)
     if classify_generation_publisher_coupling(removed):
         raise SystemExit("generation evidence removed publisher trigger still classified coupled")
-    print("PASS: generation evidence publisher source lease, branch and YAML shadow guards (14 negatives)")
+    print("PASS: generation evidence publisher active source lease and YAML shadow guards (18 negatives)")
 
 
 
