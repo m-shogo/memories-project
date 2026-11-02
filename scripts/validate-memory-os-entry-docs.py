@@ -3934,32 +3934,8 @@ def validate_upload_route_learning_scan(failures: list[str]) -> None:
     else:
         print("upload-route append-only scan and symlink negatives verified")
 
-def classify_prewrite_fanout_child_failure(
-    result: subprocess.CompletedProcess[str],
-) -> str | None:
-    """Never publish arbitrary child stderr as an operator diagnostic."""
-    if type(result.returncode) is not int or result.returncode != 0:
-        return "prewrite workflow trigger fanout guard failed"
-    return None
-
-
-def prove_prewrite_fanout_child_private_stderr(failures: list[str]) -> None:
-    """Exercise the same classifier used for real child-process failures."""
-    canary = "PRIVATE_FANOUT_CHILD_PATH_AND_CREDENTIAL_CANARY"
-    fixed = "prewrite workflow trigger fanout guard failed"
-    for code in (1, 2, 128):
-        injected = subprocess.CompletedProcess([], code, "", canary)
-        label = classify_prewrite_fanout_child_failure(injected)
-        if label != fixed or canary in label:
-            failures.append("prewrite fanout child stderr redaction negative failed")
-    success = subprocess.CompletedProcess([], 0, "", canary)
-    if classify_prewrite_fanout_child_failure(success) is not None:
-        failures.append("prewrite fanout child success classification drift")
-
-
 def main() -> int:
     failures: list[str] = []
-    prove_prewrite_fanout_child_private_stderr(failures)
     for relative, rules in ENTRYPOINTS.items():
         path = REPO_ROOT / relative
         try:
@@ -4002,9 +3978,8 @@ def main() -> int:
         except (OSError, subprocess.TimeoutExpired):
             failures.append("prewrite workflow trigger fanout guard unavailable")
         else:
-            fanout_failure = classify_prewrite_fanout_child_failure(fanout_result)
-            if fanout_failure is not None:
-                failures.append(fanout_failure)
+            if fanout_result.returncode != 0:
+                failures.append("prewrite workflow trigger fanout guard failed")
             else:
                 print(fanout_result.stdout.strip())
                 # Verify real CLI path matching for valid quoted and scalar
