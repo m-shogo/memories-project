@@ -9456,6 +9456,80 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
     # This proof is silent: the negative-suite stdout contract has one PASS.
 
 
+
+def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
+    """Conservatively pin direct Actions dispatch signals in publisher scripts.
+
+    This covers top-level reconcile/register Python and shell entrypoints,
+    not arbitrary imported modules or dynamically assembled commands.
+    """
+    import re
+
+    scripts = source_root / "scripts"
+    sources = sorted(
+        set(scripts.glob("reconcile-*.py"))
+        | set(scripts.glob("register-*.py"))
+        | set(scripts.glob("*.sh"))
+    )
+    if (scripts.is_symlink() or len(sources) != 120
+            or any(path.is_symlink() or not path.is_file() for path in sources)):
+        raise RuntimeError("publisher script dispatch source inventory drift")
+    patterns = (
+        r"(?i)\bgh[ \t]+(?:workflow[ \t]+run|api)\b",
+        r"""(?i)['"]gh['"]\s*,\s*['"](?:workflow|api)['"]""",
+        r"(?i)\bapi\.github\.com\b",
+        r"(?i)/actions/workflows/",
+        r"(?i)/dispatches\b",
+        r"(?i)\b(?:workflow_dispatch|repository_dispatch|createWorkflowDispatch|createRepositoryDispatch)\b",
+        r"(?i)\b(?:octokit|github)\.(?:request|graphql)\s*\(",
+        r"(?i)\bgithub\.rest\.(?:actions|repos)\.",
+        r"(?i)\b(?:GH_TOKEN|GITHUB_TOKEN)\b",
+    )
+
+    def dispatch_inventory(candidates: dict[str, str]) -> tuple[str, ...]:
+        return tuple(sorted(
+            name for name, source in candidates.items()
+            if any(re.search(pattern, source) for pattern in patterns)
+        ))
+
+    try:
+        texts = {path.name: path.read_text(encoding="utf-8") for path in sources}
+    except (OSError, UnicodeError):
+        raise RuntimeError("publisher script dispatch source unreadable") from None
+    if len(texts) != len(sources) or dispatch_inventory(texts):
+        raise RuntimeError("publisher script Actions dispatch inventory drift")
+
+    target = "reconcile-memory-os-sustained-local-soak-status.py"
+    if target not in texts:
+        raise RuntimeError("publisher script dispatch fixture target missing")
+    for label, fixture in (
+        ("shell workflow", "subprocess.run('gh workflow run writer.yml', shell=True)"),
+        ("shell API", "subprocess.run('gh api repos/o/r/dispatches', shell=True)"),
+        ("Python argv workflow", "subprocess.run(['gh', 'workflow', 'run', 'writer.yml'])"),
+        ("Python argv API", "subprocess.run(['gh', 'api', 'repos/o/r/dispatches'])"),
+        ("REST URL", "url = 'https://api.github.com/repos/o/r/dispatches'"),
+        ("relative API", "url = '/actions/workflows/w.yml/dispatches'"),
+        ("Octokit", "octokit.request('POST /repos/o/r/dispatches')"),
+        ("GitHub REST", "github.rest.actions.createWorkflowDispatch()"),
+        ("GitHub token", "env = {'GH_TOKEN': 'fixture'}"),
+        ("dispatch name", "action = 'repository_dispatch'"),
+    ):
+        changed = dict(texts)
+        changed[target] += "\n" + fixture
+        if dispatch_inventory(changed) != (target,):
+            raise RuntimeError("publisher script dispatch mutation accepted: " + label)
+    for label, fixture in (
+        ("local health", "subprocess.run(['curl', 'http://127.0.0.1:9000/healthz'])"),
+        ("read-only gh", "subprocess.run(['gh', 'run', 'view', '1'])"),
+        ("local curl", "curl --fail http://127.0.0.1:9000/minio/health/live"),
+        ("repository URL", "url = 'https://github.com/o/r'"),
+    ):
+        changed = dict(texts)
+        changed[target] += "\n" + fixture
+        if dispatch_inventory(changed):
+            raise RuntimeError("publisher script dispatch benign control rejected: " + label)
+
+
 def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
     """Prove a post-precheck critical-source advance needs a second guard.
 
@@ -11850,6 +11924,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     prove_source_derived_writer_inventory(source_root)
     prove_indirect_workflow_dispatch_boundary(source_root)
+    prove_publisher_script_dispatch_boundary(source_root)
     prove_sustained_soak_rebase_race_fixture(source_root)
     prove_sustained_soak_divergent_history_fixture(source_root)
     prove_workflow_rebase_guard_inventory(source_root)
