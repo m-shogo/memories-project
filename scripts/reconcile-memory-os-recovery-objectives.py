@@ -175,6 +175,9 @@ def write_text(path: Path, text: str) -> None:
     except (OSError, ValueError, TypeError):
         raise Fail("recovery objective reconcile authority atomic write failed") from None
     finally:
+        # A secondary cleanup fault must not replace the primary atomic-write
+        # failure class; still attempt every cleanup operation.
+        primary_failed = sys.exc_info()[0] is not None
         cleanup_failed = False
         if descriptor is not None:
             try:
@@ -188,7 +191,7 @@ def write_text(path: Path, text: str) -> None:
                 pass
             except OSError:
                 cleanup_failed = True
-        if cleanup_failed:
+        if cleanup_failed and not primary_failed:
             raise Fail("recovery objective reconcile authority temporary cleanup failed") from None
 
 
