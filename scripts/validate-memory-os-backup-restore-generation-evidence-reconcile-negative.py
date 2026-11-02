@@ -64,7 +64,7 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
         root_fd = os.open(ROOT, flags)
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("reconcile negative cannot pin repository root") from None
     # Never claim ownership of a malformed acquired descriptor. In particular,
     # bool is an int subclass and must not be passed to cleanup as fd 0/1.
@@ -143,7 +143,7 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
             except Exception:
                 if not primary_failure:
                     raise Fail("reconcile negative temp child cleanup failed") from None
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("reconcile negative pinned fixture operation failed") from None
     finally:
         primary_failure = sys.exc_info()[0] is not None
@@ -289,59 +289,60 @@ def prove_fixture_cleanup_failure_precedence() -> None:
 
 
 def prove_private_fixture_os_errors_redacted() -> None:
-    """OS failures must not expose private fixture paths or diagnostics."""
+    """OS, value and type failures must not expose private fixture diagnostics."""
     marker = "PRIVATE_GENERATION_FIXTURE_OS_ERROR_CANARY"
     before = {p.name for p in TMP_PARENT.iterdir()}
     original_open, original_mkdir = os.open, os.mkdir
-    for ordinal in (1, 2):
-        calls = 0
+    for failure_type in (OSError, ValueError, TypeError):
+        for ordinal in (1, 2):
+            calls = 0
 
-        def reject_open(path, flags, *args, **kwargs):
-            nonlocal calls
-            calls += 1
-            if calls == ordinal:
-                raise OSError(marker)
-            return original_open(path, flags, *args, **kwargs)
+            def reject_open(path, flags, *args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == ordinal:
+                    raise failure_type(marker)
+                return original_open(path, flags, *args, **kwargs)
 
-        os.open = reject_open
+            os.open = reject_open
+            try:
+                try:
+                    guarded_temporary_directory(
+                        prefix=".tmp-generation-private-os-must-not-create-",
+                        parent=TMP_PARENT,
+                    )
+                except Fail as exc:
+                    expected = ("reconcile negative cannot pin repository root"
+                                if ordinal == 1 else "reconcile negative pinned fixture operation failed")
+                    require(str(exc) == expected and exc.__suppress_context__
+                            and marker not in str(exc),
+                            "generation fixture private open error diagnostic drift")
+                else:
+                    raise Fail("generation fixture accepted private open error")
+            finally:
+                os.open = original_open
+
+        def reject_mkdir(*_args, **_kwargs):
+            raise failure_type(marker)
+
+        os.mkdir = reject_mkdir
         try:
             try:
                 guarded_temporary_directory(
-                    prefix=".tmp-generation-private-os-must-not-create-",
+                    prefix=".tmp-generation-private-mkdir-must-not-create-",
                     parent=TMP_PARENT,
                 )
             except Fail as exc:
-                expected = ("reconcile negative cannot pin repository root"
-                            if ordinal == 1 else "reconcile negative pinned fixture operation failed")
-                require(str(exc) == expected and exc.__suppress_context__
-                        and marker not in str(exc),
-                        "generation fixture private open error diagnostic drift")
+                require(str(exc) == "reconcile negative pinned fixture operation failed"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "generation fixture private mkdir error diagnostic drift")
             else:
-                raise Fail("generation fixture accepted private open error")
+                raise Fail("generation fixture accepted private mkdir error")
         finally:
-            os.open = original_open
-
-    def reject_mkdir(*_args, **_kwargs):
-        raise OSError(marker)
-
-    os.mkdir = reject_mkdir
-    try:
-        try:
-            guarded_temporary_directory(
-                prefix=".tmp-generation-private-mkdir-must-not-create-",
-                parent=TMP_PARENT,
-            )
-        except Fail as exc:
-            require(str(exc) == "reconcile negative pinned fixture operation failed"
-                    and exc.__suppress_context__ and marker not in str(exc),
-                    "generation fixture private mkdir error diagnostic drift")
-        else:
-            raise Fail("generation fixture accepted private mkdir error")
-    finally:
-        os.mkdir = original_mkdir
+            os.mkdir = original_mkdir
     require({p.name for p in TMP_PARENT.iterdir()} == before,
             "generation fixture private OS errors created unexpected child")
-    print("PASS: generation reconcile fixture private OS errors redacted")
+    print("PASS: generation reconcile fixture private OS/value/type errors redacted")
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
