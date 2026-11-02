@@ -9392,20 +9392,29 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         lines = source.splitlines()
         statuses: list[bool] = []
         for index, line in enumerate(lines):
-            if not re.fullmatch(r"\\s*git pull --rebase origin so\\s*", line):
+            if not re.fullmatch(r"\s*git pull --rebase origin so\s*", line):
                 continue
             end = next(
                 (i for i in range(index + 1, len(lines))
-                 if re.search(r"\\bgit push origin HEAD:so\\b", lines[i])),
+                 if re.search(r"\bgit push origin HEAD:so\b", lines[i])),
                 None,
             )
             if end is None:
                 raise RuntimeError("prewrite rebase publisher missing push boundary")
-            segment = "\\n".join(lines[index + 1:end])
+            segment = "\n".join(lines[index + 1:end])
             statuses.append(bool(re.search(
-                r"(?m)^\\s*verify_critical_source\\s*$", segment
+                r"(?m)^\s*verify_critical_source\s*$", segment
             )))
         return tuple(statuses)
+
+    # These controls catch cross-language double-escaped regex/newline source.
+    if (rebase_guard_status(
+            "git pull --rebase origin so\nverify_critical_source\nif git push origin HEAD:so; then"
+        ) != (True,)
+            or rebase_guard_status(
+                "git pull --rebase origin so\n# verify_critical_source\nif git push origin HEAD:so; then"
+            ) != (False,)):
+        raise RuntimeError("prewrite rebase guard regex/newline fixture drift")
 
     expected = (
         ("controlled-saturation-repeatability.yml", (True,)),
@@ -9427,15 +9436,15 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     # A comment or pre-rebase check is not an executable post-rebase guard.
     # A missing push boundary is not a complete source/publisher inventory.
     for label, fixture, reviewed in (
-        ("executable guard", "git pull --rebase origin so\\nverify_critical_source\\nif git push origin HEAD:so; then", (True,)),
-        ("comment-only guard", "git pull --rebase origin so\\n# verify_critical_source\\nif git push origin HEAD:so; then", (False,)),
-        ("guard before rebase", "verify_critical_source\\ngit pull --rebase origin so\\nif git push origin HEAD:so; then", (False,)),
-        ("missing guard", "git pull --rebase origin so\\nif git push origin HEAD:so; then", (False,)),
+        ("executable guard", "git pull --rebase origin so\nverify_critical_source\nif git push origin HEAD:so; then", (True,)),
+        ("comment-only guard", "git pull --rebase origin so\n# verify_critical_source\nif git push origin HEAD:so; then", (False,)),
+        ("guard before rebase", "verify_critical_source\ngit pull --rebase origin so\nif git push origin HEAD:so; then", (False,)),
+        ("missing guard", "git pull --rebase origin so\nif git push origin HEAD:so; then", (False,)),
     ):
         if rebase_guard_status(fixture) != reviewed:
             raise RuntimeError("prewrite rebase guard lexical negative drift: " + label)
     try:
-        rebase_guard_status("git pull --rebase origin so\\nverify_critical_source")
+        rebase_guard_status("git pull --rebase origin so\nverify_critical_source")
     except RuntimeError as exc:
         if str(exc) != "prewrite rebase publisher missing push boundary":
             raise
