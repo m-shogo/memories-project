@@ -9906,6 +9906,113 @@ def prove_learning_ci_readonly_source_binding(source_root: Path) -> None:
             raise RuntimeError("learning CI read-only mutation accepted: " + label)
 
 
+def prove_soak_critical_path_precheck_inventory(source_root: Path) -> None:
+    """Require the three blocked publishers' full reviewed precheck path sets.
+
+    This is a read-only inventory guard. A complete *pre*-rebase check is
+    necessary but does not close the separately recorded post-rebase race.
+    No write-capable publisher workflow is executed or modified here.
+    """
+    import re
+
+    filenames = (
+        "sustained-local-soak.yml",
+        "sustained-local-soak-parallel-request.yml",
+        "sustained-local-soak-parallel-v2.yml",
+    )
+    common = (
+        "contracts/operations/sustained-local-soak-contract.v1.json",
+        "scripts/validate-memory-os-sustained-local-soak.py",
+        "scripts/validate-memory-os-sustained-local-soak-result.py",
+        "scripts/validate-memory-os-sustained-local-soak-aggregate.py",
+        "scripts/update-memory-os-sustained-local-soak-aggregate.py",
+        "scripts/reconcile-memory-os-sustained-local-soak-status.py",
+        "services/import-api/internal/httpserver",
+        "services/import-api/internal/parsersup",
+        "services/import-api/internal/fenced",
+        "services/import-api/internal/epochguard",
+        "services/import-api/internal/pgrepo",
+        "services/import-api/internal/dbscope",
+        "services/import-api/internal/pgscope",
+        "services/import-api/internal/authstore",
+        "services/import-api/internal/upload",
+        "services/import-api/internal/objectstore",
+        "services/import-api/internal/accountdelete",
+        "services/import-api/go.mod",
+        "services/import-api/go.sum",
+        "infra/postgresql/security",
+    )
+    opening = 'if ! git diff --quiet "$SOURCE_SHA" origin/so -- ' + chr(92) + chr(10)
+
+    def parse_literal_paths(raw: str, expected: tuple[str, ...]) -> None:
+        lines = raw.splitlines()
+        if not lines or raw.endswith("\n"):
+            raise RuntimeError("soak critical path precheck malformed")
+        paths: list[str] = []
+        for index, line in enumerate(lines):
+            suffix = r" \\" if index < len(lines) - 1 else ""
+            if re.fullmatch(
+                r" {12}[A-Za-z0-9._/-]+(?: [A-Za-z0-9._/-]+)*" + suffix,
+                line,
+            ) is None:
+                raise RuntimeError("soak critical path precheck malformed")
+            paths.extend(line.strip().removesuffix(" " + chr(92)).split(" "))
+        if tuple(paths) != expected or len(paths) != len(set(paths)):
+            raise RuntimeError("soak critical path precheck inventory drift")
+
+    for filename in filenames:
+        source = (source_root / ".github/workflows" / filename).read_text(
+            encoding="utf-8"
+        )
+        if source.count(opening) != 1:
+            raise RuntimeError("soak critical precheck source boundary drift: " + filename)
+        tail = source.split(opening, 1)[1]
+        if "; then" not in tail:
+            raise RuntimeError("soak critical precheck source boundary drift: " + filename)
+        raw = tail.split("; then", 1)[0]
+        expected = (".github/workflows/" + filename, *common)
+        parse_literal_paths(raw, expected)
+        needle = "            services/import-api/internal/upload " + chr(92) + chr(10)
+        other = "            services/import-api/internal/objectstore " + chr(92) + chr(10)
+        mutants = (
+            ("removed path", raw.replace(needle, "", 1)),
+            ("duplicated path", raw.replace(needle, needle + needle, 1)),
+            ("commented path", raw.replace(
+                needle, "            # services/import-api/internal/upload "
+                + chr(92) + chr(10), 1)),
+            ("expanded path", raw.replace(
+                needle, "            services/import-api/internal/upload $HOME "
+                + chr(92) + chr(10), 1)),
+            ("injected command", raw.replace(
+                needle, "            services/import-api/internal/upload; git push origin HEAD:so "
+                + chr(92) + chr(10), 1)),
+            ("reordered paths", raw.replace(needle + other, other + needle, 1)),
+            ("broken continuation", raw.replace(
+                needle, needle.replace(chr(92), ""), 1)),
+            ("unreviewed path", raw.replace(
+                needle, needle.replace("/upload", "/unreviewed"), 1)),
+        )
+        for label, mutant in mutants:
+            if mutant == raw:
+                raise RuntimeError(
+                    "soak critical precheck mutation fixture drift: "
+                    + filename + ": " + label
+                )
+            try:
+                parse_literal_paths(mutant, expected)
+            except RuntimeError as exc:
+                if str(exc) not in (
+                    "soak critical path precheck malformed",
+                    "soak critical path precheck inventory drift",
+                ):
+                    raise
+            else:
+                raise RuntimeError(
+                    "soak critical precheck mutation accepted: "
+                    + filename + ": " + label
+                )
+
+
 def prove_saturation_critical_path_array_binding(source_root: Path) -> None:
     """Pin the exact reviewed source-critical Bash array and its expansion.
 
@@ -10725,6 +10832,7 @@ def main() -> int:
     prove_saturation_postrebase_shell_semantics(source_root)
     prove_saturation_source_sha_provenance(source_root)
     prove_learning_ci_readonly_source_binding(source_root)
+    prove_soak_critical_path_precheck_inventory(source_root)
     prove_saturation_critical_path_array_binding(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
