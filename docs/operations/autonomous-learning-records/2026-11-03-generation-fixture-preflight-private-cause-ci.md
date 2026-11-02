@@ -1,0 +1,25 @@
+# Supplemental OPS learning — generation fixture preflight private cause suppression (2026-11-03)
+
+Append-only subordinate to `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. Synthetic read-only operational learning only; never production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, registered generation, human-approved objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review, final candidate or human promotion evidence.
+
+## Material failure class
+
+- **symptom:** The Generation Evidence reconciler's pinned temporary-fixture setup could expose private path diagnostics before acquiring its root FD. The escape check chained `ValueError` as an explicit cause; the root `is_dir/is_symlink` probes had no exception classifier.
+- **evidence:** At `so` HEAD `cecd13b1e5a4d911cf2086b9cf3f9673074fc6a4`, `_pinned_temporary_directory` used `except ValueError as exc: raise Fail(...) from exc`, followed by `require(ROOT.is_dir() and not ROOT.is_symlink(), ...)` outside its pinned-operation `try`. Existing private OS/value/type negative cases began at `os.open` and `os.mkdir`, not these earlier probes. No real production disclosure or malicious fixture swap was observed.
+- **rootCauseOrUnknown:** Verified untrusted exception chaining and missing fixed-domain classification at pre-descriptor path metadata boundaries. Real-world exploitability remains unknown.
+- **failedApproach:** Assuming pinned `os.open` exception handling protects earlier `Path.relative_to`, `Path.is_dir` and `Path.is_symlink` calls, and using `from exc` for a diagnostic intended to be private.
+- **correction:** [`62b6c1bb`](https://github.com/m-shogo/memories-project/commit/62b6c1bb8eadb4a260688ee3bee8da1698280bf3) suppresses the original `relative_to` cause, classifies `OSError`, `ValueError`, `TypeError`, `RuntimeError` at the root probes, and retains fixed `Fail` diagnostics.
+- **recurrenceGuard:** Three executable disposable-fixture negatives inject a private-canary `ValueError` into `relative_to`, `OSError` into `is_dir`, and `RuntimeError` into `is_symlink`. Each asserts the exact fixed error, `__suppress_context__`, no visible canary, and actual invocation. The test verifies no new fixture child and restores the original methods; existing FD, cleanup, parent-swap and positive cases remain.
+- **retryCondition:** Revisit if the pinned temporary-fixture root/parent preflight or Python path exception behavior changes, or if the existing read-only CI invocation changes. Do not retry unchanged publisher workflow permission, large canonical learning contents-API write, Quay MinIO HTTP 401 or missing human evidence blockers.
+
+## Material success
+
+- **outcome:** [Generation Evidence Reconcile Negative #41486200864](https://github.com/m-shogo/memories-project/actions/runs/41486200864) completed **SUCCESS** on exact code HEAD `62b6c1bb8eadb4a260688ee3bee8da1698280bf3`. Job `125417089623` logged `PASS: generation reconcile fixture private path preflight errors redacted`, `PASS: generation evidence negative reconciler importer pinned after parent swap`, and `production decision: NO_GO`.
+- **evidence:** Exact GitHub Actions run conclusion, decoded job log, committed code and post-write protected Git blob inventory.
+- **whySafe:** Only the independently read-only Generation Evidence reconcile negative harness changed; all injected errors occur in isolated fixture setup. The workflow has `contents: read`, exact-source checkout and no persisted credentials. No production-capable publisher, production registry or evidence was changed.
+- **reusableMechanism:** Protect every path probe that executes before a pinned-FD `try`; suppress untrusted original exceptions and require live negative hooks plus zero-residue proof.
+- **protectedAuthorityCheck:** Ten protected blob SHAs unchanged: production status `d677a1c9` (`NO_GO`), OPS-P0-007 snapshot `dbaa36b0` (`PREREQUISITES_BLOCKED`), environment generations `bfd1b045`, objectives `f4d74f33`, drill requests `acebcd02`, generation evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, human promotion review `99cb895f`, canonical learning `b809c69d`, learning contract `87712ea9`. Registered and semantically eligible generations remain distinct and empty; there is no current human-approved objective, executable reviewed request, request-bound recovery evidence, complete typed eight-domain coverage, independent final candidate or human production promotion. Synthetic learning never satisfies a production gate.
+
+## Next independent safe target
+
+Audit other independently CI-reachable fixture setup functions for path preflight exception provenance and verify source-trigger reachability. Generation Evidence writer still uses path-based atomic staging/replacement; this scoped TOCTOU issue requires a separately authorized and verified publisher-independent fix, not an inference from these negative tests.
