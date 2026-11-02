@@ -522,6 +522,57 @@ def prove_pinned_generation_writer_import(reconciler: object) -> None:
     print("PASS: generation evidence writer pinned bytes resist after-capture parent swap")
 
 
+
+def prove_atomic_target_metadata_rejection(reconciler: object) -> None:
+    """Aliases, hardlinks and writable targets cannot receive staged bytes."""
+    canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
+    with guarded_temporary_directory(prefix=".tmp-generation-evidence-target-guard-", parent=TMP_PARENT) as tmpdir:
+        root = Path(tmpdir)
+        target = root / "reviewed.json"
+        target.write_text('{"reviewed":true}\\n', encoding="utf-8")
+        target.chmod(0o640)
+        before, before_mode = target.read_bytes(), mode(target)
+        hardlink = root / "hardlink.json"
+        os.link(target, hardlink)
+        try:
+            expect_domain_fail("hardlinked generation evidence authority",
+                               lambda: reconciler.write_text(target, '{"synthetic":true}'),
+                               reconciler.Fail)
+        finally:
+            hardlink.unlink()
+        alias = root / "alias.json"
+        alias.symlink_to(target)
+        try:
+            expect_domain_fail("symlinked generation evidence authority",
+                               lambda: reconciler.write_text(alias, '{"synthetic":true}'),
+                               reconciler.Fail)
+        finally:
+            alias.unlink()
+        target.chmod(0o666)
+        try:
+            expect_domain_fail("writable generation evidence authority",
+                               lambda: reconciler.write_text(target, '{"synthetic":true}'),
+                               reconciler.Fail)
+        finally:
+            target.chmod(before_mode)
+        redirect = root / "redirect"
+        redirect.symlink_to(root, target_is_directory=True)
+        try:
+            expect_domain_fail("symlinked generation evidence parent",
+                               lambda: reconciler.write_text(redirect / target.name, '{"synthetic":true}'),
+                               reconciler.Fail)
+        finally:
+            redirect.unlink()
+        require(target.read_bytes() == before and mode(target) == before_mode
+                and not list(root.glob(".*.tmp")),
+                "generation evidence atomic metadata negatives mutated fixture or staged residue")
+    for path, (expected, expected_mode) in canonical_before.items():
+        require(path.read_bytes() == expected and mode(path) == expected_mode,
+                "generation evidence atomic metadata negatives mutated canonical authority")
+    print("PASS: generation evidence atomic target hardlink/symlink/writable-parent guards")
+
+
+
 def prove_atomic_write_failure(reconciler: object) -> None:
     canonical_before = {path: (path.read_bytes(), mode(path)) for path in CANONICAL.values()}
     original_replace = reconciler.os.replace
@@ -845,6 +896,7 @@ def main() -> int:
     prove_pinned_generation_writer_import(reconciler)
 
     prove_direct_authority_identity(reconciler)
+    prove_atomic_target_metadata_rejection(reconciler)
     prove_atomic_write_failure(reconciler)
     prove_atomic_cleanup_failure_precedence(reconciler)
     prove_pre_fdopen_fault_releases_retained_descriptor(reconciler)

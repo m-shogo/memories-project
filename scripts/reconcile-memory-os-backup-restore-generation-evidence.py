@@ -119,8 +119,20 @@ def read_text(path: Path) -> str:
 
 def write_text(path: Path, text: str) -> None:
     relative = repo_relative(path)
-    require(path.parent.is_dir(), f"authority parent missing: {relative.parent}")
-    existing_mode = path.stat().st_mode & 0o7777 if path.exists() else None
+    # Reconciliation replaces existing reviewed authorities only. Never
+    # follow an alias, hardlink, writable leaf or swapped parent into a write.
+    try:
+        leaf_before = path.lstat()
+        parent_before = path.parent.lstat()
+    except (OSError, ValueError, TypeError):
+        raise Fail(f"generation evidence atomic target metadata unsafe: {relative}") from None
+    require(stat.S_ISREG(leaf_before.st_mode) and leaf_before.st_nlink == 1
+            and not (leaf_before.st_mode & 0o022),
+            f"generation evidence atomic target metadata unsafe: {relative}")
+    require(stat.S_ISDIR(parent_before.st_mode)
+            and not (parent_before.st_mode & 0o022),
+            f"generation evidence atomic parent metadata unsafe: {relative.parent}")
+    existing_mode = stat.S_IMODE(leaf_before.st_mode)
     temp_name: str | None = None
     fd: int | None = None
     try:
