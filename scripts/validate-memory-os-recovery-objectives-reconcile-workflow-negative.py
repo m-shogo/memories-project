@@ -287,7 +287,7 @@ def classify_objective_publisher_coupling(source: str) -> bool:
     target = '      - "scripts/reconcile-memory-os-recovery-objectives.py"'
     if target not in push.splitlines():
         return False
-    if "  validate:\n" not in source or "      contents: write\n" not in source:
+    if "  validate-and-publish:\n" not in source or "      contents: write\n" not in source:
         return False
     required = (
         "git fetch origin so",
