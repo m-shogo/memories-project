@@ -408,7 +408,13 @@ def prove_objective_publisher_coupling_guard() -> None:
         ("permissions", "    permissions:", "    'permissions':"),
         ("contents", "      contents: write", "      'contents': read"),
     ):
-        shadowed = source.replace(original, original + nl + duplicate, 1)
+        publisher_job = "  validate-and-publish:" + nl
+        if source.count(publisher_job) != 1:
+            raise SystemExit("recovery objective publisher job shadow anchor missing")
+        prefix, suffix = source.split(publisher_job, 1)
+        shadowed = prefix + publisher_job + suffix.replace(
+            original, original + nl + duplicate, 1,
+        )
         if shadowed == source:
             raise SystemExit(f"recovery objective publisher {label} job negative was inert")
         try:
