@@ -9794,6 +9794,17 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             raise RuntimeError("saturation source SHA provenance drift")
         if any(re.match(r"^\s*(?:unset|read|eval)\s", line) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
+        # Indirect shell writes can replace the original workflow SHA without
+        # a lexical source_sha= assignment. Keep this review intentionally
+        # conservative: no dynamic assignment or sourced code in this step.
+        if any(re.match(
+                r"^\s*(?:(?:builtin|command)\s+)?printf\s+-v\s+|"
+                r"^\s*(?:mapfile|readarray)(?:\s|$)|"
+                r"^\s*(?:declare|typeset|local)\s+-[A-Za-z]*n(?:\s|$)|"
+                r"^\s*(?:source|\.)\s+",
+                line,
+        ) for line in lines):
+            raise RuntimeError("saturation source SHA provenance drift")
         if (value.count(rebase) != 1
                 or lines.count("          verify_critical_source") != 1
                 or lines.count("            verify_critical_source") != 1
@@ -9828,6 +9839,26 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             rebase, rebase + "            read source_sha\n", 1)),
         ("eval after rebase", body.replace(
             rebase, rebase + '            eval "source_sha=changed"\n', 1)),
+        ("printf -v source rebind", body.replace(
+            binding, binding + "          printf -v source_sha '%s' changed\n", 1)),
+        ("builtin printf -v source rebind", body.replace(
+            binding, binding + "          builtin printf -v source_sha '%s' changed\n", 1)),
+        ("command printf -v source rebind", body.replace(
+            binding, binding + "          command printf -v source_sha '%s' changed\n", 1)),
+        ("mapfile source rebind", body.replace(
+            binding, binding + "          mapfile -t source_sha </dev/null\n", 1)),
+        ("readarray source rebind", body.replace(
+            binding, binding + "          readarray -t source_sha </dev/null\n", 1)),
+        ("declare nameref source rebind", body.replace(
+            binding, binding + "          declare -n alias=source_sha\n          alias=changed\n", 1)),
+        ("typeset nameref source rebind", body.replace(
+            binding, binding + "          typeset -n alias=source_sha\n          alias=changed\n", 1)),
+        ("local nameref source rebind", body.replace(
+            binding, binding + "          local -n alias=source_sha\n          alias=changed\n", 1)),
+        ("source dynamic shell", body.replace(
+            binding, binding + "          source ./unreviewed.sh\n", 1)),
+        ("dot source dynamic shell", body.replace(
+            binding, binding + "          . ./unreviewed.sh\n", 1)),
         ("remove postrebase guard", body.replace(
             rebase + "            verify_critical_source\n", rebase, 1)),
     )
