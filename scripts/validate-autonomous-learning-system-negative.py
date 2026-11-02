@@ -7171,10 +7171,17 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         actual_lines = actual.stdout.splitlines()
         actual_workflows = [line[2:] for line in actual_lines
                             if line.startswith("- .github/workflows/")]
-        if (actual.returncode != 2 or actual.stderr or
-                not any(line.startswith("risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: ")
-                        for line in actual_lines) or
-                ".github/workflows/backup-restore-admission-chain.yml"
+        prefix = "risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: "
+        reports = [line[len(prefix):] for line in actual_lines
+                   if line.startswith(prefix)]
+        # A forged/malformed count or duplicated workflow identity must not
+        # make a partial audit look like a complete reviewed writer inventory.
+        exact_count = (len(reports) == 1 and bool(reports[0])
+                       and reports[0].isascii() and reports[0].isdigit()
+                       and int(reports[0]) == len(actual_workflows))
+        if (actual.returncode != 2 or actual.stderr or not exact_count
+                or len(actual_workflows) != len(set(actual_workflows))
+                or ".github/workflows/backup-restore-admission-chain.yml"
                 not in actual_workflows or len(actual_workflows) > 12):
             raise RuntimeError("prewrite Admission Chain writer path classification drift")
     # Check a real known-risk path, including exact reported count versus
