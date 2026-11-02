@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import stat
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
@@ -11,6 +14,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = ROOT / "scripts/validate-memory-os-backup-restore-generation-evidence.py"
+VALIDATOR_REL = Path("scripts/validate-memory-os-backup-restore-generation-evidence.py")
+MAX_VALIDATOR_SOURCE_BYTES = 1024 * 1024
 
 
 class Fail(RuntimeError):
@@ -22,17 +27,173 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_validator_identity() -> None:
+    require(VALIDATOR == ROOT / VALIDATOR_REL
+            and VALIDATOR.is_file() and not VALIDATOR.is_symlink()
+            and VALIDATOR.resolve(strict=True) == VALIDATOR,
+            "canonical generation-evidence validator source authority drift")
+
+
+def pinned_validator_source() -> bytes:
+    """Bind executable validator bytes to owned no-follow directory/file descriptors."""
+    require_validator_identity()
+    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+            "generation evidence transport pinned validator import unavailable")
+    owned: list[int] = []
+    try:
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, flags)
+        require(type(parent_fd) is int and parent_fd >= 0,
+                "generation evidence transport validator parent descriptor invalid")
+        owned.append(parent_fd)
+        for part in VALIDATOR_REL.parts[:-1]:
+            parent_fd = os.open(part, flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    "generation evidence transport validator parent descriptor invalid")
+            owned.append(parent_fd)
+        parents_before = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in parents_before),
+                "generation evidence transport validator parent unsafe")
+        source_fd = os.open(
+            VALIDATOR_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=parent_fd,
+        )
+        require(type(source_fd) is int and source_fd >= 0,
+                "generation evidence transport validator source descriptor invalid")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 < before.st_size <= MAX_VALIDATOR_SOURCE_BYTES,
+                "generation evidence transport validator source metadata unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_VALIDATOR_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes,
+                    "generation evidence transport validator read type invalid")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(VALIDATOR_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) == before.st_size
+                and len(source) <= MAX_VALIDATOR_SOURCE_BYTES
+                and identity(before) == identity(after) == identity(leaf),
+                "generation evidence transport validator source changed during read")
+        for index, fd in enumerate(owned[:-1]):
+            current = os.fstat(fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*VALIDATOR_REL.parts[:index])
+            visible = os.lstat(lexical)
+            require(stat.S_ISDIR(visible.st_mode)
+                    and parent_identity(parents_before[index])
+                    == parent_identity(current) == parent_identity(visible),
+                    "generation evidence transport validator parent changed during read")
+        require_validator_identity()
+        require(identity(VALIDATOR.stat()) == identity(after),
+                "generation evidence transport validator pathname changed during read")
+        return source
+    except OSError:
+        raise Fail("generation evidence transport validator pinned source unreadable") from None
+    finally:
+        primary = sys.exc_info()[0] is not None
+        failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                failed = True
+        if failed and not primary:
+            raise Fail("generation evidence transport validator descriptor cleanup failed") from None
+
+
 def load_validator() -> Any:
-    require(VALIDATOR.is_file() and not VALIDATOR.is_symlink(), "canonical generation-evidence validator missing or symlinked")
-    require(
-        VALIDATOR.resolve(strict=True) == VALIDATOR,
-        "canonical generation-evidence validator resolved path drift",
+    source = pinned_validator_source()
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_evidence_transport_negative", VALIDATOR,
     )
-    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_transport_negative", VALIDATOR)
-    require(spec is not None and spec.loader is not None, "cannot load generation-evidence validator")
+    require(spec is not None and spec.loader is not None,
+            "cannot load generation-evidence validator")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    exec(compile(source, str(VALIDATOR), "exec"), module.__dict__)
     return module
+
+
+def prove_pinned_validator_import() -> None:
+    """Prove after-capture parent swap cannot redirect the negative harness."""
+    global ROOT, VALIDATOR
+    original_root, original_validator = ROOT, VALIDATOR
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-transport-pin-") as raw:
+        fixture = Path(raw)
+        parent = fixture / "scripts"
+        parent.mkdir()
+        source = parent / VALIDATOR_REL.name
+        source.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+        redirected = fixture / "redirected"
+        redirected.mkdir()
+        canary = redirected / source.name
+        canary_bytes = b"raise RuntimeError('PRIVATE_GENERATION_VALIDATOR_SWAP_CANARY')\n"
+        canary.write_bytes(canary_bytes)
+        parked = fixture / "parked-scripts"
+        ROOT, VALIDATOR = fixture, source
+        try:
+            require(load_validator().SOURCE_MARKER == "reviewed",
+                    "generation transport pinned validator positive control failed")
+            source.chmod(0o666)
+            try:
+                load_validator()
+            except Fail as exc:
+                require(str(exc) == "generation evidence transport validator source metadata unsafe",
+                        "writable generation transport validator wrong rejection")
+            else:
+                raise Fail("writable generation transport validator accepted")
+            source.chmod(0o644)
+            alias = fixture / "hardlink-validator.py"
+            os.link(source, alias)
+            try:
+                load_validator()
+            except Fail as exc:
+                require(str(exc) == "generation evidence transport validator source metadata unsafe",
+                        "hardlinked generation transport validator wrong rejection")
+            else:
+                raise Fail("hardlinked generation transport validator accepted")
+            alias.unlink()
+            swapped = False
+
+            def swap_after_capture(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_capture
+            loaded = load_validator()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "generation transport imported redirected validator source")
+            require(canary.read_bytes() == canary_bytes,
+                    "generation transport redirected validator canary changed")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            ROOT, VALIDATOR = original_root, original_validator
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: generation transport validator importer pinned against writable/hardlink/parent swap")
+
 
 
 def expect_rejected(module: Any, label: str, mutate: Callable[[], None], restore: Callable[[], None], expected: str) -> None:
@@ -192,6 +353,7 @@ def prove_private_escaped_path_diagnostic(module: Any) -> None:
 
 
 def main() -> int:
+    prove_pinned_validator_import()
     module = load_validator()
     prove_private_bounded_child_execution(module)
     prove_private_writer_import_failures(module)
