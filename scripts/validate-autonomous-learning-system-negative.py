@@ -9816,6 +9816,20 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
                 line,
         ) for line in lines):
             raise RuntimeError("saturation source SHA provenance drift")
+        # The reviewed function must not be shadowed by a later Bash
+        # definition or by command-resolution changes before publication.
+        definitions = [
+            line for line in lines
+            if re.search(r"\bverify_critical_source\s*(?:\(\))?\s*\{", line)
+        ]
+        if definitions != ["          verify_critical_source() {"]:
+            raise RuntimeError("saturation source SHA provenance drift")
+        if any(re.search(
+                r"(?:^|[;&|])\s*(?:if\s+)?(?:!\s*)?(?:(?:builtin|command)\s+)?"
+                r"(?:alias|unalias|shopt|hash)\s+",
+                line,
+        ) for line in lines):
+            raise RuntimeError("saturation source SHA provenance drift")
         if (value.count(rebase) != 1
                 or lines.count("          verify_critical_source") != 1
                 or lines.count("            verify_critical_source") != 1
@@ -9920,6 +9934,24 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             binding, binding + "          false || let 'source_sha=1'\n", 1)),
         ("semicolon arithmetic source rebind", body.replace(
             binding, binding + "          :; ((source_sha=1))\n", 1)),
+        ("second source guard function override", body.replace(
+            binding, binding + "          verify_critical_source() { :; }\n", 1)),
+        ("alternate source guard function override", body.replace(
+            binding, binding + "          function verify_critical_source { :; }\n", 1)),
+        ("alias source guard override", body.replace(
+            binding, binding + "          alias verify_critical_source=: \n", 1)),
+        ("builtin alias source guard override", body.replace(
+            binding, binding + "          builtin alias verify_critical_source=: \n", 1)),
+        ("shell alias expansion enabled", body.replace(
+            binding, binding + "          shopt -s expand_aliases\n", 1)),
+        ("semicolon alias override", body.replace(
+            binding, binding + "          :; alias verify_critical_source=: \n", 1)),
+        ("if shell alias expansion", body.replace(
+            binding, binding + "          if shopt -s expand_aliases; then :; fi\n", 1)),
+        ("hash git command substitution", body.replace(
+            binding, binding + "          hash -p /tmp/unreviewed-git git\n", 1)),
+        ("command hash git substitution", body.replace(
+            binding, binding + "          command hash -p /tmp/unreviewed-git git\n", 1)),
         ("source dynamic shell", body.replace(
             binding, binding + "          source ./unreviewed.sh\n", 1)),
         ("dot source dynamic shell", body.replace(
