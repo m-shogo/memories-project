@@ -10406,8 +10406,8 @@ git() {
                 raise RuntimeError("saturation aggregate shell invalid exit status")
             if check_calls:
                 expected_calls = (
-                    b"merge-base\\n" if ancestry != "0"
-                    else b"merge-base\\ndiff\\n"
+                    b"merge-base\n" if ancestry != "0"
+                    else b"merge-base\ndiff\n"
                 )
                 if not git_log.exists() or git_log.read_bytes() != expected_calls:
                     raise RuntimeError("saturation aggregate shell Git call sequence drift")
