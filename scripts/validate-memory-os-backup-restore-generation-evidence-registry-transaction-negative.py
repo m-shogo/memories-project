@@ -14,6 +14,8 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WRITER = ROOT / "scripts/register-memory-os-backup-restore-generation-evidence.py"
+WRITER_REL = Path("scripts/register-memory-os-backup-restore-generation-evidence.py")
+MAX_WRITER_SOURCE_BYTES = 1024 * 1024
 
 
 class Fail(RuntimeError):
@@ -25,12 +27,175 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_writer_identity() -> None:
+    require(WRITER == ROOT / WRITER_REL and WRITER.is_file()
+            and not WRITER.is_symlink()
+            and WRITER.resolve(strict=True) == WRITER,
+            "generation evidence transaction writer source authority drift")
+
+
+def pinned_writer_source() -> bytes:
+    """Import only verified bytes from owned directory and source descriptors."""
+    require_writer_identity()
+    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+            "generation evidence transaction writer pinned import unavailable")
+    owned: list[int] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0,
+                "generation evidence transaction writer parent descriptor invalid")
+        owned.append(parent_fd)
+        for part in WRITER_REL.parts[:-1]:
+            parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0,
+                    "generation evidence transaction writer parent descriptor invalid")
+            owned.append(parent_fd)
+        parents_before = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in parents_before),
+                "generation evidence transaction writer parent unsafe")
+        source_fd = os.open(
+            WRITER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=parent_fd,
+        )
+        require(type(source_fd) is int and source_fd >= 0,
+                "generation evidence transaction writer source descriptor invalid")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 < before.st_size <= MAX_WRITER_SOURCE_BYTES,
+                "generation evidence transaction writer source metadata unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_WRITER_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes,
+                    "generation evidence transaction writer read type invalid")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) == before.st_size
+                and len(source) <= MAX_WRITER_SOURCE_BYTES
+                and identity(before) == identity(after) == identity(leaf),
+                "generation evidence transaction writer source changed during read")
+        for index, fd in enumerate(owned[:-1]):
+            current = os.fstat(fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            visible = os.lstat(lexical)
+            require(stat.S_ISDIR(visible.st_mode)
+                    and parent_identity(parents_before[index])
+                    == parent_identity(current) == parent_identity(visible),
+                    "generation evidence transaction writer parent changed during read")
+        require_writer_identity()
+        require(identity(WRITER.stat()) == identity(after),
+                "generation evidence transaction writer pathname changed during read")
+        return source
+    except OSError:
+        raise Fail("generation evidence transaction writer pinned source unreadable") from None
+    finally:
+        primary = sys.exc_info()[0] is not None
+        cleanup_failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                cleanup_failed = True
+        if cleanup_failed and not primary:
+            raise Fail("generation evidence transaction writer descriptor cleanup failed") from None
+
+
 def load_writer() -> Any:
-    spec = importlib.util.spec_from_file_location("memory_os_generation_evidence_registry_transaction_negative", WRITER)
-    require(spec is not None and spec.loader is not None, "cannot load generation evidence writer")
+    source = pinned_writer_source()
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_generation_evidence_registry_transaction_negative", WRITER,
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load generation evidence writer")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Do not let SourceFileLoader reopen a pathname after source verification.
+    exec(compile(source, str(WRITER), "exec"), module.__dict__)
     return module
+
+
+def prove_pinned_writer_import() -> None:
+    """Prove an after-capture parent swap cannot execute redirected writer code."""
+    global ROOT, WRITER
+    original_root, original_writer = ROOT, WRITER
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix="memory-os-generation-transaction-import-") as raw:
+        fixture = Path(raw)
+        parent = fixture / "scripts"
+        parent.mkdir()
+        source = parent / WRITER_REL.name
+        source.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+        redirected = fixture / "redirected"
+        redirected.mkdir()
+        canary = redirected / source.name
+        canary_bytes = b"raise RuntimeError('PRIVATE_GENERATION_WRITER_IMPORT_CANARY')\n"
+        canary.write_bytes(canary_bytes)
+        parked = fixture / "parked-scripts"
+        ROOT, WRITER = fixture, source
+        try:
+            require(load_writer().SOURCE_MARKER == "reviewed",
+                    "generation transaction pinned writer positive control failed")
+            source.chmod(0o666)
+            try:
+                load_writer()
+            except Fail as exc:
+                require(str(exc) == "generation evidence transaction writer source metadata unsafe",
+                        "writable generation transaction writer rejected at wrong boundary")
+            else:
+                raise Fail("writable generation transaction writer accepted")
+            source.chmod(0o644)
+            parent.rename(parked)
+            parent.symlink_to(redirected, target_is_directory=True)
+            try:
+                load_writer()
+            except Fail:
+                pass
+            else:
+                raise Fail("symlinked generation transaction writer parent accepted")
+            parent.unlink()
+            parked.rename(parent)
+
+            swapped = False
+
+            def swap_after_capture(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_capture
+            loaded = load_writer()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "generation transaction imported redirected writer source")
+            require(canary.read_bytes() == canary_bytes,
+                    "generation transaction redirected writer canary changed")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            ROOT, WRITER = original_root, original_writer
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: generation transaction writer pinned source rejects writable and swapped paths")
+
 
 
 def mode(path: Path) -> int:
@@ -268,6 +433,7 @@ def prove_pinned_registry_snapshot(writer: Any) -> None:
 
 def main() -> int:
     require(WRITER.is_file(), "generation evidence writer missing")
+    prove_pinned_writer_import()
     writer = load_writer()
 
     with tempfile.TemporaryDirectory(prefix="memory-os-generation-evidence-registry-transaction-") as raw_tmp:
