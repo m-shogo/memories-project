@@ -10701,6 +10701,55 @@ git() {
 
 
 
+def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
+    """Fail closed if a child-process diagnostic reflects unreviewed stderr."""
+    import ast
+
+    source = (source_root / CI_ENTRYPOINT).read_text(encoding="utf-8")
+    needle = ('            if fanout_result.returncode != 0:' + chr(10)
+              + '                failures.append("prewrite workflow trigger fanout guard failed")' + chr(10))
+    if source.count(needle) != 1:
+        raise RuntimeError("entry-docs fanout failure authority changed")
+    expected = ast.parse('failures.append("prewrite workflow trigger fanout guard failed")').body[0]
+
+    def safe(candidate: str) -> bool:
+        try:
+            tree = ast.parse(candidate)
+        except SyntaxError:
+            return False
+        mains = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == "main"]
+        if len(mains) != 1:
+            return False
+        hits = [node for node in ast.walk(mains[0])
+                if isinstance(node, ast.If)
+                and ast.unparse(node.test) == "fanout_result.returncode != 0"]
+        if len(hits) != 1 or len(hits[0].body) != 1:
+            return False
+        if ast.dump(hits[0].body[0], include_attributes=False) != ast.dump(
+                expected, include_attributes=False):
+            return False
+        return not any(isinstance(node, ast.Attribute)
+                       and isinstance(node.value, ast.Name)
+                       and node.value.id == "fanout_result" and node.attr == "stderr"
+                       for node in ast.walk(mains[0]))
+
+    if not safe(source):
+        raise RuntimeError("entry-docs fanout child stderr redaction missing")
+    for label, replacement in (
+        ("leaked stderr suffix", '                failures.append("prewrite workflow trigger fanout guard failed: " + fanout_result.stderr[:300])'),
+        ("direct stderr", '                failures.append(fanout_result.stderr)'),
+        ("wrong exit condition", '            if fanout_result.returncode == 0:' + chr(10) + '                failures.append("prewrite workflow trigger fanout guard failed")'),
+        ("removed failure", '                pass'),
+        ("changed diagnostic", '                failures.append("prewrite workflow trigger fanout guard failed changed")'),
+        ("extra stderr output", '                failures.append("prewrite workflow trigger fanout guard failed")' + chr(10) + '                print(fanout_result.stderr)'),
+    ):
+        mutant = source.replace(needle, replacement + chr(10), 1)
+        if mutant == source or safe(mutant):
+            raise RuntimeError("entry-docs fanout stderr mutation accepted: " + label)
+    return 6
+
+
 def prove_prewrite_private_error_redaction(source_root: Path) -> int:
     """Reject private exception messages at the prewrite CLI boundary."""
     import contextlib
@@ -11493,6 +11542,7 @@ def main() -> int:
     prove_prewrite_git_clean_filter_cli(source_root)
     prove_prewrite_git_sha256_cli(source_root)
     private_prewrite_cases = prove_prewrite_private_error_redaction(source_root)
+    entrydocs_redaction_cases = prove_entrydocs_fanout_child_stderr_redaction(source_root)
     private_learning_cases = prove_learning_validator_private_error_redaction(source_root)
     minio_transitive_cases = prove_import_api_minio_first_classification(source_root)
     head_ref_cases = prove_prewrite_git_head_ref_stability(source_root)
@@ -11520,7 +11570,7 @@ def main() -> int:
     prove_saturation_aggregate_shell_error_classes(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases + private_learning_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases + private_learning_cases + entrydocs_redaction_cases} fail-closed cases)")
     return 0
 
 
