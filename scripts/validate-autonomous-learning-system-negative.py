@@ -10372,6 +10372,7 @@ def prove_saturation_aggregate_shell_error_classes(source_root: Path) -> None:
         raise RuntimeError("saturation aggregate shell guard drift")
     prefix = """set -euo pipefail
 git() {
+  printf '%s\\n' "$1" >> "$GIT_LOG"
   case "$1" in
     merge-base)
       test "$*" = 'merge-base --is-ancestor original HEAD' || return 70
@@ -10388,19 +10389,28 @@ git() {
 """
     suffix = "printf 'AGGREGATE\\n' >> \"$ACTION_LOG\"\n"
 
-    def execute(shell: str, ancestry: str, critical: str) -> tuple[int, bytes]:
+    def execute(shell: str, ancestry: str, critical: str, *, check_calls: bool = True) -> tuple[int, bytes]:
         with tempfile.TemporaryDirectory(prefix="learning-saturation-aggregate-") as tmp:
             log = Path(tmp) / "aggregate.log"
+            git_log = Path(tmp) / "git.log"
             result = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-c", prefix + shell + suffix],
                 cwd=tmp,
                 env={"PATH": os.defpath, "HOME": tmp, "LANG": "C",
                      "GITHUB_SHA": "original", "ANCESTRY_STATUS": ancestry,
-                     "CRITICAL_STATUS": critical, "ACTION_LOG": str(log)},
+                     "CRITICAL_STATUS": critical, "ACTION_LOG": str(log),
+                     "GIT_LOG": str(git_log)},
                 capture_output=True, text=True, check=False, timeout=5,
             )
             if type(result.returncode) is not int:
                 raise RuntimeError("saturation aggregate shell invalid exit status")
+            if check_calls:
+                expected_calls = (
+                    b"merge-base\\n" if ancestry != "0"
+                    else b"merge-base\\ndiff\\n"
+                )
+                if not git_log.exists() or git_log.read_bytes() != expected_calls:
+                    raise RuntimeError("saturation aggregate shell Git call sequence drift")
             return result.returncode, log.read_bytes() if log.exists() else b""
 
     for label, ancestry, critical, expected in (
@@ -10428,7 +10438,7 @@ git() {
          "0", "128", (0, b"AGGREGATE\n")),
     )
     for label, mutant, ancestry, critical, unsafe in mutants:
-        if mutant == body or execute(mutant, ancestry, critical) != unsafe:
+        if mutant == body or execute(mutant, ancestry, critical, check_calls=False) != unsafe:
             raise RuntimeError("saturation aggregate shell mutation drift: " + label)
 
 
