@@ -146,10 +146,30 @@ def write_text(path: Path, text: str) -> None:
         raise Fail("recovery objective reconcile write payload invalid") from None
     require(len(payload) <= MAX_AUTHORITY_BYTES,
             "recovery objective reconcile write size limit exceeded")
+    # Reject unsafe existing authorities before staging any replacement bytes.
+    # These checks also detect an in-place or parent swap before commit; a
+    # future directory-FD-bound replacement is still needed to close the final race.
+    try:
+        target_before = path.lstat()
+        parent_before = path.parent.lstat()
+    except (OSError, ValueError, TypeError):
+        raise Fail("recovery objective reconcile write target metadata unsafe") from None
+    require(stat.S_ISREG(target_before.st_mode) and target_before.st_nlink == 1
+            and not (target_before.st_mode & 0o022),
+            "recovery objective reconcile write target metadata unsafe")
+    require(stat.S_ISDIR(parent_before.st_mode) and not (parent_before.st_mode & 0o022),
+            "recovery objective reconcile write parent metadata unsafe")
+    target_identity = lambda item: (
+        item.st_dev, item.st_ino, item.st_mode, item.st_nlink,
+        item.st_size, item.st_mtime_ns, item.st_ctime_ns,
+    )
+    parent_identity = lambda item: (
+        item.st_dev, item.st_ino, item.st_mode, item.st_ctime_ns,
+    )
     descriptor: int | None = None
     temp_name: str | None = None
     try:
-        mode = stat.S_IMODE(path.stat().st_mode)
+        mode = stat.S_IMODE(target_before.st_mode)
         descriptor, temp_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
         )
@@ -159,6 +179,9 @@ def write_text(path: Path, text: str) -> None:
             handle.write(payload)
             handle.flush()
             os.fsync(handle.fileno())
+        require(target_identity(path.lstat()) == target_identity(target_before)
+                and parent_identity(path.parent.lstat()) == parent_identity(parent_before),
+                "recovery objective reconcile write authority changed during stage")
         os.replace(temp_name, path)
         temp_name = None
     except (OSError, ValueError, TypeError):
