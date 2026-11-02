@@ -188,6 +188,40 @@ def prove_pinned_validator_import() -> None:
                             "generation transport invalid FD fixture acquisition order drift")
                     require(closed == list(reversed(acquired)),
                             "generation transport invalid FD ownership/cleanup drift")
+
+            original_read = os.read
+            fragments = 0
+
+            def fragmented_read(fd: int, count: int) -> bytes:
+                nonlocal fragments
+                fragments += 1
+                return original_read(fd, min(count, 3))
+
+            os.read = fragmented_read
+            try:
+                require(load_validator().SOURCE_MARKER == "reviewed",
+                        "generation transport fragmented pinned source positive failed")
+            finally:
+                os.read = original_read
+            require(fragments > 2, "generation transport fragmented read fixture was inert")
+
+            for label, injected, expected in (
+                ("premature EOF", lambda *_args: b"",
+                 "generation evidence transport validator source changed during read"),
+                ("nonbytes read", lambda *_args: "PRIVATE_GENERATION_READ_CANARY",
+                 "generation evidence transport validator source read type invalid"),
+            ):
+                os.read = injected
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == expected,
+                                "generation transport " + label + " wrong rejection")
+                    else:
+                        raise Fail("generation transport accepted " + label)
+                finally:
+                    os.read = original_read
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 setattr(os, flag, 0)
@@ -243,7 +277,7 @@ def prove_pinned_validator_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation transport validator importer pinned against writable/hardlink/parent swap")
+    print("PASS: generation transport pinned importer rejects invalid FDs, EOF, nonbytes, hardlink and swap; fragmented read works")
 
 
 
