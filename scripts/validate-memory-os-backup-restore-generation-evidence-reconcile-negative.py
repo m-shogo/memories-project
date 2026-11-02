@@ -362,7 +362,7 @@ def prove_pinned_reconciler_import() -> None:
                 else:
                     raise Fail("empty generation reconciler source accepted")
             finally:
-                source.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+                source.write_text("SOURCE_MARKER = 'reviewed'" + chr(10), encoding="utf-8")
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler source not restored after empty-file negative")
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
