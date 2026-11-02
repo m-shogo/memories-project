@@ -36,7 +36,8 @@ def require_validator_identity() -> None:
 def pinned_validator_source() -> bytes:
     """Read reviewed generation-binding validator bytes from owned no-follow FDs."""
     require_validator_identity()
-    require(all(hasattr(os, flag) for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    require(all(type(getattr(os, flag, None)) is int and getattr(os, flag) > 0
+                for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
             "generation-binding transport pinned import unavailable")
     owned: list[int] = []
     try:
@@ -149,6 +150,20 @@ def prove_pinned_validator_import() -> None:
         try:
             require(load_validator().SOURCE_MARKER == "reviewed",
                     "generation-binding transport pinned import positive control failed")
+            for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
+                original_flag = getattr(os, flag)
+                for invalid in (0, False, "inert"):
+                    setattr(os, flag, invalid)
+                    try:
+                        try:
+                            load_validator()
+                        except Fail as exc:
+                            require(str(exc) == "generation-binding transport pinned import unavailable",
+                                    "generation-binding transport invalid " + flag + " wrong rejection")
+                        else:
+                            raise Fail("generation-binding transport accepted invalid " + flag)
+                    finally:
+                        setattr(os, flag, original_flag)
             source.chmod(0o666)
             try:
                 load_validator()
