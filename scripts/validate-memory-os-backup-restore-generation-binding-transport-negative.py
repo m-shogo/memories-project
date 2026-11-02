@@ -107,7 +107,7 @@ def pinned_validator_source() -> bytes:
         require(identity(VALIDATOR.stat()) == identity(after),
                 "generation-binding transport pathname changed during read")
         return source
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("generation-binding transport pinned source unreadable") from None
     finally:
         primary = sys.exc_info()[0] is not None
@@ -231,6 +231,23 @@ def prove_pinned_validator_import() -> None:
                         "generation-binding descriptor close ownership drift")
 
             original_read = os.read
+            for failure_type in (OSError, ValueError, TypeError):
+                def private_read_failure(*_args):
+                    raise failure_type("PRIVATE_BINDING_TRANSPORT_READ_CANARY")
+
+                os.read = private_read_failure
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == "generation-binding transport pinned source unreadable"
+                                and exc.__suppress_context__
+                                and "PRIVATE_BINDING_TRANSPORT_READ_CANARY" not in str(exc),
+                                "generation-binding transport private read diagnostic drift")
+                    else:
+                        raise Fail("generation-binding transport accepted private read failure")
+                finally:
+                    os.read = original_read
             fragments = 0
 
             def fragmented_read(fd: int, count: int) -> bytes:
