@@ -612,6 +612,55 @@ def prove_atomic_parent_swap_inside_replace(reconciler: object) -> None:
     print("PASS: recovery objective FD replacement refuses detached parent success")
 
 
+
+def prove_transaction_detached_parent_rollback_incomplete(reconciler: object) -> None:
+    """A postcommit detached parent must not be reported as rolled back."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        parent = path.parent
+        moved = parent.with_name(parent.name + "-transaction-held")
+        canary_parent = reconciler.ROOT / "objective-transaction-swap-canary"
+        canary_parent.mkdir()
+        canary = canary_parent / path.name
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_TRANSACTION_SWAP_CANARY")
+        original_replace = reconciler.os.replace
+        reached = []
+
+        def swap_first_replace(source, destination, **kwargs):
+            if not reached:
+                parent.rename(moved)
+                parent.symlink_to(canary_parent, target_is_directory=True)
+                reached.append(True)
+            return original_replace(source, destination, **kwargs)
+
+        reconciler.os.replace = swap_first_replace
+        try:
+            expect_domain_fail(
+                "recovery objective transaction detached-parent rollback",
+                reconciler.main,
+                reconciler.Fail,
+                "recovery objective reconcile transaction failed (Fail); rollback incomplete",
+            )
+        finally:
+            reconciler.os.replace = original_replace
+            residue_during_swap = list(moved.glob(f".{path.name}.*.tmp"))
+            if parent.is_symlink():
+                parent.unlink()
+            if moved.exists():
+                moved.rename(parent)
+            # Only the disposable fixture may be restored after an injected
+            # postcommit failure. No real recovery authority is touched.
+            path.write_bytes(original)
+
+        require(reached == [True] and not residue_during_swap,
+                "transaction detached-parent race not reached or staged residue remained")
+        require(canary.read_bytes() == b"PRIVATE_OBJECTIVE_TRANSACTION_SWAP_CANARY"
+                and path.read_bytes() == original,
+                "transaction detached-parent rollback changed canary or fixture")
+    print("PASS: recovery objective detached-parent transaction reports rollback incomplete")
+
+
 def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
     """Malformed mkstemp descriptors must not be used or closed as owned FDs."""
     with isolated_authorities(reconciler):
@@ -1627,6 +1676,7 @@ def main() -> int:
     prove_atomic_parent_swap_during_stage(reconciler)
     prove_atomic_parent_swap_cleanup_on_replace_error(reconciler)
     prove_atomic_parent_swap_inside_replace(reconciler)
+    prove_transaction_detached_parent_rollback_incomplete(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)
