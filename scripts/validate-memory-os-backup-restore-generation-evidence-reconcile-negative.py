@@ -63,9 +63,14 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
     )
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
-        fd = os.open(ROOT, flags)
+        root_fd = os.open(ROOT, flags)
     except OSError as exc:
         raise Fail(f"reconcile negative cannot pin repository root: {exc}") from exc
+    # Never claim ownership of a malformed acquired descriptor. In particular,
+    # bool is an int subclass and must not be passed to cleanup as fd 0/1.
+    require(type(root_fd) is int and root_fd >= 0,
+            "reconcile negative temp directory descriptor invalid")
+    fd = root_fd
     try:
         root_entry = ROOT.lstat()
         root_open = os.fstat(fd)
@@ -80,8 +85,11 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
             require(cursor.is_dir() and not cursor.is_symlink(),
                     "reconcile negative temp ancestor missing or symlinked")
             next_fd = os.open(part, flags, dir_fd=fd)
-            os.close(fd)
+            require(type(next_fd) is int and next_fd >= 0,
+                    "reconcile negative temp directory descriptor invalid")
+            previous_fd = fd
             fd = next_fd
+            os.close(previous_fd)
             entry = cursor.lstat()
             opened = os.fstat(fd)
             require(
@@ -178,6 +186,53 @@ def prove_inert_fixture_flags_rejected() -> None:
             finally:
                 setattr(os, flag, original)
     print("PASS: generation reconcile fixture directory inert safety flags rejected")
+
+
+def prove_invalid_fixture_descriptor_rejected() -> None:
+    """Only validated acquired FDs may enter the fixture cleanup ownership set."""
+    before = {p.name for p in TMP_PARENT.iterdir()}
+    acquisition_count = 1 + len(TMP_PARENT.relative_to(ROOT).parts)
+    for ordinal in range(1, acquisition_count + 1):
+        for invalid in (None, True, -1, "7"):
+            original_open, original_close = os.open, os.close
+            acquired: list[int] = []
+            closed: list[int] = []
+            calls = 0
+
+            def invalid_open(path, flags, *args, **kwargs):
+                nonlocal calls
+                calls += 1
+                if calls == ordinal:
+                    return invalid
+                descriptor = original_open(path, flags, *args, **kwargs)
+                acquired.append(descriptor)
+                return descriptor
+
+            def observe_close(descriptor: int) -> None:
+                closed.append(descriptor)
+                original_close(descriptor)
+
+            os.open, os.close = invalid_open, observe_close
+            try:
+                try:
+                    guarded_temporary_directory(
+                        prefix=".tmp-generation-invalid-fd-must-not-create-",
+                        parent=TMP_PARENT,
+                    )
+                except Fail as exc:
+                    require(str(exc) == "reconcile negative temp directory descriptor invalid",
+                            "generation fixture malformed FD wrong rejection")
+                else:
+                    raise Fail("generation fixture accepted malformed acquired FD")
+            finally:
+                os.open, os.close = original_open, original_close
+            require(calls == ordinal,
+                    "generation fixture malformed FD acquisition order drift")
+            require(closed == acquired,
+                    "generation fixture malformed FD ownership cleanup drift")
+    require({p.name for p in TMP_PARENT.iterdir()} == before,
+            "generation fixture malformed FD created unexpected child")
+    print("PASS: generation reconcile fixture rejects malformed acquired FDs")
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
@@ -1158,6 +1213,7 @@ def main() -> int:
                 "reconcile negative symlinked parent created a child")
     print("PASS: reconcile negative temp parent symlink rejected before creation")
     prove_inert_fixture_flags_rejected()
+    prove_invalid_fixture_descriptor_rejected()
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_pinned_reconciler_import()
