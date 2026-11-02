@@ -392,30 +392,37 @@ def prove_parent_swap_during_mkdir_rejected() -> None:
 
 
 def prove_child_substitution_before_cleanup_rejected() -> None:
-    # An owned temporary child must not be removed after its name is
-    # substituted, even if the replacement points at another directory.
+    # Never remove a substituted child. An independent body failure must also
+    # survive the intentional cleanup identity rejection without being masked.
     with guarded_temporary_directory(prefix=".tmp-generation-evidence-child-control-", parent=TMP_PARENT) as raw:
         sandbox = Path(raw)
-        replacement = sandbox / "unowned-replacement"
-        replacement.mkdir()
-        parked = sandbox / "original-owned-child"
-        try:
-            with guarded_temporary_directory(prefix=".tmp-generation-evidence-child-identity-", parent=sandbox) as inner:
-                child = Path(inner)
-                child.rename(parked)
-                child.symlink_to(replacement, target_is_directory=True)
-        except Fail as exc:
-            require(str(exc) == "reconcile negative temp child identity drift before cleanup",
-                    f"reconcile negative substituted child rejected at wrong boundary: {exc}")
-        else:
-            raise Fail("reconcile negative substituted child cleanup accepted")
-        require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
-                "reconcile negative substituted child proof did not preserve isolated fixtures")
-        require(not list(replacement.iterdir()),
-                "reconcile negative substituted child cleanup touched unowned replacement")
+        for with_primary in (False, True):
+            label = "primary" if with_primary else "standalone"
+            replacement = sandbox / ("unowned-replacement-" + label)
+            replacement.mkdir()
+            parked = sandbox / ("original-owned-child-" + label)
+            try:
+                with guarded_temporary_directory(prefix=".tmp-generation-evidence-child-identity-", parent=sandbox) as inner:
+                    child = Path(inner)
+                    child.rename(parked)
+                    child.symlink_to(replacement, target_is_directory=True)
+                    if with_primary:
+                        raise Fail("PRIMARY_GENERATION_SUBSTITUTED_CHILD_FAILURE")
+            except Fail as exc:
+                expected = ("PRIMARY_GENERATION_SUBSTITUTED_CHILD_FAILURE"
+                            if with_primary else
+                            "reconcile negative temp child identity drift before cleanup")
+                require(str(exc) == expected,
+                        f"reconcile negative substituted child rejected at wrong boundary: {exc}")
+            else:
+                raise Fail("reconcile negative substituted child cleanup accepted")
+            require(child.is_symlink() and parked.is_dir() and replacement.is_dir(),
+                    "reconcile negative substituted child proof did not preserve isolated fixtures")
+            require(not list(replacement.iterdir()),
+                    "reconcile negative substituted child cleanup touched unowned replacement")
         # The outer pinned fixture owns the whole sandbox and safely removes
-        # the intentionally retained substituted link and original child.
-    print("PASS: reconcile negative substituted child inode rejects cleanup without deleting replacement")
+        # both intentionally retained substituted links and original children.
+    print("PASS: reconcile negative substituted child rejects cleanup and preserves primary failure")
 
 
 def mode(path: Path) -> int:
