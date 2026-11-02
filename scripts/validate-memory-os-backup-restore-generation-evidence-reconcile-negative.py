@@ -505,7 +505,7 @@ def pinned_reconciler_source() -> bytes:
         require(identity(RECONCILER.stat()) == identity(after),
                 "reconciler pathname changed during read")
         return source
-    except OSError:
+    except (OSError, ValueError, TypeError):
         raise Fail("generation evidence reconciler pinned source unreadable") from None
     finally:
         primary = sys.exc_info()[0] is not None
@@ -641,24 +641,25 @@ def prove_pinned_reconciler_import() -> None:
                     "generation reconciler source not restored after empty-file negative")
             original_read = os.read
 
-            def private_read_failure(*_args):
-                raise OSError("PRIVATE_RECONCILER_SOURCE_READ_CANARY")
+            for failure_type in (OSError, ValueError, TypeError):
+                def private_read_failure(*_args):
+                    raise failure_type("PRIVATE_RECONCILER_SOURCE_READ_CANARY")
 
-            os.read = private_read_failure
-            try:
+                os.read = private_read_failure
                 try:
-                    load_reconciler()
-                except Fail as exc:
-                    require(str(exc) == "generation evidence reconciler pinned source unreadable",
-                            "private generation reconciler read wrong rejection")
-                    require("PRIVATE_RECONCILER_SOURCE_READ_CANARY" not in str(exc),
-                            "private generation reconciler read diagnostic leaked")
-                    require(exc.__suppress_context__,
-                            "private generation reconciler read context exposed")
-                else:
-                    raise Fail("private generation reconciler read error accepted")
-            finally:
-                os.read = original_read
+                    try:
+                        load_reconciler()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence reconciler pinned source unreadable",
+                                "private generation reconciler read wrong rejection")
+                        require("PRIVATE_RECONCILER_SOURCE_READ_CANARY" not in str(exc),
+                                "private generation reconciler read diagnostic leaked")
+                        require(exc.__suppress_context__,
+                                "private generation reconciler read context exposed")
+                    else:
+                        raise Fail("private generation reconciler read error accepted")
+                finally:
+                    os.read = original_read
             # Exercise the bounded reader's transport contract, not merely its
             # metadata preflight. A short read is valid; early EOF, nonbytes,
             # and an over-budget response must fail without importing source.
