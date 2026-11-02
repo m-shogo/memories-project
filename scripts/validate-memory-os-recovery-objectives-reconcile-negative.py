@@ -839,9 +839,20 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
                 and not any(key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
                             for key in child_env),
                 "recovery objective reconcile subprocess environment isolation drift")
-        require(args in ([sys.executable, str(reconciler.VALIDATOR)],
-                         [sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
+        expected_bootstrap = (
+            "import os, sys\n"
+            "path = sys.argv[1]\n"
+            "sys.path.insert(0, os.path.dirname(path))\n"
+            "sys.argv[:] = [path]\n"
+            "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\n"
+            "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\n"
+        )
+        require(args in ([sys.executable, "-c", expected_bootstrap, str(reconciler.VALIDATOR)],
+                         [sys.executable, "-c", expected_bootstrap, str(reconciler.OPERABILITY_VALIDATOR)]),
                 "recovery objective reconcile subprocess command drift")
+        require(type(kwargs.get("input")) is bytes
+                and kwargs["input"] == Path(args[3]).read_bytes(),
+                "recovery objective reconcile subprocess pinned source drift")
         require(kwargs.get("cwd") == reconciler.ROOT
                 and kwargs.get("stdout") is subprocess.DEVNULL
                 and kwargs.get("stderr") is subprocess.DEVNULL
@@ -906,6 +917,59 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
                 os.environ[key] = previous
     print("PASS: recovery objective reconcile post-validation transport private, bounded and environment-isolated (8 negatives)")
 
+
+
+
+def prove_pinned_post_validator_execution(reconciler: object) -> None:
+    """A parent swap after capture must execute only reviewed child bytes."""
+    original_root = reconciler.ROOT
+    original_validator = reconciler.VALIDATOR
+    original_run = reconciler.subprocess.run
+    with tempfile.TemporaryDirectory(prefix=".tmp-objective-post-pin-", dir=TMP_PARENT) as tmpdir:
+        root = Path(tmpdir)
+        parent = root / "scripts"
+        parent.mkdir()
+        reviewed = parent / reconciler.VALIDATOR_REL.name
+        reviewed.write_text(
+            "from pathlib import Path\nPath('executed.txt').write_text('reviewed')\n",
+            encoding="utf-8",
+        )
+        redirected = root / "redirected"
+        redirected.mkdir()
+        canary = redirected / reviewed.name
+        canary.write_text(
+            "from pathlib import Path\nPath('executed.txt').write_text('redirected')\n",
+            encoding="utf-8",
+        )
+        parked = root / "parked-scripts"
+        swapped = False
+
+        def swap_before_child(argv, **kwargs):
+            nonlocal swapped
+            require(not swapped and kwargs.get("input") == reviewed_source,
+                    "recovery objective pinned child bytes drift")
+            swapped = True
+            parent.rename(parked)
+            parent.symlink_to(redirected, target_is_directory=True)
+            return original_run(argv, **kwargs)
+
+        reviewed_source = reviewed.read_bytes()
+        reconciler.ROOT, reconciler.VALIDATOR = root, reviewed
+        reconciler.subprocess.run = swap_before_child
+        try:
+            reconciler.run_validator(reviewed, "recovery objective validator")
+            require(swapped and (root / "executed.txt").read_text(encoding="utf-8") == "reviewed",
+                    "recovery objective post-validator executed swapped child source")
+            require(canary.read_text(encoding="utf-8").startswith("from pathlib"),
+                    "recovery objective post-validator redirected canary mutated")
+        finally:
+            reconciler.subprocess.run = original_run
+            reconciler.ROOT, reconciler.VALIDATOR = original_root, original_validator
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: recovery objective post-validator executes pinned bytes after parent swap")
 
 
 def prove_strict_objective_json(reconciler: object) -> None:
@@ -1090,6 +1154,7 @@ def main() -> int:
     prove_private_authority_path_diagnostics(reconciler)
     prove_private_delegated_registry_errors(reconciler)
     prove_private_post_reconcile_transport(reconciler)
+    prove_pinned_post_validator_execution(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
