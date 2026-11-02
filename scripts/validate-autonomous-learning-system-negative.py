@@ -10721,6 +10721,8 @@ def prove_prewrite_private_error_redaction(source_root: Path) -> int:
          "PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed\n"),
         ("value", ValueError(canary),
          "PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed\n"),
+        ("runtime", RuntimeError(canary),
+         "PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed\n"),
         ("type", TypeError(canary),
          "PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed\n"),
         ("reviewed domain", audit_failure("prewrite path must be a safe repository-relative path"),
