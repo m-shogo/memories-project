@@ -9396,14 +9396,20 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
                 continue
             end = next(
                 (i for i in range(index + 1, len(lines))
-                 if re.search(r"\bgit push origin HEAD:so\b", lines[i])),
+                 if re.match(
+                     r"^\s*(?:if\s+)?git push origin HEAD:so(?:\s*;|\s*$)",
+                     lines[i],
+                 )),
                 None,
             )
             if end is None:
                 raise RuntimeError("prewrite rebase publisher missing push boundary")
-            segment = "\n".join(lines[index + 1:end])
-            statuses.append(bool(re.search(
-                r"(?m)^\s*verify_critical_source\s*$", segment
+            # A marker after an early exit or inside a dead conditional is not
+            # an immediately executed post-rebase source guard. This is a
+            # conservative lexical inventory, not shell control-flow proof.
+            next_line = lines[index + 1] if index + 1 < end else ""
+            statuses.append(bool(re.fullmatch(
+                r"\s*verify_critical_source\s*", next_line
             )))
         return tuple(statuses)
 
@@ -9440,6 +9446,9 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         ("comment-only guard", "git pull --rebase origin so\n# verify_critical_source\nif git push origin HEAD:so; then", (False,)),
         ("guard before rebase", "verify_critical_source\ngit pull --rebase origin so\nif git push origin HEAD:so; then", (False,)),
         ("missing guard", "git pull --rebase origin so\nif git push origin HEAD:so; then", (False,)),
+        ("guard after early exit", "git pull --rebase origin so\nexit 0\nverify_critical_source\nif git push origin HEAD:so; then", (False,)),
+        ("guard in dead conditional", "git pull --rebase origin so\nif false; then\nverify_critical_source\nfi\nif git push origin HEAD:so; then", (False,)),
+        ("comment-only push boundary", "git pull --rebase origin so\nverify_critical_source\n# git push origin HEAD:so\nif git push origin HEAD:so; then", (True,)),
     ):
         if rebase_guard_status(fixture) != reviewed:
             raise RuntimeError("prewrite rebase guard lexical negative drift: " + label)
