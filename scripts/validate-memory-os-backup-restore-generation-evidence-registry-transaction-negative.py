@@ -189,6 +189,49 @@ def prove_pinned_writer_import() -> None:
                             "generation transaction invalid FD fixture acquisition order drift")
                     require(closed == list(reversed(acquired)),
                             "generation transaction invalid FD ownership/cleanup drift")
+            original_read = os.read
+            fragments = 0
+
+            def fragmented_read(fd: int, count: int) -> bytes:
+                nonlocal fragments
+                fragments += 1
+                return original_read(fd, min(count, 3))
+
+            os.read = fragmented_read
+            try:
+                require(load_writer().SOURCE_MARKER == "reviewed",
+                        "generation transaction fragmented writer source positive failed")
+            finally:
+                os.read = original_read
+            require(fragments > 2, "generation transaction fragmented writer fixture inert")
+
+            def private_read_failure(*_args: Any) -> bytes:
+                raise OSError("PRIVATE_GENERATION_TRANSACTION_READ_CANARY")
+
+            for label, injected, expected in (
+                ("premature EOF", lambda *_args: b"",
+                 "generation evidence transaction writer source changed during read"),
+                ("nonbytes read", lambda *_args: "PRIVATE_GENERATION_TRANSACTION_READ_CANARY",
+                 "generation evidence transaction writer read type invalid"),
+                ("private read OSError", private_read_failure,
+                 "generation evidence transaction writer pinned source unreadable"),
+            ):
+                os.read = injected
+                try:
+                    try:
+                        load_writer()
+                    except Fail as exc:
+                        require(str(exc) == expected,
+                                "generation transaction " + label + " wrong rejection")
+                        require("PRIVATE_GENERATION_TRANSACTION_READ_CANARY" not in str(exc),
+                                "generation transaction private read diagnostic leaked")
+                        if label == "private read OSError":
+                            require(exc.__suppress_context__,
+                                    "generation transaction private read context exposed")
+                    else:
+                        raise Fail("generation transaction accepted " + label)
+                finally:
+                    os.read = original_read
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 setattr(os, flag, 0)
@@ -294,7 +337,7 @@ def prove_pinned_writer_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation transaction writer pinned source rejects hardlinks, mid-read chmod and swaps")
+    print("PASS: generation transaction pinned writer import rejects EOF, nonbytes, private read errors, hardlinks, chmod and swaps; fragmented reads work")
 
 
 
