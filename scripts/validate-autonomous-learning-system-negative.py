@@ -9800,7 +9800,8 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
         if any(re.match(
                 r"^\s*(?:if\s+)?(?:!\s*)?(?:(?:builtin|command)\s+)?printf\s+-v\s+|"
                 r"^\s*(?:if\s+)?(?:!\s*)?(?:mapfile|readarray)(?:\s|$)|"
-                r"^\s*(?:if\s+)?(?:!\s*)?(?:declare|typeset|local)\s+-[A-Za-z]*n(?:\s|$)|"
+                r"^\s*(?:if\s+)?(?:!\s*)?(?:(?:builtin|command)\s+)?(?:declare|typeset|local|let)\s+|"
+                r"^\s*(?:if\s+)?(?:!\s*)?\(\(|"
                 r"^\s*(?:if\s+)?(?:!\s*)?(?:source|\.)\s+",
                 line,
         ) for line in lines):
@@ -9869,6 +9870,26 @@ def prove_saturation_source_sha_provenance(source_root: Path) -> None:
             binding, binding + "          typeset -n alias=source_sha\n          alias=changed\n", 1)),
         ("local nameref source rebind", body.replace(
             binding, binding + "          local -n alias=source_sha\n          alias=changed\n", 1)),
+        ("declare global source rebind", body.replace(
+            binding, binding + "          declare -g source_sha=changed\n", 1)),
+        ("declare delimiter source rebind", body.replace(
+            binding, binding + "          declare -- source_sha=changed\n", 1)),
+        ("typeset global github SHA", body.replace(
+            binding, binding + "          typeset -g GITHUB_SHA=changed\n", 1)),
+        ("local source rebind", body.replace(
+            binding, binding + "          local source_sha=changed\n", 1)),
+        ("builtin declare source rebind", body.replace(
+            binding, binding + "          builtin declare -g source_sha=changed\n", 1)),
+        ("command typeset source rebind", body.replace(
+            binding, binding + "          command typeset -g source_sha=changed\n", 1)),
+        ("arithmetic source assignment", body.replace(
+            binding, binding + "          ((source_sha=1))\n", 1)),
+        ("if arithmetic source assignment", body.replace(
+            binding, binding + "          if ((source_sha=1)); then :; fi\n", 1)),
+        ("let source assignment", body.replace(
+            binding, binding + "          let 'source_sha=1'\n", 1)),
+        ("if negated let source assignment", body.replace(
+            binding, binding + "          if ! let 'source_sha=1'; then :; fi\n", 1)),
         ("source dynamic shell", body.replace(
             binding, binding + "          source ./unreviewed.sh\n", 1)),
         ("dot source dynamic shell", body.replace(
