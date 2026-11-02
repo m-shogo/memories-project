@@ -7277,12 +7277,24 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         *("- " + workflow for workflow in workflows),
         "Do not write until independent scoped review changes the precondition.",
     ]
+    def require_complete_prewrite_transcript(
+            result: subprocess.CompletedProcess[str],
+            expected: list[str], label: str) -> None:
+        # Normalized lines are insufficient: retain exact LF termination and
+        # reject malformed process/stream types before classifying evidence.
+        if (type(result) is not subprocess.CompletedProcess or
+                type(result.returncode) is not int or
+                type(result.stdout) is not str or type(result.stderr) is not str or
+                result.stderr or result.stdout != "\n".join(expected) + "\n"):
+            raise RuntimeError("prewrite CLI byte-exact transcript drift: " + label)
+
+    require_complete_prewrite_transcript(
+        risk, expected_known_risk_transcript, "known external dependency")
     # Reject a wrong audited path, hidden extra diagnostics or an altered
     # refusal advisory; a correct count alone is not an exact CLI transcript.
     if (risk.returncode != 2 or risk.stderr or len(counts) != 1 or
             counts[0] != len(workflows) or not workflows or
             workflows != sorted(set(workflows)) or
-            lines != expected_known_risk_transcript or
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
     # Audit the shared entrypoint on the real checked-out workflow tree.
@@ -7337,8 +7349,41 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         *("- " + workflow for workflow in entry_workflows),
         entry_advisory,
     ]
-    if entry_lines != expected_entry_transcript:
-        raise RuntimeError("prewrite entrypoint audit path/transcript drift")
+    require_complete_prewrite_transcript(
+        entry, expected_entry_transcript, "shared entrypoint")
+    for name, observed, expected in (
+        ("known external dependency", risk, expected_known_risk_transcript),
+        ("shared entrypoint", entry, expected_entry_transcript),
+    ):
+        canonical = "\n".join(expected) + "\n"
+        for mutation, forged in (
+            ("missing final LF", subprocess.CompletedProcess(
+                [], observed.returncode, canonical[:-1], "")),
+            ("CRLF", subprocess.CompletedProcess(
+                [], observed.returncode, canonical.replace("\n", "\r\n"), "")),
+            ("extra blank line", subprocess.CompletedProcess(
+                [], observed.returncode, canonical + "\n", "")),
+            ("wrong audited path", subprocess.CompletedProcess(
+                [], observed.returncode,
+                canonical.replace(expected[0], "prewrite direct path audit: scripts/other.py", 1), "")),
+            ("missing advisory", subprocess.CompletedProcess(
+                [], observed.returncode, "\n".join(expected[:-1]) + "\n", "")),
+            ("bool exit status", subprocess.CompletedProcess(
+                [], False, canonical, "")),
+            ("byte stdout", subprocess.CompletedProcess(
+                [], observed.returncode, canonical.encode("utf-8"), "")),
+            ("byte stderr", subprocess.CompletedProcess(
+                [], observed.returncode, canonical, b"")),
+            ("unexpected stderr", subprocess.CompletedProcess(
+                [], observed.returncode, canonical, "unreviewed")),
+        ):
+            try:
+                require_complete_prewrite_transcript(forged, expected, name)
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError(
+                    "prewrite byte-exact transcript mutation accepted: " + name + "/" + mutation)
     if ((entry_risk == "BOUNDED_DIRECT_MATCH_ONLY" and
          (entry.returncode != 0 or len(entry_workflows) > 12)) or
             (entry_risk == "BLOCKED_HIGH_FANOUT" and
