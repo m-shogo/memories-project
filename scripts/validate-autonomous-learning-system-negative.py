@@ -10329,6 +10329,99 @@ def prove_saturation_aggregate_source_binding(source_root: Path) -> None:
             raise RuntimeError("saturation aggregate mutation accepted: " + label)
 
 
+def prove_saturation_aggregate_shell_error_classes(source_root: Path) -> None:
+    """Execute the reviewed aggregate ancestry and critical checks in a mock.
+
+    Only the byte-exact reviewed Bash step is executed. No production
+    authority, real Git remote, publisher or reconciliation runs here.
+    """
+    import textwrap
+
+    path = source_root / ".github/workflows/controlled-saturation-repeatability.yml"
+    raw = path.read_bytes()
+    blob = hashlib.sha1(
+        b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw
+    ).hexdigest()
+    if blob != "1f4b20c0d27a494f1b6b34802f9a18de3568fad4":
+        raise RuntimeError("saturation aggregate shell reviewed source drift")
+    source = raw.decode("utf-8")
+    opening = "      - name: Reject mixed-source repeatability aggregate\n"
+    closing = (
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+    )
+    run_marker = "        run: |\n"
+    if (source.count(opening) != 1 or source.count(closing) != 1):
+        raise RuntimeError("saturation aggregate shell source step drift")
+    step = source.split(opening, 1)[1].split(closing, 1)[0]
+    if step.count(run_marker) != 1:
+        raise RuntimeError("saturation aggregate shell run boundary drift")
+    body = textwrap.dedent(step.split(run_marker, 1)[1])
+    if (body.count('if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then') != 1
+            or body.count('if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then') != 1
+            or body.count("exit 75") != 2):
+        raise RuntimeError("saturation aggregate shell guard drift")
+    prefix = """set -euo pipefail
+git() {
+  case "$1" in
+    merge-base)
+      test "$*" = 'merge-base --is-ancestor original HEAD' || return 70
+      return "$ANCESTRY_STATUS"
+      ;;
+    diff)
+      test "$#" -eq 21 && test "$2" = --quiet &&
+        test "$3" = original && test "$4" = HEAD && test "$5" = -- || return 70
+      return "$CRITICAL_STATUS"
+      ;;
+    *) return 70 ;;
+  esac
+}
+"""
+    suffix = "printf 'AGGREGATE\\n' >> \"$ACTION_LOG\"\n"
+
+    def execute(shell: str, ancestry: str, critical: str) -> tuple[int, bytes]:
+        with tempfile.TemporaryDirectory(prefix="learning-saturation-aggregate-") as tmp:
+            log = Path(tmp) / "aggregate.log"
+            result = subprocess.run(
+                ["bash", "--noprofile", "--norc", "-c", prefix + shell + suffix],
+                cwd=tmp,
+                env={"PATH": os.defpath, "HOME": tmp, "LANG": "C",
+                     "GITHUB_SHA": "original", "ANCESTRY_STATUS": ancestry,
+                     "CRITICAL_STATUS": critical, "ACTION_LOG": str(log)},
+                capture_output=True, text=True, check=False, timeout=5,
+            )
+            if type(result.returncode) is not int:
+                raise RuntimeError("saturation aggregate shell invalid exit status")
+            return result.returncode, log.read_bytes() if log.exists() else b""
+
+    for label, ancestry, critical, expected in (
+        ("same source", "0", "0", (0, b"AGGREGATE\n")),
+        ("divergent ancestry", "1", "0", (75, b"")),
+        ("ancestry Git error", "128", "0", (75, b"")),
+        ("critical drift", "0", "1", (75, b"")),
+        ("critical Git error", "0", "128", (75, b"")),
+    ):
+        if execute(body, ancestry, critical) != expected:
+            raise RuntimeError("saturation aggregate shell behavior drift: " + label)
+
+    mutants = (
+        ("ancestry bypass", body.replace(
+            'if ! git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then',
+            'if git merge-base --is-ancestor "$GITHUB_SHA" HEAD; then', 1),
+         "1", "0", (0, b"AGGREGATE\n")),
+        ("critical bypass", body.replace(
+            'if ! git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then',
+            'if git diff --quiet "$GITHUB_SHA" HEAD -- "${critical[@]}"; then', 1),
+         "0", "1", (0, b"AGGREGATE\n")),
+        ("false ancestry success", body.replace("exit 75", "exit 0", 1),
+         "1", "0", (0, b"")),
+        ("continued critical error", body.replace("exit 75", ":"),
+         "0", "128", (0, b"AGGREGATE\n")),
+    )
+    for label, mutant, ancestry, critical, unsafe in mutants:
+        if mutant == body or execute(mutant, ancestry, critical) != unsafe:
+            raise RuntimeError("saturation aggregate shell mutation drift: " + label)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -11030,6 +11123,7 @@ def main() -> int:
     prove_soak_precheck_shell_error_classes(source_root)
     prove_saturation_critical_path_array_binding(source_root)
     prove_saturation_aggregate_source_binding(source_root)
+    prove_saturation_aggregate_shell_error_classes(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
