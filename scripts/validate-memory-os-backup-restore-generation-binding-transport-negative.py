@@ -191,6 +191,45 @@ def prove_pinned_validator_import() -> None:
                             "generation-binding transport invalid FD fixture acquisition order drift")
                     require(closed == list(reversed(acquired)),
                             "generation-binding transport invalid FD ownership/cleanup drift")
+            # An owned descriptor may close successfully yet report a
+            # secondary failure. Prove private classification and that the
+            # original pinned-read failure wins a double-fault race.
+            for with_primary in (False, True):
+                original_close, original_read = os.close, os.read
+                close_count = 0
+                private_marker = "PRIVATE_BINDING_TRANSPORT_CLOSE_CANARY"
+
+                def injected_close(descriptor: int) -> None:
+                    nonlocal close_count
+                    close_count += 1
+                    original_close(descriptor)
+                    if close_count == 1:
+                        raise ValueError(private_marker)
+
+                os.close = injected_close
+                if with_primary:
+                    os.read = lambda *_args: b""
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        expected = (
+                            "generation-binding transport source changed during read"
+                            if with_primary else
+                            "generation-binding transport descriptor cleanup failed"
+                        )
+                        require(str(exc) == expected and private_marker not in str(exc),
+                                "generation-binding descriptor cleanup failure precedence drift")
+                        if not with_primary:
+                            require(exc.__suppress_context__,
+                                    "generation-binding descriptor cleanup context exposed")
+                    else:
+                        raise Fail("generation-binding descriptor close fault accepted")
+                finally:
+                    os.close, os.read = original_close, original_read
+                require(close_count == len(VALIDATOR_REL.parts) + 1,
+                        "generation-binding descriptor close ownership drift")
+
             original_read = os.read
             fragments = 0
 
