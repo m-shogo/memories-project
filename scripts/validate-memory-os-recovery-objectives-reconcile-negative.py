@@ -610,10 +610,24 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
     """Exercise the actual subprocess boundary with private synthetic canaries."""
     original_run = reconciler.subprocess.run
     marker = "PRIVATE_RECOVERY_OBJECTIVE_RECONCILE_SUBPROCESS_CANARY"
+    # Canary overrides must not reach the child, while an ordinary variable must.
+    injected = {
+        "PYTHONPATH": marker, "PYTHONHOME": marker,
+        "LD_PRELOAD": marker, "DYLD_INSERT_LIBRARIES": marker,
+        "GIT_CONFIG_COUNT": "1", "MEMORY_OS_SAFE_CONTROL": marker,
+    }
+    prior_env = {key: os.environ.get(key) for key in injected}
+    os.environ.update(injected)
     state: dict[str, object] = {"returncode": 0, "error": None}
     calls: list[tuple[str, ...]] = []
 
     def fake_run(args, **kwargs):
+        child_env = kwargs.get("env")
+        require(isinstance(child_env, dict)
+                and child_env.get("MEMORY_OS_SAFE_CONTROL") == marker
+                and not any(key.startswith(("PYTHON", "LD_", "DYLD_", "GIT_"))
+                            for key in child_env),
+                "recovery objective reconcile subprocess environment isolation drift")
         require(args in ([sys.executable, str(reconciler.VALIDATOR)],
                          [sys.executable, str(reconciler.OPERABILITY_VALIDATOR)]),
                 "recovery objective reconcile subprocess command drift")
@@ -643,6 +657,10 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
              "post-reconcile recovery objective validator unavailable"),
             ("unavailable", {"error": OSError(marker)},
              "post-reconcile recovery objective validator unavailable"),
+            ("invalid argument", {"error": ValueError(marker)},
+             "post-reconcile recovery objective validator unavailable"),
+            ("invalid type", {"error": TypeError(marker)},
+             "post-reconcile recovery objective validator unavailable"),
         )
         for label, change, expected in cases:
             state.update({"returncode": 0, "error": None})
@@ -666,7 +684,12 @@ def prove_private_post_reconcile_transport(reconciler: object) -> None:
                 "recovery objective reconcile subprocess multiplicity drift")
     finally:
         reconciler.subprocess.run = original_run
-    print("PASS: recovery objective reconcile post-validation transport private, bounded and source-pinned (5 negatives)")
+        for key, previous in prior_env.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
+    print("PASS: recovery objective reconcile post-validation transport private, bounded and environment-isolated (7 negatives)")
 
 
 
