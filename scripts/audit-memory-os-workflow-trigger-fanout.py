@@ -1630,8 +1630,14 @@ def main() -> int:
             return 2
         print("Direct matching alone is not permission or transitive closure proof.")
         return 0
-    except (OSError, UnicodeError, AuditFailure) as exc:
+    except AuditFailure as exc:
         print("PREWRITE TRIGGER AUDIT FAILED: " + str(exc), file=sys.stderr)
+        return 1
+    except (OSError, UnicodeError, ValueError, TypeError):
+        # Filesystem and decoder exceptions may embed private checkout paths.
+        # Only reviewed AuditFailure domains are safe for CLI diagnostics.
+        print("PREWRITE TRIGGER AUDIT FAILED: prewrite source inspection failed",
+              file=sys.stderr)
         return 1
 
 
