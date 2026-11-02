@@ -7202,8 +7202,13 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     ) for line in lines]
     counts = [int(match.group(1)) for match in reports if match is not None]
     workflows = [line[2:] for line in lines if line.startswith("- .github/workflows/")]
+    # A duplicated or reordered workflow identity is not an exact reviewed
+    # inventory, even if a forged reported count happens to match its length.
+    # Keep this known-external path as strict as the adjacent writer/entrypoint
+    # audit: count parity alone must not certify a complete source inventory.
     if (risk.returncode != 2 or risk.stderr or len(counts) != 1 or
             counts[0] != len(workflows) or not workflows or
+            workflows != sorted(set(workflows)) or
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
     # Audit the shared entrypoint on the real checked-out workflow tree.
