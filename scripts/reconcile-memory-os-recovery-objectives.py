@@ -233,9 +233,9 @@ def load(path: Path) -> dict[str, Any]:
     return value
 
 
-def pinned_writer_source() -> bytes:
+def pinned_reviewed_source(path: Path, relative: Path, field: str) -> bytes:
     """Bind reviewed writer bytes to owned directory/file descriptors, not a mutable path."""
-    require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
+    require_exact_repo_file(path, relative, field)
     require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
             "recovery objective writer pinned import platform unsafe")
     owned: list[int] = []
@@ -244,7 +244,7 @@ def pinned_writer_source() -> bytes:
         parent_fd = os.open(ROOT, directory_flags)
         require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
         owned.append(parent_fd)
-        for part in WRITER_REL.parts[:-1]:
+        for part in relative.parts[:-1]:
             parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
             require(type(parent_fd) is int and parent_fd >= 0, "writer directory descriptor invalid")
             owned.append(parent_fd)
@@ -255,7 +255,7 @@ def pinned_writer_source() -> bytes:
         require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
                     for item in before_parents), "writer parent directory unsafe")
         source_fd = os.open(
-            WRITER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
             dir_fd=parent_fd,
         )
         require(type(source_fd) is int and source_fd >= 0, "writer source descriptor invalid")
@@ -276,7 +276,7 @@ def pinned_writer_source() -> bytes:
             remaining -= len(chunk)
         source = b"".join(chunks)
         after = os.fstat(source_fd)
-        leaf = os.stat(WRITER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        leaf = os.stat(relative.name, dir_fd=parent_fd, follow_symlinks=False)
         identity = lambda item: (
             item.st_dev, item.st_ino, item.st_mode, item.st_size,
             item.st_mtime_ns, item.st_ctime_ns
@@ -287,14 +287,14 @@ def pinned_writer_source() -> bytes:
                 "writer source changed during read")
         for index, fd in enumerate(owned[:-1]):
             current = os.fstat(fd)
-            lexical = ROOT if index == 0 else ROOT.joinpath(*WRITER_REL.parts[:index])
+            lexical = ROOT if index == 0 else ROOT.joinpath(*relative.parts[:index])
             visible = os.lstat(lexical)
             require(stat.S_ISDIR(visible.st_mode)
                     and parent_identity(before_parents[index])
                     == parent_identity(current) == parent_identity(visible),
                     "writer parent changed during read")
-        require_exact_repo_file(WRITER, WRITER_REL, "recovery objective writer")
-        require(identity(WRITER.stat()) == identity(after),
+        require_exact_repo_file(path, relative, field)
+        require(identity(path.stat()) == identity(after),
                 "writer pathname changed during read")
         return source
     finally:
@@ -308,6 +308,10 @@ def pinned_writer_source() -> bytes:
         if failed and not primary:
             raise Fail("writer descriptor cleanup failed") from None
 
+
+
+def pinned_writer_source() -> bytes:
+    return pinned_reviewed_source(WRITER, WRITER_REL, "recovery objective writer")
 
 def load_writer():
     """Execute only the canonical writer's pinned bytes with private diagnostics."""
@@ -345,11 +349,21 @@ def replace_single_prefixed(values: list[Any], prefix: str, value: str) -> None:
 def run_validator(path: Path, label: str) -> None:
     """Run only reviewed validators with bounded, private failure classes."""
     if path == VALIDATOR and label == "recovery objective validator":
-        require_exact_repo_file(path, VALIDATOR_REL, "recovery objective validator")
+        relative = VALIDATOR_REL
     elif path == OPERABILITY_VALIDATOR and label == "aggregate operability validator":
-        require_exact_repo_file(path, OPERABILITY_VALIDATOR_REL, "operability validator")
+        relative = OPERABILITY_VALIDATOR_REL
     else:
         raise Fail("unreviewed recovery objective post-reconcile validator")
+    # Bind executed child bytes to the reviewed source, not a second path open.
+    source = pinned_reviewed_source(path, relative, label)
+    bootstrap = (
+        "import os, sys\\n"
+        "path = sys.argv[1]\\n"
+        "sys.path.insert(0, os.path.dirname(path))\\n"
+        "sys.argv[:] = [path]\\n"
+        "scope = {'__name__': '__main__', '__file__': path, '__package__': None, '__spec__': None}\\n"
+        "exec(compile(sys.stdin.buffer.read(), path, 'exec'), scope)\\n"
+    )
     # Child validators must not inherit interpreter, loader or Git overrides.
     # Preserve ordinary environment variables for expected CI/runtime behavior.
     child_env = {
@@ -358,7 +372,8 @@ def run_validator(path: Path, label: str) -> None:
     }
     try:
         completed = subprocess.run(
-            [sys.executable, str(path)],
+            [sys.executable, "-c", bootstrap, str(path)],
+            input=source,
             cwd=ROOT,
             env=child_env,
             stdout=subprocess.DEVNULL,
