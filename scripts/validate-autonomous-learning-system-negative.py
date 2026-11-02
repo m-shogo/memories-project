@@ -7321,6 +7321,19 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
             real_workflows != sorted(set(real_workflows))):
         raise RuntimeError("real prewrite audit source direct CI count/identity mismatch")
     real_risk = real_reports[0].group(1)
+    real_advisory = (
+        "Direct matching alone is not permission or transitive closure proof."
+        if real_risk == "BOUNDED_DIRECT_MATCH_ONLY"
+        else "Do not write until independent scoped review changes the precondition."
+    )
+    expected_real_transcript = [
+        "prewrite direct path audit: scripts/audit-memory-os-workflow-trigger-fanout.py",
+        f"risk: {real_risk}; matched workflow count: {len(real_workflows)}",
+        *("- " + workflow for workflow in real_workflows),
+        real_advisory,
+    ]
+    if real_lines != expected_real_transcript:
+        raise RuntimeError("real prewrite strict audit path/transcript drift")
     if not real_workflows:
         if (real_risk != "BLOCKED_NO_DIRECT_PUSH_PR_MATCH" or
                 real_strict.returncode != 2):
