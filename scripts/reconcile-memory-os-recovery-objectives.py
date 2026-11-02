@@ -291,7 +291,8 @@ def run_validator(path: Path, label: str) -> None:
         )
     except (OSError, ValueError, TypeError, subprocess.TimeoutExpired):
         raise Fail(f"post-reconcile {label} unavailable") from None
-    require(type(completed.returncode) is int and completed.returncode == 0,
+    require(isinstance(completed, subprocess.CompletedProcess)
+            and type(completed.returncode) is int and completed.returncode == 0,
             f"post-reconcile {label} failed without exposing subprocess output")
 
 
