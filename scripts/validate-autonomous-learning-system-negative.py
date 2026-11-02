@@ -9494,7 +9494,7 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
             # that step cannot prove the earlier rebase-to-push guard boundary.
             step_end = next(
                 (i for i in range(index + 1, len(lines))
-                 if re.match(r"^      - \S", lines[i])
+                 if re.match(r"^      -(?:\s|$)", lines[i])
                  or re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])),
                 len(lines),
             )
@@ -9546,6 +9546,12 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     ) != (True,):
         raise RuntimeError("prewrite rebase quoted same-step positive drift")
 
+    if rebase_guard_status(
+        "      -\n        run: |\n          git pull --rebase origin so\n"
+        "          verify_critical_source\n          if git push origin HEAD:so; then"
+    ) != (True,):
+        raise RuntimeError("prewrite rebase bare dash same-step positive drift")
+
     expected = (
         ("controlled-saturation-repeatability.yml", (True,)),
         ("sustained-local-soak.yml", (False,)),
@@ -9585,6 +9591,8 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         ("push in quoted run step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - \"run\": |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
         ("push in quoted uses step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - 'uses': actions/checkout@v4\n          verify_critical_source\n          if git push origin HEAD:so; then"),
         ("push in flow-mapping step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - {run: echo hello}\n          verify_critical_source\n          if git push origin HEAD:so; then"),
+        ("push in bare dash step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      -\n        run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
+        ("push in spaced dash step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      -  run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
         ("push in next YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  second:\n    steps:\n      if git push origin HEAD:so; then"),
     ):
         try:
