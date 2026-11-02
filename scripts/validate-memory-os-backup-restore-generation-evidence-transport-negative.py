@@ -37,7 +37,8 @@ def require_validator_identity() -> None:
 def pinned_validator_source() -> bytes:
     """Bind executable validator bytes to owned no-follow directory/file descriptors."""
     require_validator_identity()
-    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+    require(all(type(getattr(os, name, None)) is int and getattr(os, name) > 0
+                for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
             "generation evidence transport pinned validator import unavailable")
     owned: list[int] = []
     try:
@@ -150,6 +151,19 @@ def prove_pinned_validator_import() -> None:
         try:
             require(load_validator().SOURCE_MARKER == "reviewed",
                     "generation transport pinned validator positive control failed")
+            for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
+                original_flag = getattr(os, flag)
+                setattr(os, flag, 0)
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence transport pinned validator import unavailable",
+                                "generation transport zeroed " + flag + " wrong rejection")
+                    else:
+                        raise Fail("generation transport accepted zeroed " + flag)
+                finally:
+                    setattr(os, flag, original_flag)
             source.chmod(0o666)
             try:
                 load_validator()
