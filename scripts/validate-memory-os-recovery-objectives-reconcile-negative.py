@@ -412,6 +412,63 @@ def prove_atomic_target_identity_guards(reconciler: object) -> None:
     print("PASS: recovery objective atomic hardlink/mode/precommit drift negatives")
 
 
+def prove_atomic_parent_swap_before_commit(reconciler: object) -> None:
+    """A parent swap during staging must not reach the replacement syscall."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        parent = path.parent
+        moved = parent.with_name(parent.name + "-held")
+        canary_parent = reconciler.ROOT / "objective-parent-swap-canary"
+        canary_parent.mkdir()
+        canary = canary_parent / path.name
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_PARENT_SWAP_CANARY")
+        original_fsync = reconciler.os.fsync
+        original_replace = reconciler.os.replace
+        replace_calls = []
+        swapped = []
+
+        def swap_after_stage(fd):
+            original_fsync(fd)
+            parent.rename(moved)
+            parent.symlink_to(canary_parent, target_is_directory=True)
+            swapped.append(True)
+
+        def forbid_replace(*_args, **_kwargs):
+            replace_calls.append(True)
+            raise OSError("PRIVATE_OBJECTIVE_REPLACE_CALLED_CANARY")
+
+        reconciler.os.fsync = swap_after_stage
+        reconciler.os.replace = forbid_replace
+        try:
+            expect_domain_fail(
+                "recovery objective parent swapped before atomic commit",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write authority changed during stage",
+            )
+        finally:
+            reconciler.os.fsync = original_fsync
+            reconciler.os.replace = original_replace
+            if parent.is_symlink():
+                parent.unlink()
+            if moved.exists():
+                moved.rename(parent)
+            # The current pathname-based cleanup cannot find a staged file
+            # while the parent is swapped; restore the fixture before removal.
+            for leftover in parent.glob(f".{path.name}.*.tmp"):
+                leftover.unlink()
+
+        require(swapped == [True] and not replace_calls,
+                "parent-swap negative reached replacement or missed the race")
+        require(path.read_bytes() == original
+                and canary.read_bytes() == b"PRIVATE_OBJECTIVE_PARENT_SWAP_CANARY",
+                "parent-swap negative changed reviewed/canary bytes")
+        require(not list(parent.glob(f".{path.name}.*.tmp")),
+                "parent-swap negative left temporary residue")
+    print("PASS: recovery objective atomic parent swap before commit refuses replace")
+
+
 def prove_atomic_write_mode_preservation(reconciler: object) -> None:
     with isolated_authorities(reconciler):
         path = reconciler.CONTRACT
@@ -1381,6 +1438,7 @@ def main() -> int:
     prove_pinned_post_validator_execution(reconciler)
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_target_identity_guards(reconciler)
+    prove_atomic_parent_swap_before_commit(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
     prove_atomic_primary_cleanup_precedence(reconciler)
