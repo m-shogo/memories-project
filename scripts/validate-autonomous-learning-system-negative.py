@@ -9494,7 +9494,7 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
             # that step cannot prove the earlier rebase-to-push guard boundary.
             step_end = next(
                 (i for i in range(index + 1, len(lines))
-                 if re.match(r"^      - name:\s", lines[i])
+                 if re.match(r"^      - [A-Za-z_][A-Za-z0-9_-]*:", lines[i])
                  or re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])),
                 len(lines),
             )
@@ -9534,6 +9534,12 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
     ) != (True, False):
         raise RuntimeError("prewrite rebase YAML step scope positive drift")
 
+    if rebase_guard_status(
+        "      - run: |\n          git pull --rebase origin so\n"
+        "          verify_critical_source\n          if git push origin HEAD:so; then"
+    ) != (True,):
+        raise RuntimeError("prewrite rebase unnamed same-step positive drift")
+
     expected = (
         ("controlled-saturation-repeatability.yml", (True,)),
         ("sustained-local-soak.yml", (False,)),
@@ -9568,6 +9574,8 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         ("absent push", "git pull --rebase origin so\nverify_critical_source"),
         ("comment-only push", "git pull --rebase origin so\nverify_critical_source\n# git push origin HEAD:so"),
         ("push in next YAML step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - name: second\n        run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
+        ("push in unnamed run step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
+        ("push in unnamed uses step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      - uses: actions/checkout@v4\n          if git push origin HEAD:so; then"),
         ("push in next YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  second:\n    steps:\n      if git push origin HEAD:so; then"),
     ):
         try:
