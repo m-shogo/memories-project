@@ -28,10 +28,15 @@ def require(condition: bool, message: str) -> None:
 
 
 def require_writer_identity() -> None:
-    require(WRITER == ROOT / WRITER_REL and WRITER.is_file()
-            and not WRITER.is_symlink()
-            and WRITER.resolve(strict=True) == WRITER,
-            "generation evidence transaction writer source authority drift")
+    # Path preflight is an untrusted filesystem boundary too. Do not expose
+    # private path/OS diagnostics before descriptor-pinned source acquisition.
+    try:
+        canonical = (WRITER == ROOT / WRITER_REL and WRITER.is_file()
+                     and not WRITER.is_symlink()
+                     and WRITER.resolve(strict=True) == WRITER)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        raise Fail("generation evidence transaction writer source authority drift") from None
+    require(canonical, "generation evidence transaction writer source authority drift")
 
 
 def pinned_writer_source() -> bytes:
@@ -154,6 +159,34 @@ def prove_pinned_writer_import() -> None:
         try:
             require(load_writer().SOURCE_MARKER == "reviewed",
                     "generation transaction pinned writer positive control failed")
+            # Path metadata can fail before the first descriptor is acquired.
+            # The canonical importer must not surface a private filesystem error.
+            for method in ("is_file", "resolve"):
+                original_method = getattr(Path, method)
+                invoked = False
+
+                def private_path_failure(self, *args, **kwargs):
+                    nonlocal invoked
+                    if self == source:
+                        invoked = True
+                        raise OSError("PRIVATE_GENERATION_TRANSACTION_PATH_CANARY")
+                    return original_method(self, *args, **kwargs)
+
+                setattr(Path, method, private_path_failure)
+                try:
+                    try:
+                        load_writer()
+                    except Fail as exc:
+                        require(str(exc) == "generation evidence transaction writer source authority drift"
+                                and exc.__suppress_context__,
+                                "generation transaction private " + method + " wrong rejection")
+                        require("PRIVATE_GENERATION_TRANSACTION_PATH_CANARY" not in str(exc),
+                                "generation transaction private path diagnostic leaked")
+                    else:
+                        raise Fail("generation transaction accepted private " + method + " failure")
+                finally:
+                    setattr(Path, method, original_method)
+                require(invoked, "generation transaction private " + method + " fixture inert")
             # ROOT, scripts ancestor, and leaf are exactly three os.open calls.
             # Never derive an injection ordinal from absolute path depth.
             for ordinal in (1, 2, 3):
