@@ -459,6 +459,51 @@ def prove_atomic_descriptor_cleanup(reconciler: object) -> None:
     print("PASS: recovery objective reconciler fchmod/fdopen descriptor cleanup (2 negatives)")
 
 
+
+def prove_atomic_primary_cleanup_precedence(reconciler: object) -> None:
+    """A failed temp unlink must not hide the original atomic-write failure."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        before = path.read_bytes()
+        before_mode = file_mode(path)
+        original_replace = reconciler.os.replace
+        original_unlink = reconciler.os.unlink
+        marker = "PRIVATE_OBJECTIVE_ATOMIC_DOUBLE_FAULT_CANARY"
+
+        def reject_replace(_source, _destination):
+            raise OSError(marker)
+
+        def reject_temp_unlink(candidate, *args, **kwargs):
+            if str(candidate).endswith(".tmp"):
+                raise OSError(marker)
+            return original_unlink(candidate, *args, **kwargs)
+
+        reconciler.os.replace = reject_replace
+        reconciler.os.unlink = reject_temp_unlink
+        try:
+            try:
+                reconciler.write_text(path, '{"synthetic":true}')
+            except reconciler.Fail as exc:
+                require(str(exc) == "recovery objective reconcile authority atomic write failed"
+                        and exc.__suppress_context__ and marker not in str(exc),
+                        "recovery objective atomic primary error hidden by cleanup failure")
+            else:
+                raise Fail("recovery objective atomic double fault unexpectedly accepted")
+        finally:
+            reconciler.os.replace = original_replace
+            reconciler.os.unlink = original_unlink
+
+        leftovers = list(path.parent.glob(f".{path.name}.*.tmp"))
+        require(len(leftovers) == 1, "recovery objective atomic double fault fixture residue drift")
+        for leftover in leftovers:
+            leftover.unlink()
+        require(path.read_bytes() == before and file_mode(path) == before_mode,
+                "recovery objective atomic double fault changed canonical fixture")
+        require(not list(path.parent.glob(f".{path.name}.*.tmp")),
+                "recovery objective atomic double fault left cleanup residue")
+    print("PASS: recovery objective atomic primary failure survives secondary cleanup fault")
+
+
 def prove_rollback_attempts_all_restores(reconciler: object) -> None:
     originals = {
         CONTRACT: "contract\n",
@@ -1158,6 +1203,7 @@ def main() -> int:
     prove_private_atomic_write_path_guards(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)
+    prove_atomic_primary_cleanup_precedence(reconciler)
     with isolated_authorities(reconciler):
         prove_atomic_write_failure(reconciler)
     prove_rollback_attempts_all_restores(reconciler)
