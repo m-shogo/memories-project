@@ -34,6 +34,7 @@ KNOWN_EXTERNAL_BLOCKED_WORKFLOWS = {
 # These publisher workflows have reviewed contents:write and source-SHA CAS
 # commit/push paths. Even a bounded fanout can invalidate a running writer.
 KNOWN_WRITER_CAS_WORKFLOWS = {
+    ".github/workflows/backup-restore-admission-chain.yml",
     ".github/workflows/diagnose-metrics-alerting.yml",
     ".github/workflows/rate-limit-operation-evidence.yml",
     ".github/workflows/reconcile-backup-restore.yml",
@@ -1086,6 +1087,9 @@ def self_test(repo_root: Path) -> None:
     if classify([".github/workflows/reconcile-metrics-scrape-status.yml"]) != (
             "BLOCKED_KNOWN_WRITER_CAS"):
         raise AuditFailure("known source-SHA writer CAS trigger negative failed")
+    if classify([".github/workflows/backup-restore-admission-chain.yml"]) != (
+            "BLOCKED_KNOWN_WRITER_CAS"):
+        raise AuditFailure("Admission Chain writer trigger misclassified as read-only")
     if classify([]) != "BOUNDED_DIRECT_MATCH_ONLY":
         raise AuditFailure("legacy diagnostic empty-fanout classification changed")
     if classify([], require_direct_match=True) != "BLOCKED_NO_DIRECT_PUSH_PR_MATCH":
@@ -1122,8 +1126,12 @@ def self_test(repo_root: Path) -> None:
             len(entry_docs) != len(reviewed_entry_docs)):
         raise AuditFailure("shared entrypoint direct workflow identity changed; review required")
     entry_risk = classify(entry_docs)
+    # Admission Chain's scripts/*backup*.py trigger does not match entry-docs.
+    expected_entry_writers = KNOWN_WRITER_CAS_WORKFLOWS - {
+        ".github/workflows/backup-restore-admission-chain.yml"
+    }
     if (entry_risk != "BLOCKED_KNOWN_WRITER_CAS" or
-            set(entry_docs) & KNOWN_WRITER_CAS_WORKFLOWS != KNOWN_WRITER_CAS_WORKFLOWS):
+            set(entry_docs) & KNOWN_WRITER_CAS_WORKFLOWS != expected_entry_writers):
         raise AuditFailure("shared entrypoint writer CAS risk changed; review required")
     with tempfile.TemporaryDirectory(prefix="ops-fanout-git-index-") as tmp:
         root = Path(tmp) / "repo"

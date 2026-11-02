@@ -7135,6 +7135,48 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
                 "- .github/workflows/reconcile-metrics-scrape-status.yml"
                 not in writer.stdout.splitlines()):
             raise RuntimeError("prewrite writer CAS CLI negative failed")
+    # Admission Chain's broad push filter matches read-only backup-named
+    # negative scripts. Reject this writer even at one direct workflow match.
+    with tempfile.TemporaryDirectory(prefix="learning-fanout-admission-chain-writer-") as tmp:
+        root = Path(tmp)
+        directory = root / ".github/workflows"
+        directory.mkdir(parents=True)
+        (directory / "backup-restore-admission-chain.yml").write_text(
+            'on:\n  push:\n    paths:\n      - "scripts/*backup*.py"\n', encoding="utf-8"
+        )
+        writer = subprocess.run(
+            [sys.executable, str(guard), "--repo-root", str(root),
+             "--path", "scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py"],
+            capture_output=True, text=True, check=False, timeout=10,
+        )
+        if (writer.returncode != 2 or writer.stderr or
+                "risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: 1"
+                not in writer.stdout.splitlines() or
+                "- .github/workflows/backup-restore-admission-chain.yml"
+                not in writer.stdout.splitlines()):
+            raise RuntimeError("prewrite Admission Chain writer fixture accepted")
+    # Exercise the real reviewed workflow tree for both transport targets.
+    for transport_path in (
+        "scripts/validate-memory-os-backup-restore-generation-binding-transport-negative.py",
+        "scripts/validate-memory-os-backup-restore-generation-evidence-transport-negative.py",
+    ):
+        try:
+            actual = subprocess.run(
+                [sys.executable, str(guard), "--repo-root", str(source_root),
+                 "--path", transport_path],
+                capture_output=True, text=True, check=False, timeout=30,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("prewrite Admission Chain path audit timed out") from exc
+        actual_lines = actual.stdout.splitlines()
+        actual_workflows = [line[2:] for line in actual_lines
+                            if line.startswith("- .github/workflows/")]
+        if (actual.returncode != 2 or actual.stderr or
+                not any(line.startswith("risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: ")
+                        for line in actual_lines) or
+                ".github/workflows/backup-restore-admission-chain.yml"
+                not in actual_workflows or len(actual_workflows) > 12):
+            raise RuntimeError("prewrite Admission Chain writer path classification drift")
     # Check a real known-risk path, including exact reported count versus
     # emitted workflow identities. The sample is diagnostic, not a trigger proof.
     import re
