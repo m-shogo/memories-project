@@ -306,6 +306,8 @@ def pinned_reconciler_source() -> bytes:
         require(identity(RECONCILER.stat()) == identity(after),
                 "reconciler pathname changed during read")
         return source
+    except OSError:
+        raise Fail("generation evidence reconciler pinned source unreadable") from None
     finally:
         primary = sys.exc_info()[0] is not None
         failed = False
@@ -365,6 +367,26 @@ def prove_pinned_reconciler_import() -> None:
                 source.write_text("SOURCE_MARKER = 'reviewed'" + chr(10), encoding="utf-8")
             require(load_reconciler().SOURCE_MARKER == "reviewed",
                     "generation reconciler source not restored after empty-file negative")
+            original_read = os.read
+
+            def private_read_failure(*_args):
+                raise OSError("PRIVATE_RECONCILER_SOURCE_READ_CANARY")
+
+            os.read = private_read_failure
+            try:
+                try:
+                    load_reconciler()
+                except Fail as exc:
+                    require(str(exc) == "generation evidence reconciler pinned source unreadable",
+                            "private generation reconciler read wrong rejection")
+                    require("PRIVATE_RECONCILER_SOURCE_READ_CANARY" not in str(exc),
+                            "private generation reconciler read diagnostic leaked")
+                    require(exc.__suppress_context__,
+                            "private generation reconciler read context exposed")
+                else:
+                    raise Fail("private generation reconciler read error accepted")
+            finally:
+                os.read = original_read
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 for invalid in (0, False, "inert"):
