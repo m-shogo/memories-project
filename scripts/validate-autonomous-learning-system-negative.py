@@ -9063,6 +9063,214 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
     return len(cases) + 11
 
 
+# Diagnostic lexical inventory only: these names are not write authority.
+# A change in writer-signal membership must receive a source review, rather
+# than silently changing the prewrite risk classification.
+REVIEWED_LEXICAL_WRITER_NAMES = (
+    "admission-authority-linkage.yml",
+    "backup-restore-admission-chain.yml",
+    "backup-restore-drill-generation-eligibility-binding.yml",
+    "backup-restore-drill-preflight.yml",
+    "backup-restore-drill-request.yml",
+    "backup-restore-generation-binding.yml",
+    "backup-restore-generation-evidence.yml",
+    "backup-restore-non-resurrection-admission.yml",
+    "backup-restore-preflight-generation-eligibility-consistency.yml",
+    "backup-restore-promotion-review.yml",
+    "capacity-ramp.yml",
+    "chaos-failure-drills-v2.yml",
+    "chaos-failure-drills.yml",
+    "client-baseline-registry.yml",
+    "client-server-support-window.yml",
+    "compatibility-admission-gaps.yml",
+    "controlled-saturation-ramp.yml",
+    "controlled-saturation-repeatability.yml",
+    "database-commit-outage.yml",
+    "deletion-lease-recovery.yml",
+    "deletion-prefence-linearization.yml",
+    "deletion-prefence-mutation-linearization.yml",
+    "deletion-prefence-upload-completion.yml",
+    "deletion-under-load.yml",
+    "deletion-worker-container-kill-recovery.yml",
+    "deletion-worker-host-failure-admission.yml",
+    "deletion-worker-saturation.yml",
+    "deletion-worker-sigkill-recovery.yml",
+    "diagnose-metrics-alerting.yml",
+    "incident-contact-routing-admission.yml",
+    "incident-control-exercise.yml",
+    "incident-human-tabletop-evidence.yml",
+    "local-apple-replay-restore.yml",
+    "local-coherent-recovery-set.yml",
+    "local-logical-restore.yml",
+    "local-migration-recovery-artifact.yml",
+    "local-object-version-restore.yml",
+    "migration-evidence-registry.yml",
+    "migration-operation-evidence.yml",
+    "migration-production-shaped-admission.yml",
+    "mixed-version-apply.yml",
+    "mixed-version-candidate.yml",
+    "mixed-version-session.yml",
+    "observability-stack-deployment.yml",
+    "operability-admission-inventory.yml",
+    "operability-evidence-ownership.yml",
+    "ops-p0-007-admission-snapshot.yml",
+    "parser-artifact-registry.yml",
+    "parser-inflight-cancellation.yml",
+    "parser-process-group-reaping.yml",
+    "parser-restart-matrix.yml",
+    "postgresql-major-upgrade.yml",
+    "production-equivalent-dependency-contract.yml",
+    "production-equivalent-environment-eligibility.yml",
+    "production-equivalent-environment-generation.yml",
+    "production-equivalent-environment-review-independence.yml",
+    "production-equivalent-environment-schema.yml",
+    "production-shaped-failure-drills.yml",
+    "rate-limit-distributed-runtime-admission.yml",
+    "rate-limit-emergency-drill.yml",
+    "rate-limit-local-multiprocess-shared-store.yml",
+    "rate-limit-operation-evidence.yml",
+    "reconcile-backup-authority.yml",
+    "reconcile-backup-restore.yml",
+    "reconcile-chaos-authority.yml",
+    "reconcile-chaos-mixed-version-overlay.yml",
+    "reconcile-compatibility-authority-diagnostic.yml",
+    "reconcile-compatibility-authority-v2.yml",
+    "reconcile-controlled-saturation-repeatability-authority.yml",
+    "reconcile-deletion-advanced-evidence.yml",
+    "reconcile-deletion-container-kill-authority.yml",
+    "reconcile-deletion-lease-recovery-authority.yml",
+    "reconcile-deletion-mutation-evidence.yml",
+    "reconcile-deletion-sigkill-authority.yml",
+    "reconcile-deletion-under-load-source.yml",
+    "reconcile-incident-control-authority.yml",
+    "reconcile-incident-exercise-authority.yml",
+    "reconcile-live-apply-replay-load.yml",
+    "reconcile-live-load-authority-v2.yml",
+    "reconcile-live-load-gofmt.yml",
+    "reconcile-live-object-stage-diagnostics.yml",
+    "reconcile-load-foundation-authorities.yml",
+    "reconcile-load-missing-evidence.yml",
+    "reconcile-load-readiness-note.yml",
+    "reconcile-metrics-scrape-status.yml",
+    "reconcile-mixed-version-apply-harness.yml",
+    "reconcile-mixed-version-candidate-authority.yml",
+    "reconcile-observability-access.yml",
+    "reconcile-rate-limit-operations.yml",
+    "reconcile-sustained-local-soak-authority.yml",
+    "reconcile-upload-completion-load-authority.yml",
+    "reconcile-upload-route-authority.yml",
+    "recovery-objectives-admission.yml",
+    "regenerate-live-postgres-load-results.yml",
+    "regenerate-load-results.yml",
+    "release-baseline-registry.yml",
+    "release-compatibility-pair.yml",
+    "rollback-rehearsal-gate.yml",
+    "short-stability-sample.yml",
+    "sustained-local-soak-parallel-request.yml",
+    "sustained-local-soak-parallel-v2.yml",
+    "sustained-local-soak.yml",
+    "version-compatibility-execution-evidence.yml",
+    "version-compatibility-foundations.yml",
+)
+
+
+def prove_source_derived_writer_inventory(source_root: Path) -> None:
+    """Pin the complete 221-workflow lexical signal set to reviewed Git bytes.
+
+    Neither a missing marker nor this test's success authorizes a write.
+    Effective YAML permissions, path overlap and workflow-call closure remain
+    independent, unproven boundaries.
+    """
+    import re
+    import runpy
+
+    module = runpy.run_path(
+        str(source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py")
+    )
+    directory = source_root / ".github/workflows"
+    sources = sorted(
+        path for path in directory.iterdir()
+        if path.suffix in (".yml", ".yaml")
+    )
+    if len(sources) != 221 or any(path.is_symlink() for path in sources):
+        raise RuntimeError("prewrite workflow lexical inventory membership drift")
+    verified = module["require_workflow_git_index_identity"](source_root, sources)
+    if set(verified) != set(sources):
+        raise RuntimeError("prewrite workflow lexical source snapshot incomplete")
+
+    def has_writer_signal(source: str) -> bool:
+        # Conservative textual signals, not a YAML permissions parser.
+        return bool(
+            re.search(r"(?m)^\\s*contents\\s*:\\s*write\\s*(?:#.*)?$", source)
+            or re.search(r"\\bgit\\s+push\\b", source)
+        )
+
+    observed: list[str] = []
+    for path in sources:
+        try:
+            text = verified[path].decode("utf-8")
+        except UnicodeDecodeError:
+            raise RuntimeError("prewrite workflow lexical source invalid UTF-8") from None
+        if has_writer_signal(text):
+            observed.append(path.name)
+    expected = REVIEWED_LEXICAL_WRITER_NAMES
+    if (len(expected) != 104 or tuple(sorted(set(expected))) != expected
+            or tuple(observed) != expected):
+        raise RuntimeError("prewrite source-derived writer-signal inventory drift")
+
+    known = module["KNOWN_WRITER_CAS_WORKFLOWS"]
+    external = module["KNOWN_EXTERNAL_BLOCKED_WORKFLOWS"]
+    observed_paths = {".github/workflows/" + name for name in observed}
+    unknown = observed_paths - known - external
+    if (len(known) != 7 or len(unknown) != 96
+            or not known <= observed_paths
+            or ".github/workflows/admission-authority-linkage.yml" not in unknown):
+        raise RuntimeError("prewrite unclassified writer-signal inventory drift")
+
+    def diagnostic_risk(name: str) -> str:
+        if name in known:
+            return "BLOCKED_KNOWN_WRITER_CAS"
+        if name in external:
+            return "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"
+        if name in observed_paths:
+            return "BLOCKED_UNREVIEWED_WRITER_SIGNAL"
+        return "UNKNOWN_NOT_AUTHORIZED"
+
+    for name, risk in (
+        (".github/workflows/backup-restore-admission-chain.yml",
+         "BLOCKED_KNOWN_WRITER_CAS"),
+        (".github/workflows/reconcile-upload-route-authority.yml",
+         "BLOCKED_KNOWN_EXTERNAL_DEPENDENCY"),
+        (".github/workflows/admission-authority-linkage.yml",
+         "BLOCKED_UNREVIEWED_WRITER_SIGNAL"),
+        (".github/workflows/autonomous-learning-guard.yml",
+         "UNKNOWN_NOT_AUTHORIZED"),
+    ):
+        if diagnostic_risk(name) != risk:
+            raise RuntimeError("prewrite lexical writer diagnostic risk drift")
+
+    def require_exact_inventory(value: tuple[str, ...]) -> None:
+        if type(value) is not tuple or value != expected:
+            raise RuntimeError("prewrite lexical inventory mutation rejected")
+
+    require_exact_inventory(tuple(observed))
+    for label, forged in (
+        ("missing writer", expected[:-1]),
+        ("extra writer", expected + ("zz-unreviewed.yml",)),
+        ("substituted writer", expected[:-1] + ("zz-unreviewed.yml",)),
+        ("duplicate writer", expected[:-1] + (expected[-2],)),
+        ("reordered writers", tuple(reversed(expected))),
+        ("list instead of tuple", list(expected)),
+    ):
+        try:
+            require_exact_inventory(forged)
+        except RuntimeError as exc:
+            if str(exc) != "prewrite lexical inventory mutation rejected":
+                raise
+        else:
+            raise RuntimeError("prewrite lexical writer inventory negative accepted: " + label)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -9753,6 +9961,7 @@ def main() -> int:
     prove_prewrite_workflow_parent_swap(source_root)
     prove_prewrite_workflow_root_swap(source_root)
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
+    prove_source_derived_writer_inventory(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
