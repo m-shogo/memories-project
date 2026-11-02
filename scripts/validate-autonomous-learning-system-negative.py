@@ -9201,9 +9201,16 @@ def prove_source_derived_writer_inventory(source_root: Path) -> None:
     def has_writer_signal(source: str) -> bool:
         # Conservative textual signals, not a YAML permissions parser.
         return bool(
-            re.search(r"(?m)^\\s*contents\\s*:\\s*write\\s*(?:#.*)?$", source)
-            or re.search(r"\\bgit\\s+push\\b", source)
+            re.search(r"(?m)^\s*contents\s*:\s*write\s*(?:#.*)?$", source)
+            or re.search(r"\bgit\s+push\b", source)
         )
+
+    # Mutation-resistant positive and negative controls for the regex itself.
+    # A double-escaped raw regex would silently miss every real writer.
+    if (not has_writer_signal("permissions:\n  contents: write\n")
+            or not has_writer_signal("run: git push origin HEAD:so\n")
+            or has_writer_signal("permissions:\n  contents: read\n")):
+        raise RuntimeError("prewrite lexical writer signal regex fixture drift")
 
     observed: list[str] = []
     for path in sources:
