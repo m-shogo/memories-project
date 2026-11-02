@@ -173,6 +173,43 @@ def prove_pinned_validator_import() -> None:
             else:
                 raise Fail("writable generation-binding transport validator accepted")
             source.chmod(0o644)
+            alias = fixture / "hardlink-binding-validator.py"
+            os.link(source, alias)
+            try:
+                try:
+                    load_validator()
+                except Fail as exc:
+                    require(str(exc) == "generation-binding transport source metadata unsafe",
+                            "hardlinked generation-binding validator wrong rejection")
+                else:
+                    raise Fail("hardlinked generation-binding transport validator accepted")
+            finally:
+                alias.unlink()
+
+            original_read = os.read
+            parent_changed = False
+
+            def chmod_parent_during_read(fd: int, count: int) -> bytes:
+                nonlocal parent_changed
+                chunk = original_read(fd, count)
+                if not parent_changed:
+                    parent.chmod(0o777)
+                    parent_changed = True
+                return chunk
+
+            os.read = chmod_parent_during_read
+            try:
+                try:
+                    load_validator()
+                except Fail as exc:
+                    require(str(exc) == "generation-binding transport parent changed during read",
+                            "mid-read writable generation-binding parent wrong rejection")
+                else:
+                    raise Fail("mid-read writable generation-binding parent accepted")
+            finally:
+                os.read = original_read
+                parent.chmod(0o755)
+            require(parent_changed, "generation-binding parent-mode race fixture was inert")
             swapped = False
 
             def swap_after_capture(name, location, *args, **kwargs):
@@ -196,7 +233,7 @@ def prove_pinned_validator_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation-binding transport validator pinned after parent swap")
+    print("PASS: generation-binding transport validator pinned against hardlink, parent-mode race and swap")
 
 
 
