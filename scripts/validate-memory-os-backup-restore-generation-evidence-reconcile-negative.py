@@ -123,19 +123,29 @@ def _pinned_temporary_directory(*, prefix: str, parent: Path):
                     "reconcile negative temp child is not a directory")
             yield str(parent / name)
         finally:
-            current_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
-            require(
-                stat.S_ISDIR(current_child.st_mode)
-                and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
-                "reconcile negative temp child identity drift before cleanup",
-            )
-            # Descriptor-relative, symlink-resistant cleanup cannot traverse a
-            # substituted parent pathname. Child inode drift fails closed.
-            shutil.rmtree(name, dir_fd=fd)
+            primary_failure = sys.exc_info()[0] is not None
+            try:
+                current_child = os.stat(name, dir_fd=fd, follow_symlinks=False)
+                require(
+                    stat.S_ISDIR(current_child.st_mode)
+                    and (current_child.st_dev, current_child.st_ino) == (created.st_dev, created.st_ino),
+                    "reconcile negative temp child identity drift before cleanup",
+                )
+                # Cleanup remains pinned to the owned directory, even after a
+                # visible parent swap. Never mask the original test failure.
+                shutil.rmtree(name, dir_fd=fd)
+            except Exception:
+                if not primary_failure:
+                    raise Fail("reconcile negative temp child cleanup failed") from None
     except OSError as exc:
         raise Fail(f"reconcile negative pinned fixture operation failed: {exc}") from exc
     finally:
-        os.close(fd)
+        primary_failure = sys.exc_info()[0] is not None
+        try:
+            os.close(fd)
+        except Exception:
+            if not primary_failure:
+                raise Fail("reconcile negative temp descriptor cleanup failed") from None
 
 
 class _EagerFixtureDirectory:
@@ -233,6 +243,43 @@ def prove_invalid_fixture_descriptor_rejected() -> None:
     require({p.name for p in TMP_PARENT.iterdir()} == before,
             "generation fixture malformed FD created unexpected child")
     print("PASS: generation reconcile fixture rejects malformed acquired FDs")
+
+
+def prove_fixture_cleanup_failure_precedence() -> None:
+    """Secondary fixture cleanup faults must not hide the primary failure."""
+    before = {p.name for p in TMP_PARENT.iterdir()}
+    original_rmtree = shutil.rmtree
+    secondary_marker = "PRIVATE_GENERATION_FIXTURE_SECONDARY_CLEANUP_CANARY"
+    for with_primary in (True, False):
+        created: Path | None = None
+
+        def reject_cleanup(*_args, **_kwargs):
+            raise ValueError(secondary_marker)
+
+        try:
+            try:
+                with guarded_temporary_directory(
+                    prefix=".tmp-generation-cleanup-precedence-",
+                    parent=TMP_PARENT,
+                ) as raw:
+                    created = Path(raw)
+                    shutil.rmtree = reject_cleanup
+                    if with_primary:
+                        raise Fail("PRIMARY_GENERATION_FIXTURE_FAILURE")
+            except Fail as exc:
+                expected = ("PRIMARY_GENERATION_FIXTURE_FAILURE" if with_primary
+                            else "reconcile negative temp child cleanup failed")
+                require(str(exc) == expected and secondary_marker not in str(exc),
+                        "generation fixture cleanup masked or leaked primary failure")
+            else:
+                raise Fail("generation fixture secondary cleanup failure accepted")
+        finally:
+            shutil.rmtree = original_rmtree
+            if created is not None and created.exists():
+                original_rmtree(created)
+    require({p.name for p in TMP_PARENT.iterdir()} == before,
+            "generation fixture cleanup double fault left residue")
+    print("PASS: generation reconcile fixture cleanup preserves primary failure")
 
 
 def prove_parent_swap_during_mkdir_rejected() -> None:
@@ -1214,6 +1261,7 @@ def main() -> int:
     print("PASS: reconcile negative temp parent symlink rejected before creation")
     prove_inert_fixture_flags_rejected()
     prove_invalid_fixture_descriptor_rejected()
+    prove_fixture_cleanup_failure_precedence()
     prove_parent_swap_during_mkdir_rejected()
     prove_child_substitution_before_cleanup_rejected()
     prove_pinned_reconciler_import()
