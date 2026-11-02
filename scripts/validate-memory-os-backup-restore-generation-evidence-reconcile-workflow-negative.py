@@ -349,15 +349,15 @@ def prove_branch_guards_runtime() -> None:
 
 def classify_generation_publisher_coupling(source: str) -> bool:
     """Recognize write-capable publisher triggers; require bounded source guards."""
-    marker = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
-    end = "  workflow_dispatch:\\n"
+    marker = "  push:\n    branches:\n      - so\n    paths:\n"
+    end = "  workflow_dispatch:\n"
     if source.count(marker) != 1 or source.count(end) != 1:
         raise SystemExit("generation evidence publisher trigger topology unknown")
     push = source.split(marker, 1)[1].split(end, 1)[0]
     target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"'
     if target not in push.splitlines():
         return False
-    if "  validate:\\n" not in source or "      contents: write\\n" not in source:
+    if "  validate:\n" not in source or "      contents: write\n" not in source:
         return False
     required = (
         "for reconcile_attempt in 1 2; do",
@@ -396,8 +396,8 @@ def prove_generation_publisher_coupling_guard() -> None:
         raise SystemExit("generation evidence publisher missing guarded publication accepted")
     # Removing the publisher trigger is a safe topology improvement, not a
     # reason to demand an unsafe write-capable CI path.
-    target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\\n'
-    push_marker = "  push:\\n    branches:\\n      - so\\n    paths:\\n"
+    target = '      - "scripts/reconcile-memory-os-backup-restore-generation-evidence.py"\n'
+    push_marker = "  push:\n    branches:\n      - so\n    paths:\n"
     prefix, suffix = source.split(push_marker, 1)
     if target not in suffix:
         raise SystemExit("generation evidence publisher trigger mutation anchor missing")
