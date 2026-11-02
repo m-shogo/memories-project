@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import shutil
 import subprocess
 import sys
@@ -16,7 +17,9 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 ROOT = Path(__file__).resolve().parents[1]
-RECONCILER = ROOT / "scripts/reconcile-memory-os-recovery-objectives.py"
+RECONCILER_REL = Path("scripts/reconcile-memory-os-recovery-objectives.py")
+RECONCILER = ROOT / RECONCILER_REL
+MAX_RECONCILER_SOURCE_BYTES = 1024 * 1024
 WORKFLOW = ROOT / ".github/workflows/recovery-objectives-admission.yml"
 TMP_PARENT = ROOT / "docs/fixtures/memory-os-operability"
 CONTRACT = ROOT / "contracts/operations/recovery-objectives-admission-contract.v1.json"
@@ -32,12 +35,151 @@ def require(condition: bool, message: str) -> None:
         raise Fail(message)
 
 
+def require_reconciler_identity() -> None:
+    require(RECONCILER == ROOT / RECONCILER_REL and RECONCILER.is_file()
+            and not RECONCILER.is_symlink()
+            and RECONCILER.resolve(strict=True) == RECONCILER,
+            "recovery objective reconciler source authority drift")
+
+
+def pinned_reconciler_source() -> bytes:
+    """Bind reviewed reconciler bytes to owned directory/file descriptors, not a mutable path."""
+    require_reconciler_identity()
+    require(all(hasattr(os, name) for name in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK")),
+            "recovery objective reconciler pinned import platform unsafe")
+    owned: list[int] = []
+    try:
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(ROOT, directory_flags)
+        require(type(parent_fd) is int and parent_fd >= 0, "reconciler directory descriptor invalid")
+        owned.append(parent_fd)
+        for part in RECONCILER_REL.parts[:-1]:
+            parent_fd = os.open(part, directory_flags, dir_fd=parent_fd)
+            require(type(parent_fd) is int and parent_fd >= 0, "reconciler directory descriptor invalid")
+            owned.append(parent_fd)
+        before_parents = [os.fstat(fd) for fd in owned]
+        parent_identity = lambda value: (
+            value.st_dev, value.st_ino, value.st_mode, value.st_ctime_ns
+        )
+        require(all(stat.S_ISDIR(item.st_mode) and not (item.st_mode & 0o022)
+                    for item in before_parents), "reconciler parent directory unsafe")
+        source_fd = os.open(
+            RECONCILER_REL.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            dir_fd=parent_fd,
+        )
+        require(type(source_fd) is int and source_fd >= 0, "reconciler source descriptor invalid")
+        owned.append(source_fd)
+        before = os.fstat(source_fd)
+        require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+                and not (before.st_mode & 0o022)
+                and 0 <= before.st_size <= MAX_RECONCILER_SOURCE_BYTES,
+                "reconciler source type/size unsafe")
+        chunks: list[bytes] = []
+        remaining = MAX_RECONCILER_SOURCE_BYTES + 1
+        while remaining:
+            chunk = os.read(source_fd, remaining)
+            require(type(chunk) is bytes, "reconciler source read type invalid")
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        source = b"".join(chunks)
+        after = os.fstat(source_fd)
+        leaf = os.stat(RECONCILER_REL.name, dir_fd=parent_fd, follow_symlinks=False)
+        identity = lambda item: (
+            item.st_dev, item.st_ino, item.st_mode, item.st_size,
+            item.st_mtime_ns, item.st_ctime_ns
+        )
+        require(len(source) <= MAX_RECONCILER_SOURCE_BYTES
+                and len(source) == before.st_size
+                and identity(before) == identity(after) == identity(leaf),
+                "reconciler source changed during read")
+        for index, fd in enumerate(owned[:-1]):
+            current = os.fstat(fd)
+            lexical = ROOT if index == 0 else ROOT.joinpath(*RECONCILER_REL.parts[:index])
+            visible = os.lstat(lexical)
+            require(stat.S_ISDIR(visible.st_mode)
+                    and parent_identity(before_parents[index])
+                    == parent_identity(current) == parent_identity(visible),
+                    "reconciler parent changed during read")
+        require_reconciler_identity()
+        require(identity(RECONCILER.stat()) == identity(after),
+                "reconciler pathname changed during read")
+        return source
+    finally:
+        primary = sys.exc_info()[0] is not None
+        failed = False
+        for fd in reversed(owned):
+            try:
+                os.close(fd)
+            except Exception:
+                failed = True
+        if failed and not primary:
+            raise Fail("reconciler descriptor cleanup failed") from None
+
+
 def load_reconciler():
-    spec = importlib.util.spec_from_file_location("memory_os_recovery_objectives_reconcile_negative", RECONCILER)
-    require(spec is not None and spec.loader is not None, "cannot load recovery objective reconciler")
+    source = pinned_reconciler_source()
+    spec = importlib.util.spec_from_file_location(
+        "memory_os_recovery_objectives_reconcile_negative", RECONCILER,
+    )
+    require(spec is not None and spec.loader is not None,
+            "cannot load recovery objective reconciler")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Execute only the pinned snapshot, never a loader pathname re-open.
+    exec(compile(source, str(RECONCILER), "exec"), module.__dict__)
     return module
+
+
+
+def prove_pinned_reconciler_import() -> None:
+    """The negative harness must execute captured reconciler bytes after a parent swap."""
+    global ROOT, RECONCILER
+    original_root, original_reconciler = ROOT, RECONCILER
+    original_spec = importlib.util.spec_from_file_location
+    with tempfile.TemporaryDirectory(prefix=".tmp-objective-reconciler-pin-", dir=TMP_PARENT) as tmpdir:
+        fixture = Path(tmpdir)
+        parent = fixture / "scripts"
+        parent.mkdir()
+        source = parent / RECONCILER_REL.name
+        source.write_text("SOURCE_MARKER = 'reviewed'\n", encoding="utf-8")
+        redirected = fixture / "redirected"
+        redirected.mkdir()
+        canary = redirected / source.name
+        canary.write_text("raise RuntimeError('PRIVATE_OBJECTIVE_RECONCILER_SWAP_CANARY')\n",
+                          encoding="utf-8")
+        parked = fixture / "parked-scripts"
+        ROOT, RECONCILER = fixture, source
+        try:
+            require(load_reconciler().SOURCE_MARKER == "reviewed",
+                    "objective reconciler pinned import positive control failed")
+            source.chmod(0o666)
+            expect_domain_fail("writable objective reconciler source", load_reconciler, Fail)
+            source.chmod(0o644)
+            swapped = False
+
+            def swap_after_capture(name, location, *args, **kwargs):
+                nonlocal swapped
+                if not swapped and Path(location) == source:
+                    swapped = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_spec(name, location, *args, **kwargs)
+
+            importlib.util.spec_from_file_location = swap_after_capture
+            loaded = load_reconciler()
+            require(swapped and loaded.SOURCE_MARKER == "reviewed",
+                    "objective reconciler imported redirected source")
+            require(canary.read_text(encoding="utf-8").startswith("raise RuntimeError"),
+                    "objective reconciler redirected canary mutated")
+        finally:
+            importlib.util.spec_from_file_location = original_spec
+            ROOT, RECONCILER = original_root, original_reconciler
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+    print("PASS: recovery objective negative reconciler importer pinned after parent swap")
 
 
 def expect_domain_fail(name: str, action: Callable[[], object], fail_type: type[BaseException], expected: str | None = None) -> None:
@@ -820,6 +962,7 @@ def main() -> int:
     require(WORKFLOW.is_file(), "recovery objective workflow missing")
     require(TMP_PARENT.is_dir(), "temporary fixture parent missing")
     prove_private_negative_failure_classifier()
+    prove_pinned_reconciler_import()
     reconciler = load_reconciler()
 
     canonical_contract = CONTRACT.read_bytes()
