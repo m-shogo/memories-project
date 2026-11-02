@@ -7206,9 +7206,18 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
     # inventory, even if a forged reported count happens to match its length.
     # Keep this known-external path as strict as the adjacent writer/entrypoint
     # audit: count parity alone must not certify a complete source inventory.
+    expected_known_risk_transcript = [
+        "prewrite direct path audit: scripts/validate-memory-os-rate-limit-operations-source-negative.py",
+        f"risk: BLOCKED_KNOWN_EXTERNAL_DEPENDENCY; matched workflow count: {len(workflows)}",
+        *("- " + workflow for workflow in workflows),
+        "Do not write until independent scoped review changes the precondition.",
+    ]
+    # Reject a wrong audited path, hidden extra diagnostics or an altered
+    # refusal advisory; a correct count alone is not an exact CLI transcript.
     if (risk.returncode != 2 or risk.stderr or len(counts) != 1 or
             counts[0] != len(workflows) or not workflows or
             workflows != sorted(set(workflows)) or
+            lines != expected_known_risk_transcript or
             ".github/workflows/reconcile-upload-route-authority.yml" not in workflows):
         raise RuntimeError("prewrite fanout known-risk CLI count/identity mismatch")
     # Audit the shared entrypoint on the real checked-out workflow tree.
