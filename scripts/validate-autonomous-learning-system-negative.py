@@ -10252,10 +10252,15 @@ def prove_saturation_aggregate_source_binding(source_root: Path) -> None:
         "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
     )
     if any(source.count(token) != 1 for token in (
-            publisher_start, publisher_end, aggregate_start, aggregate_end)):
+            publisher_start, publisher_end, aggregate_start)):
+        raise RuntimeError("saturation aggregate source step boundary drift")
+    # setup-python is used in another job too. Scope the closing marker to
+    # the aggregate step instead of treating its workflow-wide count as one.
+    after_aggregate = source.split(aggregate_start, 1)[1]
+    if after_aggregate.count(aggregate_end) != 1:
         raise RuntimeError("saturation aggregate source step boundary drift")
     publisher = source.split(publisher_start, 1)[1].split(publisher_end, 1)[0]
-    aggregate = source.split(aggregate_start, 1)[1].split(aggregate_end, 1)[0]
+    aggregate = after_aggregate.split(aggregate_end, 1)[0]
     opening = "          critical=(\n"
     publisher_close = "          )\n          verify_critical_source() {\n"
     aggregate_close = (
