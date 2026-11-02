@@ -7388,8 +7388,53 @@ def prove_prewrite_fanout_cli(source_root: Path) -> int:
         *("- " + workflow for workflow in real_workflows),
         real_advisory,
     ]
-    if real_lines != expected_real_transcript:
-        raise RuntimeError("real prewrite strict audit path/transcript drift")
+    def require_strict_source_transcript(
+            result: subprocess.CompletedProcess[str], expected: list[str]) -> None:
+        # Source-derived workflow identities are not enough: the complete
+        # strict CLI transcript must retain its exact LF and stream types.
+        if (type(result) is not subprocess.CompletedProcess or
+                type(result.returncode) is not int or
+                type(result.stdout) is not str or type(result.stderr) is not str or
+                result.stderr or result.stdout != "\n".join(expected) + "\n"):
+            raise RuntimeError("real prewrite strict audit path/transcript drift")
+
+    require_strict_source_transcript(real_strict, expected_real_transcript)
+    reviewed_real_stdout = "\n".join(expected_real_transcript) + "\n"
+    for label, forged in (
+        ("missing final LF", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout[:-1], "")),
+        ("CRLF", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout.replace("\n", "\r\n"), "")),
+        ("extra blank line", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout + "\n", "")),
+        ("wrong path", subprocess.CompletedProcess(
+            [], real_strict.returncode,
+            reviewed_real_stdout.replace(
+                "prewrite direct path audit: scripts/audit-memory-os-workflow-trigger-fanout.py",
+                "prewrite direct path audit: scripts/other.py", 1), "")),
+        ("duplicated workflow", subprocess.CompletedProcess(
+            [], real_strict.returncode,
+            reviewed_real_stdout.replace(
+                expected_real_transcript[-1] + "\n",
+                "- .github/workflows/unreviewed.yml\n" + expected_real_transcript[-1] + "\n", 1), "")),
+        ("missing advisory", subprocess.CompletedProcess(
+            [], real_strict.returncode,
+            "\n".join(expected_real_transcript[:-1]) + "\n", "")),
+        ("bool status", subprocess.CompletedProcess(
+            [], False, reviewed_real_stdout, "")),
+        ("byte stdout", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout.encode("utf-8"), "")),
+        ("byte stderr", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout, b"")),
+        ("extra stderr", subprocess.CompletedProcess(
+            [], real_strict.returncode, reviewed_real_stdout, "unreviewed")),
+    ):
+        try:
+            require_strict_source_transcript(forged, expected_real_transcript)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("real strict prewrite transcript mutation accepted: " + label)
     if not real_workflows:
         if (real_risk != "BLOCKED_NO_DIRECT_PUSH_PR_MATCH" or
                 real_strict.returncode != 2):
