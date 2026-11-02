@@ -470,6 +470,52 @@ def prove_atomic_parent_swap_before_commit(reconciler: object) -> None:
 
 
 
+
+def prove_atomic_parent_swap_during_stage(reconciler: object) -> None:
+    """Stage creation must remain in the owned parent after its path is swapped."""
+    with isolated_authorities(reconciler):
+        path = reconciler.CONTRACT
+        original = path.read_bytes()
+        parent = path.parent
+        moved = parent.with_name(parent.name + "-stage-held")
+        canary_parent = reconciler.ROOT / "objective-stage-swap-canary"
+        canary_parent.mkdir()
+        canary = canary_parent / path.name
+        canary.write_bytes(b"PRIVATE_OBJECTIVE_STAGE_SWAP_CANARY")
+        original_stage = reconciler.stage_temporary_at
+        reached = []
+
+        def swap_then_stage(parent_fd, target):
+            parent.rename(moved)
+            parent.symlink_to(canary_parent, target_is_directory=True)
+            reached.append(True)
+            return original_stage(parent_fd, target)
+
+        reconciler.stage_temporary_at = swap_then_stage
+        try:
+            expect_domain_fail(
+                "recovery objective parent swapped at stage creation",
+                lambda: reconciler.write_text(path, '{"synthetic":true}'),
+                reconciler.Fail,
+                "recovery objective reconcile write authority changed during stage",
+            )
+        finally:
+            reconciler.stage_temporary_at = original_stage
+            residue_during_swap = list(moved.glob(f".{path.name}.*.tmp"))
+            if parent.is_symlink():
+                parent.unlink()
+            if moved.exists():
+                moved.rename(parent)
+
+        require(reached == [True] and not residue_during_swap,
+                "stage-boundary parent swap left an inode or missed the race")
+        require(path.read_bytes() == original
+                and canary.read_bytes() == b"PRIVATE_OBJECTIVE_STAGE_SWAP_CANARY"
+                and not list(parent.glob(f".{path.name}.*.tmp")),
+                "stage-boundary parent swap mutated authority or left temporary bytes")
+    print("PASS: recovery objective stage creation and cleanup pinned to parent FD")
+
+
 def prove_atomic_parent_swap_cleanup_on_replace_error(reconciler: object) -> None:
     """A failed commit after a parent swap must clean the original parent FD."""
     with isolated_authorities(reconciler):
@@ -522,19 +568,19 @@ def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
     with isolated_authorities(reconciler):
         path = reconciler.CONTRACT
         before, before_mode = path.read_bytes(), file_mode(path)
-        original_mkstemp = reconciler.tempfile.mkstemp
+        original_stage = reconciler.stage_temporary_at
         canary = reconciler.ROOT / "objective-unowned-descriptor-canary"
         canary.write_bytes(b"PRIVATE_OBJECTIVE_UNOWNED_DESCRIPTOR_CANARY")
         wrong_fd = os.open(canary, os.O_RDONLY)
         try:
             for label, forged_fd in (("boolean", True), ("negative", -1),
                                       ("unrelated-regular", wrong_fd)):
-                def forge_mkstemp(*args, **kwargs):
-                    real_fd, name = original_mkstemp(*args, **kwargs)
+                def forge_stage(*args, **kwargs):
+                    real_fd, name = original_stage(*args, **kwargs)
                     os.close(real_fd)
                     return forged_fd, name
 
-                reconciler.tempfile.mkstemp = forge_mkstemp
+                reconciler.stage_temporary_at = forge_stage
                 try:
                     expect_domain_fail(
                         f"recovery objective {label} temporary descriptor",
@@ -543,13 +589,13 @@ def prove_atomic_temp_descriptor_identity(reconciler: object) -> None:
                         "recovery objective reconcile temporary descriptor unsafe",
                     )
                 finally:
-                    reconciler.tempfile.mkstemp = original_mkstemp
+                    reconciler.stage_temporary_at = original_stage
                 require(not list(path.parent.glob(f".{path.name}.*.tmp")),
                         f"{label} temporary descriptor left residue")
             require(os.fstat(wrong_fd).st_ino == canary.stat().st_ino,
                     "atomic writer closed an unowned unrelated descriptor")
         finally:
-            reconciler.tempfile.mkstemp = original_mkstemp
+            reconciler.stage_temporary_at = original_stage
             os.close(wrong_fd)
         require(canary.read_bytes() == b"PRIVATE_OBJECTIVE_UNOWNED_DESCRIPTOR_CANARY",
                 "atomic writer changed unowned descriptor canary")
@@ -609,21 +655,21 @@ def prove_atomic_descriptor_cleanup(reconciler: object) -> None:
         path = reconciler.CONTRACT
         before = path.read_bytes()
         before_mode = file_mode(path)
-        original_mkstemp = reconciler.tempfile.mkstemp
+        original_stage = reconciler.stage_temporary_at
         original_fchmod = reconciler.os.fchmod
         original_fdopen = reconciler.os.fdopen
         marker = "PRIVATE_OBJECTIVE_RECONCILE_DESCRIPTOR_CANARY"
         opened = []
 
-        def track_mkstemp(*args, **kwargs):
-            descriptor, name = original_mkstemp(*args, **kwargs)
+        def track_stage(*args, **kwargs):
+            descriptor, name = original_stage(*args, **kwargs)
             opened.append(descriptor)
             return descriptor, name
 
         def reject(*_args, **_kwargs):
             raise OSError(marker)
 
-        reconciler.tempfile.mkstemp = track_mkstemp
+        reconciler.stage_temporary_at = track_stage
         try:
             for label in ("fchmod", "fdopen"):
                 opened.clear()
@@ -656,7 +702,7 @@ def prove_atomic_descriptor_cleanup(reconciler: object) -> None:
                 require(not list(path.parent.glob(f".{path.name}.*.tmp")),
                         f"atomic descriptor {label} left temporary residue")
         finally:
-            reconciler.tempfile.mkstemp = original_mkstemp
+            reconciler.stage_temporary_at = original_stage
             reconciler.os.fchmod = original_fchmod
             reconciler.os.fdopen = original_fdopen
     print("PASS: recovery objective reconciler fchmod/fdopen descriptor cleanup (2 negatives)")
@@ -1529,6 +1575,7 @@ def main() -> int:
     prove_atomic_target_identity_guards(reconciler)
     prove_atomic_temp_descriptor_identity(reconciler)
     prove_atomic_parent_swap_before_commit(reconciler)
+    prove_atomic_parent_swap_during_stage(reconciler)
     prove_atomic_parent_swap_cleanup_on_replace_error(reconciler)
     prove_atomic_write_mode_preservation(reconciler)
     prove_atomic_descriptor_cleanup(reconciler)

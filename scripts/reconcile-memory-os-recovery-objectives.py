@@ -7,10 +7,10 @@ import importlib.util
 import json
 import math
 import os
+import secrets
 import subprocess
 import sys
 import stat
-import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
@@ -126,6 +126,22 @@ def read_text(path: Path) -> str:
     except UnicodeError:
         raise Fail("recovery objective reconcile authority invalid UTF-8") from None
 
+def stage_temporary_at(parent_fd: int, path: Path) -> tuple[int, str]:
+    """Create a unique stage inode inside the pinned directory, never by path."""
+    require(hasattr(os, "O_NOFOLLOW") and hasattr(os, "O_DIRECTORY"),
+            "recovery objective reconcile atomic platform unsafe")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    for _ in range(4):
+        leaf = f".{path.name}.{secrets.token_hex(12)}.tmp"
+        try:
+            fd = os.open(leaf, flags, 0o600, dir_fd=parent_fd)
+        except FileExistsError:
+            continue
+        return fd, str(path.parent / leaf)
+    raise Fail("recovery objective reconcile temporary name collision") from None
+
+
 def write_text(path: Path, text: str) -> None:
     """Atomically replace only reviewed, bounded recovery objective authorities."""
     require(isinstance(path, Path) and path.is_absolute(),
@@ -185,9 +201,7 @@ def write_text(path: Path, text: str) -> None:
                 and stat.S_ISDIR(pinned_parent.st_mode),
                 "recovery objective reconcile write parent metadata unsafe")
         mode = stat.S_IMODE(target_before.st_mode)
-        raw_fd, raw_name = tempfile.mkstemp(
-            prefix=f".{path.name}.", suffix=".tmp", dir=path.parent,
-        )
+        raw_fd, raw_name = stage_temporary_at(parent_fd, path)
         # Do not treat malformed mocked/acquired FDs as owned: bool is an int
         # subclass and could otherwise close stdin/stdout on failure cleanup.
         if (type(raw_name) is str and Path(raw_name).parent == path.parent
