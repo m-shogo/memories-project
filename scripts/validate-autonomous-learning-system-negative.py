@@ -9379,6 +9379,70 @@ def prove_sustained_soak_rebase_race_fixture(source_root: Path) -> None:
             # only proves that a late critical change is visible to the guard.
 
 
+def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
+    """Review lexical post-rebase guard placement without authorizing writes.
+
+    One existing saturation workflow has an executable post-rebase critical
+    source check; three soak publishers have a separately scoped gap.
+    This source snapshot is diagnostic, not effective workflow permission.
+    """
+    import re
+
+    def rebase_guard_status(source: str) -> tuple[bool, ...]:
+        lines = source.splitlines()
+        statuses: list[bool] = []
+        for index, line in enumerate(lines):
+            if not re.fullmatch(r"\\s*git pull --rebase origin so\\s*", line):
+                continue
+            end = next(
+                (i for i in range(index + 1, len(lines))
+                 if re.search(r"\\bgit push origin HEAD:so\\b", lines[i])),
+                None,
+            )
+            if end is None:
+                raise RuntimeError("prewrite rebase publisher missing push boundary")
+            segment = "\\n".join(lines[index + 1:end])
+            statuses.append(bool(re.search(
+                r"(?m)^\\s*verify_critical_source\\s*$", segment
+            )))
+        return tuple(statuses)
+
+    expected = (
+        ("controlled-saturation-repeatability.yml", (True,)),
+        ("sustained-local-soak.yml", (False,)),
+        ("sustained-local-soak-parallel-request.yml", (False,)),
+        ("sustained-local-soak-parallel-v2.yml", (False, False, False)),
+    )
+    for filename, reviewed in expected:
+        source = (source_root / ".github/workflows" / filename).read_text(
+            encoding="utf-8"
+        )
+        if rebase_guard_status(source) != reviewed:
+            raise RuntimeError("prewrite postrebase source guard inventory drift: " + filename)
+        if filename == "controlled-saturation-repeatability.yml":
+            if ('verify_critical_source() {' not in source
+                    or 'git diff --quiet "$source_sha" origin/so -- "${critical[@]}"' not in source):
+                raise RuntimeError("reviewed saturation critical-source guard body drift")
+
+    # A comment or pre-rebase check is not an executable post-rebase guard.
+    # A missing push boundary is not a complete source/publisher inventory.
+    for label, fixture, reviewed in (
+        ("executable guard", "git pull --rebase origin so\\nverify_critical_source\\nif git push origin HEAD:so; then", (True,)),
+        ("comment-only guard", "git pull --rebase origin so\\n# verify_critical_source\\nif git push origin HEAD:so; then", (False,)),
+        ("guard before rebase", "verify_critical_source\\ngit pull --rebase origin so\\nif git push origin HEAD:so; then", (False,)),
+        ("missing guard", "git pull --rebase origin so\\nif git push origin HEAD:so; then", (False,)),
+    ):
+        if rebase_guard_status(fixture) != reviewed:
+            raise RuntimeError("prewrite rebase guard lexical negative drift: " + label)
+    try:
+        rebase_guard_status("git pull --rebase origin so\\nverify_critical_source")
+    except RuntimeError as exc:
+        if str(exc) != "prewrite rebase publisher missing push boundary":
+            raise
+    else:
+        raise RuntimeError("prewrite rebase publisher missing-push negative accepted")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo-root", type=Path, default=DEFAULT_ROOT)
@@ -10071,6 +10135,7 @@ def main() -> int:
     prove_prewrite_workflow_outer_ancestor_swap(source_root)
     prove_source_derived_writer_inventory(source_root)
     prove_sustained_soak_rebase_race_fixture(source_root)
+    prove_workflow_rebase_guard_inventory(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
     print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases} fail-closed cases)")
