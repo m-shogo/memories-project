@@ -1,0 +1,25 @@
+# Supplemental OPS learning — generation transaction negative pins executable writer bytes (2026-11-02)
+
+Append-only learning under the canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This is **never** production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, environment generation, approved objective, executable reviewed request, request-bound recovery, typed eight-domain non-resurrection, independent review, final candidate, or human promotion evidence.
+
+## Material failure / source-level gap
+
+- **symptom:** The generation-evidence registry transaction negative harness checked its writer pathname and then imported the module through `SourceFileLoader.exec_module`, permitting a pathname reopen after the initial check.
+- **evidence:** At starting `so` HEAD `507f0c03c3af65e3412c687fc98284eff5c18474`, `scripts/validate-memory-os-backup-restore-generation-evidence-registry-transaction-negative.py::load_writer` used `spec_from_file_location` followed by `spec.loader.exec_module`. The reviewed source was not pinned to the original file descriptor. No real adversarial swap or production impact was observed.
+- **rootCauseOrUnknown:** Verified source-level TOCTOU between pathname validation and loader reopen; actual exploitation is unknown.
+- **failedApproach:** Trusting `is_file` / a module spec to bind executable source bytes without verifying an owned descriptor and executing the captured source.
+- **correction:** [`19652fbf`](https://github.com/m-shogo/memories-project/commit/19652fbfd5b662e1ee941ea4f6b8fb65ba6950dd) reads bounded source through owned no-follow directory/leaf descriptors, checks regular unique non-writable inode, stable file and parent identity, closes owned descriptors, and compiles/executes the captured bytes instead of reopening the pathname.
+- **recurrenceGuard:** The existing read-only CI-reachable transaction negative now tests a real after-capture parent-directory rename/symlink swap with an executable canary, a writable source, a symlinked ancestor and an unchanged canary. The test runs before all transaction tests.
+- **retryCondition:** Revisit if the transaction harness importer, source permissions, descriptor ownership, source-size bounds or read-only CI trigger topology changes; do not retry unchanged publisher-coupled writer changes, canonical 4MB blob upload, Quay MinIO HTTP 401, workflow-write permission or missing human evidence.
+
+## Material success
+
+- **outcome:** [Generation Evidence Reconcile Negative #41393223350](https://github.com/m-shogo/memories-project/actions/runs/41393223350) completed **SUCCESS** at exact source `19652fbfd5b662e1ee941ea4f6b8fb65ba6950dd`; job `125108904398` logged `PASS: generation transaction writer pinned source rejects writable and swapped paths`, `generation evidence registry transaction negative PASS`, and `production decision: NO_GO`. [Backup Restore Admission Chain #41393223307](https://github.com/m-shogo/memories-project/actions/runs/41393223307) also completed SUCCESS on that source.
+- **evidence:** Observed GitHub Actions run conclusions and targeted negative job log. These establish synthetic CI behavior only.
+- **whySafe:** Only the existing read-only negative test script changed; the Generation Evidence publisher's `push.paths` does not include this script. The test uses disposable files, executes verified bytes, and verifies that redirected canary bytes remain unchanged. No production authority or actual recovery evidence was modified.
+- **reusableMechanism:** Pre-read allowlisted path identity, owned no-follow parent and leaf FDs, bounded byte-exact snapshot, post-read inode/parent checks, no loader reopen, and an after-capture symlink-swap negative.
+- **protectedAuthorityCheck:** Post-change `so` tree confirmed unchanged Git blob SHAs for canonical learning `b809c69d`, mandatory learning contract `87712ea9`, production status `d677a1c9`, generation registry `bfd1b045`, recovery objectives `f4d74f33`, drill requests `acebcd02`, generation evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, and human promotion registry `99cb895f`. `productionDecision=NO_GO`; registered/semantically eligible generations 0/0, current human-approved objective 0, executable reviewed request 0, request-bound recovery evidence 0, complete typed eight-domain coverage 0, final candidate 0. Preflight requires distinct unsuperseded eligible environments plus an explicitly human-approved current objective; planning requests are not execution authority; final candidates still require all generation/objective gates, complete typed coverage and independent review. Human production promotion remains separate and nonautomatic.
+
+## Next safe target
+
+Audit the separate generation-evidence **transport negative harness** module importer for the same path-reopen boundary. Its existing read-only reconcile-negative workflow is independently CI-reachable without triggering the production-capable publisher.
