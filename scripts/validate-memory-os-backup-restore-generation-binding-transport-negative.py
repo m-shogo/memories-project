@@ -78,6 +78,10 @@ def pinned_validator_source() -> bytes:
                     "generation-binding transport source read type invalid")
             if not chunk:
                 break
+            # Reject a faulty over-budget read before the remaining counter
+            # can become negative and keep the loop alive indefinitely.
+            require(len(chunk) <= remaining,
+                    "generation-binding transport source changed during read")
             chunks.append(chunk)
             remaining -= len(chunk)
         source = b"".join(chunks)
@@ -211,6 +215,9 @@ def prove_pinned_validator_import() -> None:
                  "generation-binding transport source changed during read"),
                 ("nonbytes read", lambda *_args: "PRIVATE_BINDING_READ_CANARY",
                  "generation-binding transport source read type invalid"),
+                ("oversized response",
+                 lambda *_args: b"x" * (MAX_VALIDATOR_SOURCE_BYTES + 2),
+                 "generation-binding transport source changed during read"),
                 ("private read OSError", private_read_failure,
                  "generation-binding transport pinned source unreadable"),
             ):
