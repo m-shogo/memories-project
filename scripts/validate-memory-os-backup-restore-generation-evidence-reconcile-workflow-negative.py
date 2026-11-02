@@ -6,7 +6,6 @@ from __future__ import annotations
 import ast
 import hashlib
 import os
-import re
 import subprocess
 from pathlib import Path
 
@@ -375,10 +374,14 @@ def classify_generation_publisher_coupling(source: str) -> bool:
     # Count all syntactic job-level variants, not only the first safe substring.
     job_body = source.split("  validate:\n", 1)[1]
     job_lines = job_body.splitlines()
-    if (sum(bool(re.match(r"^ {4}(?:if|['\\\"]if['\\\"])\\s*:", line))
-            for line in job_lines) != 1
-            or sum(bool(re.match(r"^ {4}(?:permissions|['\\\"]permissions['\\\"])\\s*:", line))
-                   for line in job_lines) != 1):
+    def job_key_count(name: str) -> int:
+        return sum(
+            line.startswith("    ") and not line.startswith("     ")
+            and line[4:].split(":", 1)[0].strip().strip("'\\\"") == name
+            for line in job_lines
+        )
+
+    if job_key_count("if") != 1 or job_key_count("permissions") != 1:
         raise SystemExit("generation evidence publisher bounded source guard missing")
     required = (
         "for reconcile_attempt in 1 2; do",
