@@ -187,6 +187,49 @@ def prove_pinned_validator_import() -> None:
                             "generation-binding transport invalid FD fixture acquisition order drift")
                     require(closed == list(reversed(acquired)),
                             "generation-binding transport invalid FD ownership/cleanup drift")
+            original_read = os.read
+            fragments = 0
+
+            def fragmented_read(fd: int, count: int) -> bytes:
+                nonlocal fragments
+                fragments += 1
+                return original_read(fd, min(count, 3))
+
+            os.read = fragmented_read
+            try:
+                require(load_validator().SOURCE_MARKER == "reviewed",
+                        "generation-binding transport fragmented source positive failed")
+            finally:
+                os.read = original_read
+            require(fragments > 2, "generation-binding fragmented read fixture was inert")
+
+            def private_read_failure(*_args: Any) -> bytes:
+                raise OSError("PRIVATE_BINDING_READ_CANARY")
+
+            for label, injected, expected in (
+                ("premature EOF", lambda *_args: b"",
+                 "generation-binding transport source changed during read"),
+                ("nonbytes read", lambda *_args: "PRIVATE_BINDING_READ_CANARY",
+                 "generation-binding transport source read type invalid"),
+                ("private read OSError", private_read_failure,
+                 "generation-binding transport pinned source unreadable"),
+            ):
+                os.read = injected
+                try:
+                    try:
+                        load_validator()
+                    except Fail as exc:
+                        require(str(exc) == expected,
+                                "generation-binding transport " + label + " wrong rejection")
+                        require("PRIVATE_BINDING_READ_CANARY" not in str(exc),
+                                "generation-binding transport private read error leaked")
+                        if label == "private read OSError":
+                            require(exc.__suppress_context__,
+                                    "generation-binding transport private read context exposed")
+                    else:
+                        raise Fail("generation-binding transport accepted " + label)
+                finally:
+                    os.read = original_read
             for flag in ("O_DIRECTORY", "O_NOFOLLOW", "O_NONBLOCK"):
                 original_flag = getattr(os, flag)
                 for invalid in (0, False, "inert"):
@@ -270,7 +313,7 @@ def prove_pinned_validator_import() -> None:
                 parent.unlink()
             if parked.exists():
                 parked.rename(parent)
-    print("PASS: generation-binding transport validator pinned against hardlink, parent-mode race and swap")
+    print("PASS: generation-binding transport pinned importer rejects EOF, nonbytes and private read failures; fragmented read works")
 
 
 
