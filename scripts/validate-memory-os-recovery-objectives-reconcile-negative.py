@@ -633,6 +633,42 @@ def prove_pinned_writer_import(reconciler: object) -> None:
         canary = redirected / writer.name
         canary.write_text("raise RuntimeError('PRIVATE_OBJECTIVE_WRITER_SWAP_CANARY')\n",
                           encoding="utf-8")
+        writer.chmod(0o666)
+        try:
+            expect_domain_fail("writable objective writer", reconciler.load_writer,
+                               reconciler.Fail)
+        finally:
+            writer.chmod(0o644)
+        parent.chmod(0o777)
+        try:
+            expect_domain_fail("writable objective writer parent", reconciler.load_writer,
+                               reconciler.Fail)
+        finally:
+            parent.chmod(0o755)
+        original_read = reconciler.os.read
+        raced = False
+
+        def swap_during_read(fd, remaining):
+            nonlocal raced
+            if not raced:
+                raced = True
+                parent.rename(parked)
+                parent.symlink_to(redirected, target_is_directory=True)
+            return original_read(fd, remaining)
+
+        reconciler.os.read = swap_during_read
+        try:
+            expect_domain_fail("mid-read objective writer parent swap", reconciler.load_writer,
+                               reconciler.Fail)
+            require(raced, "objective writer mid-read swap negative not exercised")
+        finally:
+            reconciler.os.read = original_read
+            if parent.is_symlink():
+                parent.unlink()
+            if parked.exists():
+                parked.rename(parent)
+        require(reconciler.load_writer().SOURCE_MARKER == "reviewed",
+                "objective writer positive control failed after parent restore")
         original_spec = reconciler.importlib.util.spec_from_file_location
         swapped = False
 

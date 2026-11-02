@@ -466,6 +466,36 @@ def prove_pinned_generation_writer_import(reconciler: object) -> None:
             writer.chmod(0o666)
             expect_domain_fail("writable generation writer", reconciler.load_writer, reconciler.Fail)
             writer.chmod(0o644)
+            parent.chmod(0o777)
+            try:
+                expect_domain_fail("writable generation writer parent", reconciler.load_writer,
+                                   reconciler.Fail)
+            finally:
+                parent.chmod(0o755)
+            original_read = reconciler.os.read
+            raced = False
+
+            def swap_during_read(fd, remaining):
+                nonlocal raced
+                if not raced:
+                    raced = True
+                    parent.rename(parked)
+                    parent.symlink_to(redirected, target_is_directory=True)
+                return original_read(fd, remaining)
+
+            reconciler.os.read = swap_during_read
+            try:
+                expect_domain_fail("mid-read generation writer parent swap",
+                                   reconciler.load_writer, reconciler.Fail)
+                require(raced, "generation writer mid-read swap negative not exercised")
+            finally:
+                reconciler.os.read = original_read
+                if parent.is_symlink():
+                    parent.unlink()
+                if parked.exists():
+                    parked.rename(parent)
+            require(reconciler.load_writer().SOURCE_MARKER == "reviewed",
+                    "generation writer positive control failed after parent restore")
             swapped = False
 
             def swap_after_capture(name, location, *args, **kwargs):
