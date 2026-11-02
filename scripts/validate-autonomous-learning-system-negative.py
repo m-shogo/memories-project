@@ -9495,7 +9495,7 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
             step_end = next(
                 (i for i in range(index + 1, len(lines))
                  if re.match(r"^      -(?:\s|$)", lines[i])
-                 or re.match(r"^  [A-Za-z0-9_-]+:\s*$", lines[i])),
+                 or re.match(r"^  \S", lines[i])),
                 len(lines),
             )
             end = next(
@@ -9594,6 +9594,8 @@ def prove_workflow_rebase_guard_inventory(source_root: Path) -> None:
         ("push in bare dash step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      -\n        run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
         ("push in spaced dash step", "      - name: first\n        run: |\n          git pull --rebase origin so\n      -  run: |\n          verify_critical_source\n          if git push origin HEAD:so; then"),
         ("push in next YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  second:\n    steps:\n      if git push origin HEAD:so; then"),
+        ("push in quoted YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  \"second\":\n    steps:\n      if git push origin HEAD:so; then"),
+        ("push in complex-key YAML job", "  first:\n    steps:\n      git pull --rebase origin so\n  ? second\n  :\n    steps:\n      if git push origin HEAD:so; then"),
     ):
         try:
             rebase_guard_status(fixture)
