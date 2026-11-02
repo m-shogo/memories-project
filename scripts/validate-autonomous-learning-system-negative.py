@@ -10701,6 +10701,57 @@ git() {
 
 
 
+def prove_helper_ancestor_writer_fanout_blocked(source_root: Path) -> int:
+    """The helper's *backup* filename reaches a write-capable publisher."""
+    relative = "scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py"
+    writer = "- .github/workflows/backup-restore-admission-chain.yml"
+    guard = source_root / "scripts/audit-memory-os-workflow-trigger-fanout.py"
+    result = subprocess.run(
+        [sys.executable, str(guard), "--repo-root", str(source_root),
+         "--path", relative, "--require-direct-push-pr-match"],
+        capture_output=True, text=True, check=False, timeout=30,
+    )
+
+    def blocked(candidate: subprocess.CompletedProcess[str]) -> bool:
+        if (type(candidate) is not subprocess.CompletedProcess
+                or type(candidate.returncode) is not int
+                or candidate.returncode != 2
+                or type(candidate.stdout) is not str
+                or type(candidate.stderr) is not str
+                or candidate.stderr or not candidate.stdout.endswith("\n")
+                or candidate.stdout.endswith("\r\n")):
+            return False
+        lines = candidate.stdout[:-1].split("\n")
+        prefix = "risk: BLOCKED_KNOWN_WRITER_CAS; matched workflow count: "
+        if (len(lines) < 4 or lines[0] != "prewrite direct path audit: " + relative
+                or not lines[1].startswith(prefix)
+                or lines[-1] != "Do not write until independent scoped review changes the precondition."):
+            return False
+        count = lines[1][len(prefix):]
+        if (not count.isascii() or not count.isdecimal()
+                or count.startswith("0") or len(count) > 2):
+            return False
+        paths = lines[2:-1]
+        return (len(paths) == int(count) and len(set(paths)) == len(paths)
+                and writer in paths and all(
+                    path.startswith("- .github/workflows/") and path.endswith(".yml")
+                    for path in paths))
+
+    if not blocked(result):
+        raise RuntimeError("helper ancestor writer fanout prewrite blocker missing")
+    for label, mutant in (
+        ("false success", subprocess.CompletedProcess([], 0, result.stdout, "")),
+        ("hidden writer", subprocess.CompletedProcess(
+            [], 2, result.stdout.replace(writer + "\n", "", 1), "")),
+        ("risk downgraded", subprocess.CompletedProcess(
+            [], 2, result.stdout.replace(
+                "BLOCKED_KNOWN_WRITER_CAS", "BOUNDED_DIRECT_MATCH_ONLY", 1), "")),
+    ):
+        if blocked(mutant):
+            raise RuntimeError("helper ancestor writer fanout mutation accepted: " + label)
+    return 4
+
+
 def prove_entrydocs_fanout_child_stderr_redaction(source_root: Path) -> int:
     """Fail closed if a child-process diagnostic reflects unreviewed stderr."""
     import ast
@@ -11636,9 +11687,10 @@ def main() -> int:
     prove_saturation_critical_path_array_binding(source_root)
     prove_saturation_aggregate_source_binding(source_root)
     prove_saturation_aggregate_shell_error_classes(source_root)
+    helper_writer_fanout_cases = prove_helper_ancestor_writer_fanout_blocked(source_root)
     fanout_cli_cases = prove_prewrite_fanout_cli(source_root)
     prewrite_cli_cases = prove_prewrite_cli_end_to_end(source_root)
-    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases + private_learning_cases + entrydocs_redaction_cases} fail-closed cases)")
+    print(f"Autonomous learning negative validation PASS ({len(cases) + prewrite_cli_cases + fanout_cli_cases + helper_writer_fanout_cases + parent_mode_cases + leaf_mode_cases + executable_mode_cases + git_metadata_mode_cases + split_index_cases + git_snapshot_cases + head_ref_cases + minio_transitive_cases + private_prewrite_cases + private_learning_cases + entrydocs_redaction_cases} fail-closed cases)")
     return 0
 
 
