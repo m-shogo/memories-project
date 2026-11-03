@@ -1,0 +1,19 @@
+# Supplemental OPS learning — imported helper module dispatch inventory exact-source CI (2026-11-03)
+
+Append-only subordinate to canonical `docs/operations/AUTONOMOUS-OPS-LEARNING.md` and mandatory `contracts/operations/autonomous-learning-system.json`. This record cannot satisfy production, backup/restore, RPO/RTO/skew, drill, credential, traffic, readiness, registered/semantically eligible generation, approved recovery objective, executable reviewed request, request-bound recovery evidence, typed eight-domain non-resurrection, independent review, final candidate, or human promotion gates.
+
+## Material success — outcome, evidence, whySafe, reusableMechanism, protectedAuthorityCheck
+
+- **outcome:** [94e8c4f0](https://github.com/m-shogo/memories-project/commit/94e8c4f052c9863ee0e0953845accad278af87d3) expanded the existing independent read-only Actions dispatch lexical inventory from 141 to **147** Python/shell sources. Six separately SHA-read helper modules are now covered: four `memory_os_*.py` modules, `migration_operation_evidence_lib.py`, and `ops_independent_review_fixture_loader.py`. A helper-target mutation must reject `gh api .../dispatches`; a benign `gh run view` control must pass.
+- **evidence:** The six helper files were independently fetched and inspected for direct GitHub Actions dispatch signals; no matching lexical signals were observed. [Autonomous Learning Guard #41552737792](https://github.com/m-shogo/memories-project/actions/runs/41552737792), job `125644081261`, completed **SUCCESS** on exact source `94e8c4f0`. Logs show direct and nested 642 canonical negatives, 52 workflows / 63 commands / 204 source-negative fixtures, 195 prewrite fanout cases, 1,190 helper-ancestor negatives, append-only and final read-only clean checkout.
+- **whySafe:** Only `scripts/validate-autonomous-learning-system-negative.py` changed. The validator reads sources and injected fixture strings; no imported helper was executed by the new inventory, and no writer workflow, production evidence, credentials, traffic or promotion authority was changed.
+- **reusableMechanism:** Include known imported helper modules in the exact source count and test membership with a helper-specific dispatch mutation and read-only control. Maintain complete baseline inspection once and target-scoped mutations under the existing nested CI budget.
+- **protectedAuthorityCheck:** Ten protected Git blob identities unchanged: production status `d677a1c9` (`NO_GO`), OPS-P0-007 snapshot `dbaa36b0` (`PREREQUISITES_BLOCKED`), environment generations `bfd1b045`, recovery objectives `f4d74f33`, reviewed drill requests `acebcd02`, generation recovery evidence `ae7e57ef`, typed non-resurrection `26bb1cc7`, promotion review `99cb895f`, canonical learning `b809c69d`, learning contract `87712ea9`. Registered/semantically eligible generations remain 0/0; approved objective, executable reviewed request, request-bound recovery evidence, complete typed eight-domain final candidate and human promotion remain absent.
+
+## Scoped limitation and retry condition
+
+The inventory remains lexical, not an execution or transitive-import proof. Two inspected helpers use `importlib.util.spec_from_file_location` to load canonical writer modules; those writer entrypoints are already in the `register-*.py` scope, but dynamic runtime substitution and third-party Actions are not proven safe by this inventory. Revisit when helper membership, import graph, runtime dispatch, or CI reachability changes. Do not retry unchanged writer-workflow permission, MinIO HTTP 401 or missing external/human evidence blockers.
+
+## Next safe target
+
+Reject `Path(.../gh)`, `str(Path(.../gh))` and `shutil.which('gh')` Python argv dispatch aliases with bounded negative and benign read-only fixtures, without executing commands.
