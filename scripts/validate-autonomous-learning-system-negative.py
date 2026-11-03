@@ -9460,7 +9460,7 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
 def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
     """Conservatively pin direct Actions dispatch signals in publisher scripts.
 
-    This covers top-level publisher and operational Python entrypoints plus shell scripts,
+    This covers top-level publisher/operational Python, imported helper modules and shell scripts,
     not arbitrary imported modules or dynamically assembled commands.
     """
     import re
@@ -9479,9 +9479,12 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         | set(scripts.glob("run-*.py"))
         | set(scripts.glob("update-*.py"))
         | set(scripts.glob("write-*.py"))
+        | set(scripts.glob("memory_os_*.py"))
+        | set(scripts.glob("migration_operation_evidence_lib.py"))
+        | set(scripts.glob("ops_independent_review_fixture_loader.py"))
         | set(scripts.glob("*.sh"))
     )
-    if (scripts.is_symlink() or len(sources) != 141
+    if (scripts.is_symlink() or len(sources) != 147
             or any(path.is_symlink() or not path.is_file() for path in sources)):
         raise RuntimeError("publisher script dispatch source inventory drift")
     patterns = (
@@ -9532,6 +9535,19 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
         "subprocess.run([\'gh\', \'run\', \'view\', \'1\'])"
     }):
         raise RuntimeError("publisher script extended read-only control rejected")
+    helper_target = "migration_operation_evidence_lib.py"
+    if helper_target not in texts:
+        raise RuntimeError("publisher script helper dispatch target missing")
+    if dispatch_inventory({
+        helper_target: texts[helper_target] + "\n" +
+        "subprocess.run([\'gh\', \'api\', \'repos/o/r/dispatches\'])"
+    }) != (helper_target,):
+        raise RuntimeError("publisher script helper dispatch mutation accepted")
+    if dispatch_inventory({
+        helper_target: texts[helper_target] + "\n" +
+        "subprocess.run([\'gh\', \'run\', \'view\', \'1\'])"
+    }):
+        raise RuntimeError("publisher script helper read-only control rejected")
     for label, fixture in (
         ("shell workflow", "subprocess.run('gh workflow run writer.yml', shell=True)"),
         ("shell API", "subprocess.run('gh api repos/o/r/dispatches', shell=True)"),
