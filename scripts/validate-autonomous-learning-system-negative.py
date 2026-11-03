@@ -9460,7 +9460,7 @@ def prove_indirect_workflow_dispatch_boundary(source_root: Path) -> None:
 def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
     """Conservatively pin direct Actions dispatch signals in publisher scripts.
 
-    This covers top-level reconcile/register Python and shell entrypoints,
+    This covers top-level publisher and operational Python entrypoints plus shell scripts,
     not arbitrary imported modules or dynamically assembled commands.
     """
     import re
@@ -9469,9 +9469,19 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
     sources = sorted(
         set(scripts.glob("reconcile-*.py"))
         | set(scripts.glob("register-*.py"))
+        | set(scripts.glob("analyze-*.py"))
+        | set(scripts.glob("create-*.py"))
+        | set(scripts.glob("evaluate-*.py"))
+        | set(scripts.glob("generate-*.py"))
+        | set(scripts.glob("render-*.py"))
+        | set(scripts.glob("request-*.py"))
+        | set(scripts.glob("review-*.py"))
+        | set(scripts.glob("run-*.py"))
+        | set(scripts.glob("update-*.py"))
+        | set(scripts.glob("write-*.py"))
         | set(scripts.glob("*.sh"))
     )
-    if (scripts.is_symlink() or len(sources) != 120
+    if (scripts.is_symlink() or len(sources) != 141
             or any(path.is_symlink() or not path.is_file() for path in sources)):
         raise RuntimeError("publisher script dispatch source inventory drift")
     patterns = (
@@ -9509,6 +9519,19 @@ def prove_publisher_script_dispatch_boundary(source_root: Path) -> None:
     target = "reconcile-memory-os-sustained-local-soak-status.py"
     if target not in texts:
         raise RuntimeError("publisher script dispatch fixture target missing")
+    secondary_target = "run-memory-os-rate-limit-emergency-drill.py"
+    if secondary_target not in texts:
+        raise RuntimeError("publisher script extended dispatch target missing")
+    if dispatch_inventory({
+        secondary_target: texts[secondary_target] + "\n" +
+        "subprocess.run([\'gh\', \'workflow\', \'run\', \'writer.yml\'])"
+    }) != (secondary_target,):
+        raise RuntimeError("publisher script extended dispatch mutation accepted")
+    if dispatch_inventory({
+        secondary_target: texts[secondary_target] + "\n" +
+        "subprocess.run([\'gh\', \'run\', \'view\', \'1\'])"
+    }):
+        raise RuntimeError("publisher script extended read-only control rejected")
     for label, fixture in (
         ("shell workflow", "subprocess.run('gh workflow run writer.yml', shell=True)"),
         ("shell API", "subprocess.run('gh api repos/o/r/dispatches', shell=True)"),
