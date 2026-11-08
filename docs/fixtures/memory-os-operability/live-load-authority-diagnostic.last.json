@@ -1,7 +1,7 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "reconcile-live-load-authority-v2",
-  "sourceCommitSha": "d7a88bb6d04a231549886d1b5196a811820b5409",
+  "sourceCommitSha": "2a17a7971d3e3595581610c53cffcd603b17bf9a",
   "result": "PASS",
   "exitCode": 0,
   "output": "Live load validation completed; raw validator output withheld.",
