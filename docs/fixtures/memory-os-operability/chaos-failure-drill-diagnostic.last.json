@@ -1,19 +1,19 @@
 {
   "schemaVersion": "memory-os-validator-diagnostic.v1",
   "workflow": "chaos-and-failure-drills",
-  "sourceCommitSha": "5484e604e8987e9b335c098a074349a048c00c85",
+  "sourceCommitSha": "0a3787d75bdf57b3f3e4d500594dc2a295122776",
   "result": "PASS",
-  "generatedAt": "2026-11-12T23:50:57.888345Z",
+  "generatedAt": "2026-11-13T23:50:07.563014Z",
   "scenarios": [
     {
       "scenarioId": "api-graceful-interruption-drain",
       "exitCode": 0,
-      "output": "go: downloading github.com/jackc/pgx/v5 v5.7.6\ngo: downloading github.com/jackc/puddle/v2 v2.2.2\ngo: downloading github.com/jackc/pgpassfile v1.0.0\ngo: downloading golang.org/x/crypto v0.37.0\ngo: downloading github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761\ngo: downloading golang.org/x/text v0.24.0\ngo: downloading golang.org/x/sync v0.13.0\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.146s\n"
+      "output": "go: downloading github.com/jackc/pgx/v5 v5.7.6\ngo: downloading github.com/jackc/puddle/v2 v2.2.2\ngo: downloading github.com/jackc/pgpassfile v1.0.0\ngo: downloading github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761\ngo: downloading golang.org/x/crypto v0.37.0\ngo: downloading golang.org/x/text v0.24.0\ngo: downloading golang.org/x/sync v0.13.0\nok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/httpserver\t0.147s\n"
     },
     {
       "scenarioId": "parser-restart-after-protocol-failure",
       "exitCode": 0,
-      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.025s\n"
+      "output": "ok  \tgithub.com/m-shogo/memories-project/services/import-api/internal/parsersup\t0.038s\n"
     }
   ],
   "containsSecrets": false,
