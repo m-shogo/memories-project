@@ -2328,13 +2328,16 @@ def validate_learning_workflow_source(source: str, *, check_blob: bool = True) -
     ):
         if source.count(marker) != 1:
             raise ValueError("learning workflow event authority drift")
+    push_paths = events.split("  push:\n", 1)[1].split("  pull_request:\n", 1)[0]
+    pr_paths = events.split("  pull_request:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
     for trigger in (
         "scripts/validate-memory-os-entry-docs.py",
         "scripts/" + "validate-autonomous-learning-system.py",
         "scripts/" + "validate-autonomous-learning-system-negative.py",
         ".github/workflows/autonomous-learning-guard.yml",
     ):
-        if source.count('      - "' + trigger + '"\n') != 2:
+        row = '      - "' + trigger + '"\n'
+        if push_paths.count(row) != 1 or pr_paths.count(row) != 1:
             raise ValueError("learning workflow self-trigger authority drift")
     permission = source.split("\npermissions:\n", 1)[1].split("\nconcurrency:\n", 1)[0]
     if permission != "  contents: read\n":
@@ -2411,6 +2414,23 @@ def validate_learning_workflow_reachability(failures: list[str]) -> None:
              "      - run: echo unreviewed\n      - name: Confirm read-only execution\n",
              "learning workflow complete reviewed source drift"),
         )
+        # Each event must independently retain its reviewed self-trigger.
+        pr_marker = "  pull_request:\n    branches: [so]\n    paths:\n"
+        trigger_row = '      - "scripts/validate-autonomous-learning-system.py"\n'
+        push, pr = source.split(pr_marker, 1)
+        if push.count(trigger_row) != 1 or pr.count(trigger_row) != 1:
+            raise ValueError("learning workflow event-specific fixture anchor drift")
+        for label, changed in (
+            ("PR-only missing", push + pr_marker + pr.replace(trigger_row, "", 1)),
+            ("push-only missing", push.replace(trigger_row, "", 1) + pr_marker + pr),
+        ):
+            try:
+                validate_learning_workflow_source(changed, check_blob=False)
+            except ValueError as exc:
+                if str(exc) != "learning workflow self-trigger authority drift":
+                    raise ValueError("learning workflow wrong event-specific negative: " + label) from exc
+            else:
+                raise ValueError("learning workflow event-specific mutation accepted: " + label)
         for label, old, replacement, diagnostic in cases:
             if source.count(old) != (2 if label == "missing push self-trigger" else 1):
                 raise ValueError("learning workflow fixture anchor drift: " + label)
@@ -2432,7 +2452,7 @@ def validate_learning_workflow_reachability(failures: list[str]) -> None:
     except (OSError, UnicodeError, ValueError) as exc:
         failures.append("autonomous learning workflow guard failed: " + str(exc))
     else:
-        print("autonomous learning workflow source verified: 9 exact-diagnostic negatives")
+        print("autonomous learning workflow source verified: 11 exact-diagnostic negatives")
 
 
 
