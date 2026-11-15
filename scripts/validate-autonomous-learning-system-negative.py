@@ -8892,16 +8892,22 @@ def prove_prewrite_cli_end_to_end(source_root: Path) -> int:
         if (positive.returncode != 0 or positive.stderr or
                 positive.stdout != "Prewrite Python AST and diff-budget validation PASS: +1 -0\n"):
             raise RuntimeError("prewrite CLI positive control failed")
-        # Real large entrypoint positive: check CLI parsing, full AST, and diff budget.
+        # The real entrypoint can exceed the reviewed 4096-line source cap.
+        # Preserve the cap: oversized source must fail through the canonical CLI,
+        # while an admissible real entrypoint must still pass the positive path.
         actual = (source_root / CI_ENTRYPOINT).read_bytes()
         before.write_bytes(actual)
         after.write_bytes(actual + (b"" if actual.endswith(b"\n") else b"\n") +
                           b"# isolated prewrite CLI fixture\n")
         large_args = args[:-1] + [hashlib.sha256(actual).hexdigest()]
-        large = execute(large_args)
-        if (large.returncode != 0 or large.stderr or
-                large.stdout != "Prewrite Python AST and diff-budget validation PASS: +1 -0\n"):
-            raise RuntimeError("prewrite CLI real-entrypoint positive control failed")
+        if len(actual.splitlines()) > 4096:
+            accept("oversized real entrypoint", large_args,
+                   "prewrite baseline Python line count exceeds reviewed bound")
+        else:
+            large = execute(large_args)
+            if (large.returncode != 0 or large.stderr or
+                    large.stdout != "Prewrite Python AST and diff-budget validation PASS: +1 -0\n"):
+                raise RuntimeError("prewrite CLI real-entrypoint positive control failed")
         before.write_text(baseline, encoding="utf-8")
         cases = (
             ("invalid syntax", b"def main(:\n", "prewrite candidate Python syntax invalid", []),
