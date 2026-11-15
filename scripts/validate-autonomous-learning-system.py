@@ -382,9 +382,6 @@ def validate(repo_root: Path) -> None:
         ).decode("utf-8")
     except UnicodeDecodeError:
         raise ValidationFailure(f"invalid UTF-8: {CI_ENTRYPOINT}") from None
-    for guard in (VALIDATOR.as_posix(), NEGATIVE_VALIDATOR.as_posix()):
-        if guard not in ci_entrypoint:
-            raise ValidationFailure(f"learning CI entrypoint does not invoke bound guard: {guard}")
     for fragment in (
         "def validate_learning_guards(failures: list[str]) -> None:",
         "[sys.executable, str(path), \"--repo-root\", str(REPO_ROOT)]",
@@ -402,6 +399,24 @@ def validate(repo_root: Path) -> None:
         entry_tree = ast.parse(ci_entrypoint, filename=str(repo_root / CI_ENTRYPOINT))
     except SyntaxError as exc:
         raise ValidationFailure("learning CI entrypoint is not valid Python") from exc
+    # Bind actual module-level executable guard registration, not incidental
+    # path literals in comments, tests, or diagnostic fixtures.
+    guard_bindings = [
+        node.value for node in entry_tree.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "LEARNING_GUARDS"
+                for target in node.targets)
+    ]
+    if len(guard_bindings) != 1:
+        raise ValidationFailure("learning CI entrypoint guard registration changed")
+    try:
+        registered_guards = ast.literal_eval(guard_bindings[0])
+    except (ValueError, TypeError, SyntaxError, RecursionError, MemoryError):
+        raise ValidationFailure("learning CI entrypoint guard registration changed") from None
+    for guard in (VALIDATOR.as_posix(), NEGATIVE_VALIDATOR.as_posix()):
+        if (not isinstance(registered_guards, tuple)
+                or registered_guards.count(guard) != 1):
+            raise ValidationFailure(f"learning CI entrypoint does not invoke bound guard: {guard}")
     def module_scope_rebinds(name: str) -> bool:
         # Deferred function bodies and comprehensions do not run at import
         # time. Function decorators/defaults and class bodies DO execute, and
