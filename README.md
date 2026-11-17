@@ -9,6 +9,10 @@ Memory is the product.
 Town is the visible side effect.
 ```
 
+## Cross-project learning
+
+[3回までの再発から学ぶ共通プロトコル](docs/operations/CROSS-PROJECT-LEARNING-PROTOCOL.md) — 記録と実装を区別し、各リポジトリで適用・検証する（現時点では全リポジトリへの自動適用は未実装）。
+
 ## Current authority
 
 最終更新: 2026-08-07
