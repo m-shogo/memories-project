@@ -114,12 +114,6 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
-      - name: Start MinIO
-        run: >-
-          docker run -d --name minio -p 9000:9000
-          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
-          quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -178,6 +172,12 @@ jobs:
           python scripts/validate-memory-os-database-commit-outage.py
           python scripts/validate-memory-os-operability.py
           git diff --exit-code -- contracts/operations/production-operability-status.json
+
+      - name: Start MinIO
+        run: >-
+          docker run -d --name minio -p 9000:9000
+          -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin
+          quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
 
       - name: Execute current recovery drills
         working-directory: services/import-api
