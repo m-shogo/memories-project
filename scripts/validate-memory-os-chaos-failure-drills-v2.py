@@ -110,8 +110,8 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         "acceptedRecordsAfterRecovery": 2,
         "rejectedRecordsAfterRecovery": 1,
     }.items():
-        require(object_assertions.get(field) == expected,
-                f"object outage assertion failed: {field}")
+        require(type(object_assertions.get(field)) is int and object_assertions[field] == expected,
+                f"object outage assertion must be an exact integer: {field}")
 
     require(result.get("overallResult") == "PARTIAL_PASS",
             "three local CI drills cannot claim complete chaos PASS")
