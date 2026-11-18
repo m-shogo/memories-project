@@ -39,11 +39,27 @@ def main() -> int:
         except module.ValidationFailure:
             continue
         raise RuntimeError(f"canonical chaos v2 validator accepted {name}")
+    assertion_mutations = (
+        ("false zero", "durablePreviewRowsDuringOutage", False),
+        ("true one", "durablePreviewRowsAfterRecovery", True),
+        ("float one", "rejectedRecordsAfterRecovery", 1.0),
+        ("string two", "acceptedRecordsAfterRecovery", "2"),
+        ("negative count", "spoolEntriesDuringOutage", -1),
+    )
+    for name, field, value in assertion_mutations:
+        candidate = copy.deepcopy(original)
+        item = next(s for s in candidate["scenarios"] if s["scenarioId"] == "object-store-outage-and-recovery")
+        item["assertions"][field] = value
+        try:
+            module.validate_result(candidate, None)
+        except module.ValidationFailure:
+            continue
+        raise RuntimeError(f"canonical chaos v2 validator accepted {name}")
     if (ROOT / "contracts/operations/production-operability-status.json").is_file():
         status = json.loads((ROOT / "contracts/operations/production-operability-status.json").read_text(encoding="utf-8"))
         if status.get("productionDecision") != "NO_GO":
             raise RuntimeError("production authority drift")
-    print(f"PASS: chaos v2 metadata negatives ({len(mutations)} mutations)")
+    print(f"PASS: chaos v2 metadata negatives ({len(mutations) + len(assertion_mutations)} mutations)")
     return 0
 
 
