@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -88,9 +89,10 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
         require(item.get("result") == "PASS", f"{scenario_id} result is not PASS")
         require(item.get("integrityResult") == "PASS",
                 f"{scenario_id} integrity is not PASS")
-        require(item.get("exitCode") == 0, f"{scenario_id} exitCode is not zero")
-        require(isinstance(item.get("durationSeconds"), (int, float)) and
-                item["durationSeconds"] >= 0,
+        require(type(item.get("exitCode")) is int and item["exitCode"] == 0,
+                f"{scenario_id} exitCode must be integer zero")
+        require(type(item.get("durationSeconds")) in (int, float) and
+                math.isfinite(item["durationSeconds"]) and item["durationSeconds"] >= 0,
                 f"{scenario_id} duration is invalid")
     for scenario_id in NOT_RUN:
         item = by_id[scenario_id]
