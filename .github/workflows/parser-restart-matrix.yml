@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/parser-restart-matrix.yml"
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "services/import-api/internal/parsersup/**"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-parser-restart-matrix-negative.py"
@@ -20,6 +21,7 @@ on:
     paths:
       - ".github/workflows/parser-restart-matrix.yml"
       - "contracts/operations/parser-restart-matrix-contract.v1.json"
+      - "docs/fixtures/memory-os-operability/parser-restart-matrix-results.sample.v1.json"
       - "contracts/operations/production-operability-status.json"
       - "services/import-api/internal/parsersup/**"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
