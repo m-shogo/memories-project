@@ -23,6 +23,7 @@ on:
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-metadata-negative.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
@@ -60,6 +61,7 @@ on:
       - "services/import-api/internal/importflow/database_outage_drill_linux_test.go"
       - "scripts/validate-memory-os-chaos-failure-drills-v2.py"
       - "scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py"
+      - "scripts/validate-memory-os-chaos-failure-drills-v2-metadata-negative.py"
       - "scripts/validate-memory-os-parser-restart-matrix.py"
       - "scripts/validate-memory-os-parser-restart-reconcile-negative.py"
       - "scripts/validate-memory-os-parser-inflight-cancellation.py"
@@ -134,6 +136,7 @@ jobs:
           python -m py_compile \
             scripts/validate-memory-os-chaos-failure-drills-v2.py \
             scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py \
+            scripts/validate-memory-os-chaos-failure-drills-v2-metadata-negative.py \
             scripts/validate-memory-os-parser-restart-matrix.py \
             scripts/validate-memory-os-parser-restart-reconcile-negative.py \
             scripts/validate-memory-os-parser-inflight-cancellation.py \
@@ -147,6 +150,7 @@ jobs:
             scripts/reconcile-memory-os-database-commit-outage.py \
             scripts/reconcile-memory-os-chaos-authority.py \
             scripts/reconcile-memory-os-chaos-inflight-overlay.py
+          python scripts/validate-memory-os-chaos-failure-drills-v2-metadata-negative.py
           python scripts/validate-memory-os-chaos-failure-drills-v2-reconcile-negative.py
           python scripts/validate-memory-os-parser-restart-reconcile-negative.py
           python scripts/validate-memory-os-parser-inflight-cancellation-reconcile-negative.py
