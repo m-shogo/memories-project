@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -82,6 +83,11 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     for class_id in EXPECTED_CLASSES:
         item = by_id[class_id]
         require(item.get("result") == "PASS", f"matrix class is not PASS: {class_id}")
+        require(type(item.get("exitCode")) is int and item["exitCode"] == 0,
+                f"matrix class exitCode must be integer zero: {class_id}")
+        duration = item.get("durationSeconds")
+        require(type(duration) in (int, float) and math.isfinite(duration) and duration >= 0,
+                f"matrix class durationSeconds must be finite and non-negative: {class_id}")
         for assertion in (
             "expectedErrorMatched", "spoolResidueAbsent", "sameSpoolReusable",
             "replacementSealValid", "independentVerificationMatched",
