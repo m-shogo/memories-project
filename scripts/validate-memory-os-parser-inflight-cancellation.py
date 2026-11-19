@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sys
@@ -68,7 +69,8 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
             "in-flight result must state containsSecrets false")
     require(result.get("result") == "PASS" and result.get("integrityResult") == "PASS",
             "in-flight cancellation result is not PASS")
-    require(result.get("exitCode") == 0, "in-flight cancellation exitCode is not zero")
+    require(type(result.get("exitCode")) is int and result["exitCode"] == 0,
+            "in-flight cancellation exitCode must be integer zero")
     assertions = result.get("assertions")
     require(isinstance(assertions, dict), "in-flight assertions missing")
     for flag in (
@@ -78,9 +80,10 @@ def validate_result(result: dict[str, Any], expected_sha: str | None) -> None:
     ):
         require(assertions.get(flag) is True, f"in-flight assertion failed: {flag}")
     latency = assertions.get("cancellationLatencyMilliseconds")
-    require(isinstance(latency, (int, float)) and 0 <= latency < 1000,
+    require(type(latency) in (int, float) and math.isfinite(latency) and 0 <= latency < 1000,
             "in-flight cancellation latency is not below one second")
-    require(assertions.get("configuredWallClockMilliseconds") == 10000,
+    require(type(assertions.get("configuredWallClockMilliseconds")) is int
+            and assertions["configuredWallClockMilliseconds"] == 10000,
             "in-flight configured wall clock drift")
     limitations = strings(result.get("limitations"), "result.limitations", 6)
     joined = "\n".join(limitations)
