@@ -3901,27 +3901,39 @@ def main() -> int:
     )
     validate_independent_learning_workflow(learning_workflow_source)
     total = 0
+    negative_breakdown = []
     for filename, diagnostic in TARGETS.items():
         source = read_bounded_target_source(ROOT / "scripts" / filename)
         validate_source(source, diagnostic)
         prove_compilation_failure_runtime(filename)
         if "--negative" in sys.argv[1:]:
-            total += negative_cases(source, diagnostic)
+            count = negative_cases(source, diagnostic)
+            negative_breakdown.append((filename, count))
+            total += count
     if "--negative" in sys.argv[1:]:
-        total += prove_private_entrypoint_failures()
-        total += prove_bounded_target_source_negative()
-        total += target_matrix_negative_cases(workflow_source)
-        total += workflow_runtime_negative_cases(workflow_source)
-        total += independent_learning_workflow_negative_cases(learning_workflow_source)
+        for label, count in (
+            ("private_entrypoint", prove_private_entrypoint_failures()),
+            ("bounded_source", prove_bounded_target_source_negative()),
+            ("target_matrix", target_matrix_negative_cases(workflow_source)),
+            ("workflow_runtime", workflow_runtime_negative_cases(workflow_source)),
+            ("learning_workflow", independent_learning_workflow_negative_cases(learning_workflow_source)),
+        ):
+            negative_breakdown.append((label, count))
+            total += count
         prove_push_baseline_append_only_negative()
+        negative_breakdown.append(("push_baseline", 1))
         total += 1
-        total += prove_pr_base_append_only_negative(learning_workflow_source)
-        total += prove_manual_dispatch_ref_negative(learning_workflow_source)
-        total += prove_ancestor_dispatch_ref_negative(workflow_source)
-        total += prove_ancestor_pr_head_negative(workflow_source)
+        for label, count in (
+            ("pr_base", prove_pr_base_append_only_negative(learning_workflow_source)),
+            ("manual_dispatch", prove_manual_dispatch_ref_negative(learning_workflow_source)),
+            ("ancestor_dispatch", prove_ancestor_dispatch_ref_negative(workflow_source)),
+            ("ancestor_pr_head", prove_ancestor_pr_head_negative(workflow_source)),
+        ):
+            negative_breakdown.append((label, count))
+            total += count
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 136 * len(TARGETS) + 238, f"ancestor negative count mismatch (expected={136 * len(TARGETS) + 238}, observed={total})")
+        require(total == 136 * len(TARGETS) + 238, f"ancestor negative count mismatch (expected={136 * len(TARGETS) + 238}, observed={total}, breakdown={negative_breakdown!r})")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
