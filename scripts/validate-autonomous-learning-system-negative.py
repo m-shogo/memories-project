@@ -5641,8 +5641,14 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
         "scripts/validate-autonomous-learning-system-negative.py": True,
     }
     for event in ("push", "pull_request"):
-        guard_paths = autonomous_learning_guard_event_paths(guard_source, event, 15)
+        guard_paths = autonomous_learning_guard_event_paths(guard_source, event, 19)
         require_autonomous_learning_trigger_claims(guard_paths, critical)
+        require_autonomous_learning_trigger_claims(guard_paths, {
+            "scripts/validate-autonomous-learning-records-history.py": True,
+            "docs/operations/autonomous-learning-records/**": True,
+            "docs/operations/autonomous-learning-addenda/**": True,
+            "docs/operations/learning/**": True,
+        })
         # Canonical learning remains a CI trigger but is never a mutable
         # upload-route reconcile snapshot input; the other 14 paths intersect.
         if (len(snapshot_paths.intersection(guard_paths)) != 14
