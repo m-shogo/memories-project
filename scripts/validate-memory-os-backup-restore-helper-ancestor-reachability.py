@@ -268,7 +268,7 @@ ANCESTOR_RUN_BOUNDARIES = (
      "      - name: Verify read-only postcondition\n"),
 )
 LEARNING_RUN_BOUNDARIES = (
-    ('          test -z "$(git status --porcelain)"\\n',
+    ('          test -z "$(git status --porcelain)"\n',
      "      - name: Enforce append-only learning authority against parent\n"),
     ("          PY\n",
      "      - name: Validate learning contract and executable negatives\n"),
