@@ -3921,7 +3921,7 @@ def main() -> int:
         total += prove_ancestor_pr_head_negative(workflow_source)
     print(f"Helper ancestor reachability PASS ({len(TARGETS)} canonical harnesses)")
     if "--negative" in sys.argv[1:]:
-        require(total == 136 * len(TARGETS) + 238, "ancestor negative count mismatch")
+        require(total == 136 * len(TARGETS) + 238, f"ancestor negative count mismatch (expected={136 * len(TARGETS) + 238}, observed={total})")
         print(f"Helper ancestor reachability negative PASS ({total} fail-closed mutations)")
     return 0
 
