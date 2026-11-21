@@ -678,12 +678,12 @@ def validate_independent_learning_workflow(source: str) -> None:
         "contracts/operations/autonomous-learning-system.json",
         "docs/operations/AUTONOMOUS-OPS-LEARNING.md",
         "scripts/validate-autonomous-learning-system.py",
-        "scripts/validate-autonomous-learning-system-negative.py",
-        "scripts/validate-memory-os-entry-docs.py",
         "scripts/validate-autonomous-learning-records-history.py",
         "docs/operations/autonomous-learning-records/**",
         "docs/operations/autonomous-learning-addenda/**",
         "docs/operations/learning/**",
+        "scripts/validate-autonomous-learning-system-negative.py",
+        "scripts/validate-memory-os-entry-docs.py",
     )
     validate_trigger_path_inventory(
         source, expected_paths,
