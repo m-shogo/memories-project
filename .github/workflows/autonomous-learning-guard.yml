@@ -17,6 +17,10 @@ on:
       - "contracts/operations/autonomous-learning-system.json"
       - "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
       - "scripts/validate-autonomous-learning-system.py"
+      - "scripts/validate-autonomous-learning-records-history.py"
+      - "docs/operations/autonomous-learning-records/**"
+      - "docs/operations/autonomous-learning-addenda/**"
+      - "docs/operations/learning/**"
       - "scripts/validate-autonomous-learning-system-negative.py"
       - "scripts/validate-memory-os-entry-docs.py"
   pull_request:
@@ -35,6 +39,10 @@ on:
       - "contracts/operations/autonomous-learning-system.json"
       - "docs/operations/AUTONOMOUS-OPS-LEARNING.md"
       - "scripts/validate-autonomous-learning-system.py"
+      - "scripts/validate-autonomous-learning-records-history.py"
+      - "docs/operations/autonomous-learning-records/**"
+      - "docs/operations/autonomous-learning-addenda/**"
+      - "docs/operations/learning/**"
       - "scripts/validate-autonomous-learning-system-negative.py"
       - "scripts/validate-memory-os-entry-docs.py"
   workflow_dispatch:
@@ -138,6 +146,13 @@ jobs:
           python -B scripts/validate-autonomous-learning-system.py
           python -B scripts/validate-autonomous-learning-system-negative.py
           python -B scripts/validate-memory-os-entry-docs.py
+      - name: Enforce supplemental append-only history and negative fixtures
+        shell: bash
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          set -euo pipefail
+          python -B scripts/validate-autonomous-learning-records-history.py --self-test
       - name: Independently enforce helper ancestor runtime workflow reachability
         shell: bash
         env:
