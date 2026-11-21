@@ -532,6 +532,10 @@ def validate_independent_learning_workflow(source: str) -> None:
         "scripts/validate-autonomous-learning-system.py",
         "scripts/validate-autonomous-learning-system-negative.py",
         "scripts/validate-memory-os-entry-docs.py",
+        "scripts/validate-autonomous-learning-records-history.py",
+        "docs/operations/autonomous-learning-records/**",
+        "docs/operations/autonomous-learning-addenda/**",
+        "docs/operations/learning/**",
     }
     require(paths - triggered_harnesses == required_authority_paths,
             "independent learning workflow source trigger drift")
@@ -554,6 +558,8 @@ def validate_independent_learning_workflow(source: str) -> None:
     require(pr_paths == paths, "independent learning workflow PR source trigger drift")
     require(source.count("      - name: Validate learning contract and executable negatives\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-autonomous-learning-system.py\n          python -B scripts/validate-autonomous-learning-system-negative.py\n          python -B scripts/validate-memory-os-entry-docs.py\n") == 1,
             "independent learning workflow learning validation drift")
+    require(source.count("      - name: Enforce supplemental append-only history and negative fixtures\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-autonomous-learning-records-history.py --self-test\n") == 1,
+            "independent learning workflow supplemental history invocation drift")
     require(source.count("      - name: Independently enforce helper ancestor runtime workflow reachability\n        shell: bash\n        env:\n          PYTHONDONTWRITEBYTECODE: \"1\"\n        run: |\n          set -euo pipefail\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py\n          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n") == 1,
             "independent learning workflow ancestor invocation drift")
     require(source.count("""      - name: Enforce append-only learning authority against parent
