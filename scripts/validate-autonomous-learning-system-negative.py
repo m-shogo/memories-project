@@ -5655,8 +5655,8 @@ def prove_upload_route_go_direct_inputs(source_root: Path) -> None:
             "docs/operations/learning/**": True,
         })
         # Canonical learning remains a CI trigger but is never a mutable
-        # upload-route reconcile snapshot input; the other 14 paths intersect.
-        if (len(snapshot_paths.intersection(guard_paths)) != 14
+        # upload-route reconcile snapshot input; the other 15 paths intersect.
+        if (len(snapshot_paths.intersection(guard_paths)) != 15
                 or "docs/operations/AUTONOMOUS-OPS-LEARNING.md" in snapshot_paths
                 or "docs/operations/AUTONOMOUS-OPS-LEARNING.md" not in guard_paths):
             raise RuntimeError("Autonomous Learning Guard reviewed snapshot trigger reach changed")
