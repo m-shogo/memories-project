@@ -657,13 +657,15 @@ def validate_independent_learning_workflow(source: str) -> None:
         "      - name: Confirm exact clean source",
         "      - name: Enforce append-only learning authority against parent",
         "      - name: Validate learning contract and executable negatives",
+        "      - name: Enforce supplemental append-only history and negative fixtures",
         "      - name: Independently enforce helper ancestor runtime workflow reachability",
         "      - name: Confirm read-only execution",
     ], "independent learning workflow step allowlist drift")
     validate_step_key_inventory(
         source,
         (("with",), ("with",), ("shell", "run"), ("shell", "run"),
-         ("shell", "env", "run"), ("shell", "env", "run"), ("shell", "run")),
+         ("shell", "env", "run"), ("shell", "env", "run"),
+         ("shell", "env", "run"), ("shell", "run")),
         "independent learning workflow step authority drift",
     )
 
@@ -678,6 +680,10 @@ def validate_independent_learning_workflow(source: str) -> None:
         "scripts/validate-autonomous-learning-system.py",
         "scripts/validate-autonomous-learning-system-negative.py",
         "scripts/validate-memory-os-entry-docs.py",
+        "scripts/validate-autonomous-learning-records-history.py",
+        "docs/operations/autonomous-learning-records/**",
+        "docs/operations/autonomous-learning-addenda/**",
+        "docs/operations/learning/**",
     )
     validate_trigger_path_inventory(
         source, expected_paths,
