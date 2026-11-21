@@ -273,6 +273,8 @@ LEARNING_RUN_BOUNDARIES = (
     ("          PY\n",
      "      - name: Validate learning contract and executable negatives\n"),
     ("          python -B scripts/validate-memory-os-entry-docs.py\n",
+     "      - name: Enforce supplemental append-only history and negative fixtures\n"),
+    ("          python -B scripts/validate-autonomous-learning-records-history.py --self-test\n",
      "      - name: Independently enforce helper ancestor runtime workflow reachability\n"),
     ("          python -B scripts/validate-memory-os-backup-restore-helper-ancestor-reachability.py --negative\n",
      "      - name: Confirm read-only execution\n"),
