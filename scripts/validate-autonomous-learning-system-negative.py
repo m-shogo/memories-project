@@ -3939,7 +3939,12 @@ def autonomous_learning_guard_event_paths(source: str, event: str,
             any(not row.startswith('      - "') or not row.endswith('"') for row in paths)):
         raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
     parsed = tuple(row[9:-1] for row in paths)
-    if len(set(parsed)) != len(parsed) or any("*" in path or "!" in path for path in parsed):
+    reviewed_learning_globs = {"docs/operations/autonomous-learning-records/**",
+                              "docs/operations/autonomous-learning-addenda/**",
+                              "docs/operations/learning/**"}
+    if len(set(parsed)) != len(parsed) or any(
+            "!" in path or ("*" in path and path not in reviewed_learning_globs)
+            for path in parsed):
         raise RuntimeError("Autonomous Learning Guard event trigger authority changed")
     return parsed
 
